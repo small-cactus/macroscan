@@ -6,7 +6,7 @@ export default function SignInScreen({ navigation }) {
   const [password, setPassword] = useState('');
 
   const handleLogin = () => {
-    if (username === 'Admin' && password === 'YakRackz') {
+    if (username === 'Macro' && password === 'Scan') {
       // If the credentials are correct, navigate to the HomeScreen
       navigation.replace('Home');
     } else {
@@ -17,7 +17,7 @@ export default function SignInScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Sign In to YakRackz</Text>
+      <Text style={styles.title}>Sign In to MacroScan</Text>
       <TextInput 
         style={styles.input} 
         placeholder="Username" 
