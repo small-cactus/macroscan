@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ImageBackground } from 'react-native';
 
 export default function SignInScreen({ navigation }) {
   const [username, setUsername] = useState('');
@@ -21,6 +21,7 @@ export default function SignInScreen({ navigation }) {
   };
 
   return (
+    <ImageBackground source={require("\favicon.png")} style={styles.background}>
     <View style={styles.container}>
       <Text style={styles.title}>Sign In to MacroScan</Text>
       <TextInput 
@@ -41,6 +42,7 @@ export default function SignInScreen({ navigation }) {
       <Button title="Sign In" onPress={handleLogin} />
       <BoxComponent style={styles.boxStyle}></BoxComponent>
     </View>
+    </ImageBackground>
   );
 }
 
@@ -49,11 +51,14 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     padding: 20,
+    position: 'relative',
+    marginBottom: 350
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     marginBottom: 20,
+    textAlign: 'center',
   },
   input: {
     backgroundColor: 'white',
@@ -65,12 +70,17 @@ const styles = StyleSheet.create({
     borderColor: 'gray',
   },
   boxStyle: {
-    height: 100, // Specifies the height of the box
-    width: 100, // Specifies the width of the box
-    backgroundColor: '#00FF00', // Sets the background color of the box
-    borderWidth: 2, // Sets the width of the border
-    borderColor: '#000000', // Sets the color of the border
-    borderRadius: 10, // Optionally, sets the border radius to make corners rounded
-    // Add other styles as needed
+    height: 210,
+    width: 370,
+    backgroundColor: '#5E5E5E',
+    borderWidth: 2,
+    borderColor: '#000000',
+    borderRadius: 10,
+    position: 'absolute',
+    top: 88,
+    left: 9,
+    opacity: .5,
+    zIndex: -1,
+
   },
 });
