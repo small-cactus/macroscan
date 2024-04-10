@@ -8,7 +8,7 @@ export default function DetailsScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>YakRack Details</Text>
         <Text style={styles.description}>
-          Welcome to YakRackz, the premier kayak renting app that makes exploring the waterways both easy and accessible. Whether you're planning a serene solo paddle or a group adventure, here's how you can get started:
+          Welcome to MacroScan, the premier kayak renting app that makes exploring the waterways both easy and accessible. Whether you're planning a serene solo paddle or a group adventure, here's how you can get started:
         </Text>
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 1: Choose Your Kayak</Text>
