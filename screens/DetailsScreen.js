@@ -6,26 +6,26 @@ export default function DetailsScreen() {
     <ScrollView style={styles.container}>
       <Image source={{ uri: 'image-url' }} style={styles.image} />
       <View style={styles.content}>
-        <Text style={styles.title}>YakRack Details</Text>
+        <Text style={styles.title}>MacroScan Details</Text>
         <Text style={styles.description}>
-          Welcome to YakRackz, the premier kayak renting app that makes exploring the waterways both easy and accessible. Whether you're planning a serene solo paddle or a group adventure, here's how you can get started:
+          Welcome to MacroScan, MacroScan uses innovative AI Image Recognition technology to identify and caluclate important nutrition facts and macronutrients, see how you can begin below. :
         </Text>
         <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Step 1: Choose Your Kayak</Text>
+          <Text style={styles.stepTitle}>Step 1: Take an Photo</Text>
           <Text style={styles.stepDescription}>
-            Browse our extensive collection of kayaks suitable for all skill levels. Select your preferred kayak based on location, availability, and features.
+            You can take a photo from the app, or choose a photo from your camera roll.
           </Text>
         </View>
         <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Step 2: Reserve & Pay</Text>
+          <Text style={styles.stepTitle}>Step 2: Select Continue</Text>
           <Text style={styles.stepDescription}>
-            Once you've selected your kayak, choose your rental duration and proceed to checkout. Payment is secure and swift.
+            Click on the "Continue" button and wait for the AI to generate nutrient facts about your meal.
           </Text>
         </View>
         <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Step 3: Pick Up & Paddle</Text>
+          <Text style={styles.stepTitle}>Step 3: Read and Enjoy!</Text>
           <Text style={styles.stepDescription}>
-            Head to the designated pick-up location with your confirmation details. All that's left is to enjoy your time on the water!
+            View the macronutrients and nutrition facts and enjoy your meal!
           </Text>
         </View>
         <TouchableOpacity style={styles.button}>

@@ -25,7 +25,7 @@ export default function App() {
           }}
         >
           <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: 'Sign In' }} />
-          <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'YakRackz' }} />
+          <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'MacroScan' }} />
           <Stack.Screen name="Details" component={DetailsScreen} options={{ title: 'Details' }} />
         </Stack.Navigator>
       </NavigationContainer>
