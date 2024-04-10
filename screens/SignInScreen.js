@@ -4,6 +4,11 @@ import { View, Text, TextInput, Button, StyleSheet, Alert } from 'react-native';
 export default function SignInScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const BoxComponent = () => {
+    return (
+      <View style={styles.boxStyle}></View>
+    );
+  };
 
   const handleLogin = () => {
     if (username === 'Macro' && password === 'Scan') {
@@ -34,6 +39,7 @@ export default function SignInScreen({ navigation }) {
         autoCapitalize="none" 
       />
       <Button title="Sign In" onPress={handleLogin} />
+      <BoxComponent style={styles.boxStyle}></BoxComponent>
     </View>
   );
 }
@@ -57,5 +63,14 @@ const styles = StyleSheet.create({
     borderRadius: 5,
     borderWidth: 1,
     borderColor: 'gray',
+  },
+  boxStyle: {
+    height: 100, // Specifies the height of the box
+    width: 100, // Specifies the width of the box
+    backgroundColor: '#00FF00', // Sets the background color of the box
+    borderWidth: 2, // Sets the width of the border
+    borderColor: '#000000', // Sets the color of the border
+    borderRadius: 10, // Optionally, sets the border radius to make corners rounded
+    // Add other styles as needed
   },
 });
