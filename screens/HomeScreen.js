@@ -2,70 +2,113 @@ import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, Image } from 'react-native';
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
+import axios from 'axios';
+import { useNavigation } from '@react-navigation/native'; // Import useNavigation hook
 
 export default function MacroScanHome() {
   const [hasPermission, setHasPermission] = useState(null);
   const [image, setImage] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const navigation = useNavigation(); // Initialize navigation
 
   useEffect(() => {
     (async () => {
-      console.log('Requesting camera permissions...');
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
-      console.log(`Camera permission status: ${status}`);
     })();
   }, []);
 
   const pickImage = async () => {
-    console.log('Opening image picker...');
-    const result = await ImagePicker.launchImageLibraryAsync({
+    console.log("permission granted to pick image")
+    let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
+      base64: true,
     });
-  
-    console.log(`Image picker result: ${JSON.stringify(result)}`);
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+
+    if (!result.canceled) {
+      console.log("photo from library submitted")
       setImage(result.assets[0].uri);
       setModalVisible(true);
+      if (result.assets[0].base64) {
+        sendImageToApi(result.assets[0].base64);
+        closeModal
+      }
     }
   };
 
   const takePhoto = async () => {
-    console.log('Taking photo...');
     if (!hasPermission) {
-      console.log('No camera permission. Requesting permission...');
-      await requestCameraPermission();
+      console.log("permission granted to take photo")
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
     }
 
     if (hasPermission) {
-      const result = await ImagePicker.launchCameraAsync({
+      console.log("photo taken")
+      let result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
+        quality: 1,
+        base64: true,
       });
 
-      console.log(`Photo take result: ${JSON.stringify(result)}`);
       if (!result.canceled) {
         setImage(result.assets[0].uri);
         setModalVisible(true);
+        if (result.assets[0].base64) {
+          sendImageToApi(result.assets[0].base64);
+          closeModal
+        }
       }
-    } else {
-      console.log('Camera permission not granted.');
     }
   };
 
-  const requestCameraPermission = async () => {
-    console.log('Requesting camera permission inside takePhoto...');
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
-    console.log(`Camera permission status (inside takePhoto): ${status}`);
+  const closeModal = () => {
+    setModalVisible(false);
+    console.log("modal closing")
   };
 
-  const closeModal = () => {
-    console.log('Closing modal...');
-    setModalVisible(false);
+  const sendImageToApi = async (base64Image) => {
+    const OPENAI_API_KEY = "OPENAI_API_KEY_REMOVED"; // Replace with your OpenAI API Key
+    const prompt = "What's in this image? Be very concise, 5 words."; // Your prompt text
+    console.log("attempting to send to api")
+    try {
+      const payload = {
+        model: "gpt-4-turbo",
+        messages: [
+          {
+            "role": "user",
+            "content": [
+              {"type": "text", "text": prompt},
+              {
+                "type": "image_url",
+                "image_url": {
+                  "url": `data:image/jpeg;base64,${base64Image}`
+                }
+              }
+            ],
+          }
+        ],
+        max_tokens: 150
+      };
+  
+      const response = await axios.post('https://api.openai.com/v1/chat/completions', payload, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${OPENAI_API_KEY}`,
+        }
+      });
+  
+      console.log(response.data.choices[0].message.content);
+      closeModal()
+      
+      // Handle the response here. For example, you might want to store it in state, display it, or navigate.
+    } catch (error) {
+      console.error('Error sending image to API:', error);
+    }
   };
 
   return (
@@ -76,27 +119,30 @@ export default function MacroScanHome() {
       <TouchableOpacity style={styles.button} onPress={pickImage}>
         <Text style={styles.buttonText}>Pick an Image from Gallery</Text>
       </TouchableOpacity>
+      <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Details')}>
+        <Text style={styles.buttonText}>Go to Details</Text>
+      </TouchableOpacity>
 
       <Modal
-    animationType="slide"
-    transparent={true}
-    visible={modalVisible}
-    onRequestClose={closeModal}
-  >
-    <View style={styles.centeredView}>
-      <View style={styles.modalView}>
-        {image ? (
-          <Image source={{ uri: image }} style={styles.imagePreview} />
-        ) : (
-          <Text>No image selected</Text>
-        )}
-        <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
-          <Text style={styles.closeButtonText}>Close</Text>
-        </TouchableOpacity>
-      </View>
+        animationType="slide"
+        transparent={true}
+        visible={modalVisible}
+        onRequestClose={closeModal} // This calls closeModal when attempting to close the modal on Android by back button
+      >
+        <View style={styles.centeredView}>
+          <View style={styles.modalView}>
+            {image ? (
+              <Image source={{ uri: image }} style={styles.imagePreview} />
+            ) : (
+              <Text>No image selected</Text>
+            )}
+            <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
+              <Text style={styles.closeButtonText}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
-  </Modal>
-</View>
   );
 }
 
