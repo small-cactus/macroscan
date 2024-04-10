@@ -25,7 +25,7 @@ export default function DetailsScreen() {
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 3: Read and Enjoy!</Text>
           <Text style={styles.stepDescription}>
-            View the macronutrients and nutrition facts and enjoy your meal!
+            View the macronutrients and nutritional facts and enjoy your meal
           </Text>
         </View>
         <TouchableOpacity style={styles.button}>

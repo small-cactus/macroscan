@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, Image } from 'react-native';
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,12 +8,17 @@ export default function MacroScanHome() {
   const [image, setImage] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
-  const requestCameraPermission = async () => {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
-  };
+  useEffect(() => {
+    (async () => {
+      console.log('Requesting camera permissions...');
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+      console.log(`Camera permission status: ${status}`);
+    })();
+  }, []);
 
   const pickImage = async () => {
+    console.log('Opening image picker...');
     const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
@@ -21,6 +26,7 @@ export default function MacroScanHome() {
       quality: 1,
     });
 
+    console.log(`Image picker result: ${JSON.stringify(result)}`);
     if (!result.cancelled) {
       setImage(result.uri);
       setModalVisible(true);
@@ -28,7 +34,11 @@ export default function MacroScanHome() {
   };
 
   const takePhoto = async () => {
-    await requestCameraPermission();
+    console.log('Taking photo...');
+    if (!hasPermission) {
+      console.log('No camera permission. Requesting permission...');
+      await requestCameraPermission();
+    }
 
     if (hasPermission) {
       const result = await ImagePicker.launchCameraAsync({
@@ -36,14 +46,25 @@ export default function MacroScanHome() {
         aspect: [4, 3],
       });
 
+      console.log(`Photo take result: ${JSON.stringify(result)}`);
       if (!result.cancelled) {
         setImage(result.uri);
         setModalVisible(true);
       }
+    } else {
+      console.log('Camera permission not granted.');
     }
   };
 
+  const requestCameraPermission = async () => {
+    console.log('Requesting camera permission inside takePhoto...');
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
+    console.log(`Camera permission status (inside takePhoto): ${status}`);
+  };
+
   const closeModal = () => {
+    console.log('Closing modal...');
     setModalVisible(false);
   };
 
@@ -64,7 +85,11 @@ export default function MacroScanHome() {
       >
         <View style={styles.centeredView}>
           <View style={styles.modalView}>
-            <Image source={{ uri: image }} style={styles.imagePreview} />
+            {image ? (
+              <Image source={{ uri: image }} style={styles.imagePreview} />
+            ) : (
+              <Text>No image selected</Text>
+            )}
             <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
               <Text style={styles.closeButtonText}>Close</Text>
             </TouchableOpacity>
