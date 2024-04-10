@@ -25,10 +25,10 @@ export default function MacroScanHome() {
       aspect: [4, 3],
       quality: 1,
     });
-
+  
     console.log(`Image picker result: ${JSON.stringify(result)}`);
-    if (!result.cancelled) {
-      setImage(result.uri);
+    if (!result.canceled && result.assets && result.assets.length > 0) {
+      setImage(result.assets[0].uri);
       setModalVisible(true);
     }
   };
@@ -47,8 +47,8 @@ export default function MacroScanHome() {
       });
 
       console.log(`Photo take result: ${JSON.stringify(result)}`);
-      if (!result.cancelled) {
-        setImage(result.uri);
+      if (!result.canceled) {
+        setImage(result.assets[0].uri);
         setModalVisible(true);
       }
     } else {
@@ -78,25 +78,25 @@ export default function MacroScanHome() {
       </TouchableOpacity>
 
       <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={closeModal}
-      >
-        <View style={styles.centeredView}>
-          <View style={styles.modalView}>
-            {image ? (
-              <Image source={{ uri: image }} style={styles.imagePreview} />
-            ) : (
-              <Text>No image selected</Text>
-            )}
-            <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-      </Modal>
+    animationType="slide"
+    transparent={true}
+    visible={modalVisible}
+    onRequestClose={closeModal}
+  >
+    <View style={styles.centeredView}>
+      <View style={styles.modalView}>
+        {image ? (
+          <Image source={{ uri: image }} style={styles.imagePreview} />
+        ) : (
+          <Text>No image selected</Text>
+        )}
+        <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </TouchableOpacity>
+      </View>
     </View>
+  </Modal>
+</View>
   );
 }
 
