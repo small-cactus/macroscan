@@ -100,7 +100,7 @@ const styles = StyleSheet.create({
   stepDescription: {
     fontSize: 16,
     alignContent: 'center',
-    alignItems: 'center',
+    textAlign: 'center',
     color: '#666',
     marginTop: 5,
     marginBottom: 15,
