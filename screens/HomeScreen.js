@@ -95,7 +95,7 @@ const animateButtonPressOut = () => {
       });
   
       const msg = await anthropic.messages.create({
-        model: "claude-3-sonnet-20240307",
+        model: "claude-3-sonnet-20240229",
         max_tokens: 1000,
         temperature: 0,
         system: `If the image depicts food, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
