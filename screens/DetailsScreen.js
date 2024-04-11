@@ -9,15 +9,14 @@ export default function DetailsScreen() {
         <Text style={styles.title}>MacroScan Details</Text>
         <Text style={styles.description}>
           Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below.
-          <BoxComponent />
         </Text>
         <View style={styles.stepContainer}>
+          <BoxComponent />
           <Text style={styles.stepTitle}>Step 1: Take an Photo</Text>
           <Text style={styles.stepDescription}>
           Take a photo using the in-app camera or select an image from your camera roll.
           </Text>
         </View>
-        
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 2: Select Continue</Text>
           <Text style={styles.stepDescription}>
@@ -72,14 +71,13 @@ const styles = StyleSheet.create({
   },
   box: {
     width: 350,
-    height: -13,
-    borderRadius: 90,
-    backgroundColor: '#5E5E5E',
-    zIndex: 900,
-    borderColor: '#5E5E5E',
+    height: 7,
+    backgroundColor: '#bababa',
+    zIndex: 1000,
+    borderColor: '#bababa',
     borderWidth: 1,
     borderRadius: 5,
-    marginTop: -10,
+    marginTop: 0,
     marginBottom: 30,
     alignContent: 'center',
   },
