@@ -50,6 +50,7 @@ const styles = StyleSheet.create({
     alignContent: 'center',
   },
   content: {
+    alignContent: 'center',
     padding: 20,
   },
   title: {
@@ -58,6 +59,7 @@ const styles = StyleSheet.create({
     color: '#333',
     marginTop: -180, // Adjust this value as needed
     marginBottom: 20, // Adjust this value as needed
+    alignContent: 'center',
     textAlign: 'center', // Center the title horizontally
   },
   description: {
@@ -67,7 +69,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     textAlign: 'center',
     paddingHorizontal: 4,
+    alignContent: 'center',
     fontStyle: 'italic'
+    
   },
   box: {
     width: 350,
@@ -82,15 +86,21 @@ const styles = StyleSheet.create({
     alignContent: 'center',
   },
   stepContainer: {
+    alignContent: 'center',
+    alignItems: 'center',
     marginBottom: 20,
   },
   stepTitle: {
     fontSize: 18,
     fontWeight: 'bold',
+    alignContent: 'center',
+    alignItems: 'center',
     color: '#333',
   },
   stepDescription: {
     fontSize: 16,
+    alignContent: 'center',
+    alignItems: 'center',
     color: '#666',
     marginTop: 5,
     marginBottom: 15,
@@ -98,16 +108,20 @@ const styles = StyleSheet.create({
   image: {
     width: '100%',
     height: 200,
+    alignItems: 'center',
     resizeMode: 'cover',
   },
   button: {
     backgroundColor: '#007bff',
+    alignContent: 'center',
     padding: 15,
     borderRadius: 5,
     alignItems: 'center',
   },
   buttonText: {
     color: 'white',
+    alignContent: 'center',
+    alignItems: 'center',
     fontSize: 18,
     fontWeight: 'bold',
   },
