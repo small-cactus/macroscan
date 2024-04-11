@@ -76,6 +76,7 @@ const styles = StyleSheet.create({
   box: {
     width: 350,
     height: 7,
+    opacity: 0.5,
     backgroundColor: '#bababa',
     zIndex: 1000,
     borderColor: '#bababa',
