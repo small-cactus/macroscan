@@ -8,7 +8,7 @@ export default function DetailsScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>MacroScan Details</Text>
         <Text style={styles.description}>
-        Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below. :
+          Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below. :
         </Text>
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 1: Take an Photo</Text>
@@ -47,13 +47,16 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
     color: '#333',
+    marginTop: -180, // Adjust this value as needed
+    marginBottom: 20, // Adjust this value as needed
+    textAlign: 'center', // Center the title horizontally
   },
   description: {
     fontSize: 16,
     color: '#666',
     marginBottom: 20,
+    marginTop: 30,
   },
   stepContainer: {
     marginBottom: 20,
