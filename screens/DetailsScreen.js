@@ -84,6 +84,14 @@ const styles = StyleSheet.create({
     marginTop: 0,
     marginBottom: 30,
     alignContent: 'center',
+    shadowColor: '#00000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25, // Shadow opacity
+    shadowRadius: 3.84, // Shadow radius
+    elevation: 5, // Android shadow
   },
   stepContainer: {
     alignContent: 'center',
