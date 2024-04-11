@@ -89,9 +89,9 @@ const styles = StyleSheet.create({
       width: 0,
       height: 2,
     },
-    shadowOpacity: 0.25, // Shadow opacity
-    shadowRadius: 3.84, // Shadow radius
-    elevation: 5, // Android shadow
+    shadowOpacity: 0.18, // Shadow opacity
+    shadowRadius: 3.84, 
+    elevation: 5, 
   },
   stepContainer: {
     alignContent: 'center',
