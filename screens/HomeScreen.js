@@ -303,7 +303,7 @@ const fontSizes = {
     marginHorizontal: 10,
   },
   detailButton: {
-    backgroundColor: colors.lightGray,
+    backgroundColor: colors.black,
     borderRadius: 20,
     padding: 12,
     paddingHorizontal: 20,
