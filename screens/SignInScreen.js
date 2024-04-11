@@ -9,6 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
+  Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 
@@ -32,7 +33,12 @@ export default function SignInScreen({ navigation }) {
       behavior={Platform.OS === "ios" ? "padding" : "height"}
     >
       <ScrollView contentContainerStyle={styles.scrollView}>
-        <Text style={styles.title}>Sign In to MacroScan</Text>
+        <Text style={styles.title}>Welcome to MacroScan</Text>
+        <Image
+  source={require('../assets/icon.png')} // Adjust the path accordingly
+  style={styles.icon} // Define a style for your icon
+/>
+<View style={styles.container}></View>
         <View style={styles.container}>
           <TextInput
             style={styles.input}
@@ -92,7 +98,7 @@ const styles = StyleSheet.create({
   },
   button: {
     width: '80%', // Match the input fields width
-    backgroundColor: '#007BFF',
+    backgroundColor: '#000000',
     padding: 10,
     borderRadius: 20, // Maintain rounded corners for consistency
     alignItems: 'center',
@@ -102,5 +108,11 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontWeight: 'bold',
     fontSize: 16,
+  },
+  icon: {
+    width: 100, // Adjust the width as needed
+    height: 100, // Adjust the height as needed
+    alignSelf: 'center', // Center the icon horizontally
+    marginBottom: -400, // Space between icon and the next element
   },
 });

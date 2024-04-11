@@ -153,10 +153,8 @@ Do not collect or provide nutrient data not requested, such as per serving detai
           <Text style={styles.extractedText}>{extractedText}</Text>
         </View>
       ) : (
-        <Text style={styles.promptText}>Capture or select an image to extract text.</Text>
+        <Text style={styles.promptText}>Capture or select an image to get Macros.</Text>
       )}
-
-      {isLoading && <ActivityIndicator size="large" color="#0000ff" />}
 
       {/* Action buttons */}
       <View style={styles.buttonContainer}>
@@ -211,9 +209,15 @@ Do not collect or provide nutrient data not requested, such as per serving detai
             ) : (
               <Text>No image selected</Text>
             )}
-            <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
-              <Text style={styles.closeButtonText}>Close</Text>
-            </TouchableOpacity>
+            {
+              isLoading ? (
+                <ActivityIndicator size="large" color="#000000" />
+              ) : (
+                <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
+                  <Text style={styles.closeButtonText}>Close</Text>
+                </TouchableOpacity>
+              )
+            }
           </View>
         </View>
       </Modal>
@@ -224,7 +228,7 @@ Do not collect or provide nutrient data not requested, such as per serving detai
 const colors = {
   white: '#FFFFFF',
   lightGray: '#AAAAAA',
-  blue: '#007BFF',
+  blue: '#000000',
   black: '#000000',
   modalOverlay: 'rgba(0, 0, 0, 0.5)',
   shadow: '#000',
