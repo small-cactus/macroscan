@@ -2,7 +2,6 @@ import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, } from 'react-native';
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
-import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import Anthropic from "@anthropic-ai/sdk";
 import * as ImageManipulator from 'expo-image-manipulator';
@@ -15,7 +14,7 @@ const MacroScanHome = () => {
   const navigation = useNavigation();
   const [extractedText, setExtractedText] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-const buttonScale = useRef(new Animated.Value(1)).current;
+  const buttonScale = useRef(new Animated.Value(1)).current;
 
 const animateButtonPressIn = () => {
   Animated.spring(buttonScale, {
