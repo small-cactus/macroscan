@@ -112,10 +112,10 @@ const styles = StyleSheet.create({
     resizeMode: 'cover',
   },
   button: {
-    backgroundColor: '#007bff',
+    backgroundColor: '#000000',
     alignContent: 'center',
     padding: 15,
-    borderRadius: 5,
+    borderRadius: 25,
     alignItems: 'center',
   },
   buttonText: {
