@@ -262,7 +262,7 @@ const fontSizes = {
     fontSize: fontSizes.regular,
     textAlign: 'center',
     marginHorizontal: 20,
-    marginBottom: 20,
+    marginBottom: 0,
   },
   buttonText: {
     color: colors.white,
@@ -293,7 +293,7 @@ const fontSizes = {
     alignItems: 'center',
     alignItems: 'center',
     width: '100%',
-    marginTop: 20,
+    marginTop: 60,
     backgroundColor: colors.white, // Add a background color to make the container visible
   },
   button: {
@@ -319,12 +319,12 @@ const fontSizes = {
     margin: 20,
     padding: 20,
     backgroundColor: colors.backgroundGray,
-    borderRadius: 20,
+    borderRadius: 30,
     width: '80%',
   },
   modalView: {
     backgroundColor: colors.white,
-    borderRadius: 20,
+    borderRadius: 35,
     padding: 35,
     alignItems: 'center',
     shadowColor: colors.shadow,
@@ -332,12 +332,12 @@ const fontSizes = {
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
-    backdropFilter: 'blur(10px)', // Add this line
+    backdropFilter: 'blur(10px)',
   },
   imagePreview: {
     width: 300,
-    height: 300,
-    borderRadius: 10,
+    height: 400,
+    borderRadius: 30,
     marginBottom: 15,
   },
   });
