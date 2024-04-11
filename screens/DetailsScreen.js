@@ -8,24 +8,24 @@ export default function DetailsScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>MacroScan Details</Text>
         <Text style={styles.description}>
-          Welcome to MacroScan, MacroScan uses innovative AI Image Recognition technology to identify and caluclate important nutrition facts and macronutrients, see how you can begin below. :
+        Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below. :
         </Text>
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 1: Take an Photo</Text>
           <Text style={styles.stepDescription}>
-            You can take a photo from the app, or choose a photo from your camera roll.
+          Take a photo using the in-app camera or select a photo from your camera roll.
           </Text>
         </View>
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 2: Select Continue</Text>
           <Text style={styles.stepDescription}>
-            Click on the "Continue" button and wait for the AI to generate nutrient facts about your meal.
+          Click on the "Continue" button and wait for the AI to generate nutrient facts about your meal.
           </Text>
         </View>
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 3: Read and Enjoy!</Text>
           <Text style={styles.stepDescription}>
-            View the macronutrients and nutritional facts and enjoy your meal
+          View the macronutrients and nutritional facts, and enjoy your meal.
           </Text>
         </View>
         <TouchableOpacity style={styles.button}>
