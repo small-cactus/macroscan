@@ -98,7 +98,7 @@ const animateButtonPressOut = () => {
         model: "claude-3-haiku-20240307",
         max_tokens: 1000,
         temperature: 0,
-        system: `If the image depicts food, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
+        system: `If the image depicts food or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
         Name of food(s)
         1. Carbohydrates (g)
         2. Proteins (g)
@@ -109,7 +109,7 @@ const animateButtonPressOut = () => {
         7. Saturated Fats (g)
         8. Trans Fats (g)
       Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
-      Avoid providing data not requested, like per serving info or micronutrients. If no food is shown, respond with 'The image does not contain food. Try again.' without further comments.`,        messages: [{
+      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'The image does not contain food. Try again.' without further comments.`,        messages: [{
           "role": "user",
           "content": [{
             "type": "text",
@@ -124,7 +124,7 @@ const animateButtonPressOut = () => {
 - Saturated Fats (g)
 - Trans Fats (g)
 Be extremely specific, leveraging image details for precision. E.g., for a bowl of oatmeal with nuts, list 'Carbohydrates' for oats, 'Proteins' for nuts, etc., with specific amounts for the macronutrients above.
-Do not collect or provide nutrient data not requested, such as per serving details. If the image doesn't feature food, simply state 'The image does not contain food. Try again.' But make sure with 100% certainity that it is not food before saying this.`
+Do not collect or provide nutrient data not requested, such as per serving details. If the image doesn't feature food or a beverage, simply state 'The image does not contain food. Try again.' But make sure with 100% certainity that it is not food before saying this.`
     }, {
             "type": "image",
             "source": {
