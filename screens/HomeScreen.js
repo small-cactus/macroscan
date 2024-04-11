@@ -3,17 +3,16 @@ import { StyleSheet, View, Text, TouchableOpacity, Modal, Image } from 'react-na
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
-import { useNavigation } from '@react-navigation/native'; // Import useNavigation hook
+import { useNavigation } from '@react-navigation/native';
 import Anthropic from "@anthropic-ai/sdk";
 import * as ImageManipulator from 'expo-image-manipulator';
 
-export default function MacroScanHome() {
+const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
   const [image, setImage] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
-  const navigation = useNavigation(); // Initialize navigation
+  const navigation = useNavigation();
   const [extractedText, setExtractedText] = useState("");
-
 
   useEffect(() => {
     (async () => {
@@ -25,60 +24,51 @@ export default function MacroScanHome() {
   const resizeImage = async (uri) => {
     const result = await ImageManipulator.manipulateAsync(
       uri,
-      [{ resize: { width: 800 } }], // Resize operation
+      [{ resize: { width: 800 } }],
       { compress: 0.7, format: ImageManipulator.SaveFormat.JPEG, base64: true }
     );
-    return result.base64; // Return the base64 string directly
+    return result.base64;
   };
-  
+
   const pickImage = async () => {
-    console.log("permission granted to pick image");
     let result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
-      quality: 1, // Consider setting a lower quality here if the images are still too large
+      quality: 1,
     });
-  
+
     if (!result.canceled && result.assets) {
-      console.log("photo from library submitted");
       const base64Data = await resizeImage(result.assets[0].uri);
-      setImage(result.assets[0].uri); // Display the original image in your UI
+      setImage(result.assets[0].uri);
       setModalVisible(true);
-      sendImageToApi(base64Data); // Now sending the correct base64 string
+      sendImageToApi(base64Data);
     }
   };
-  
+
   const takePhoto = async () => {
     if (!hasPermission) {
-      console.log("permission granted to take photo");
       const { status } = await Camera.requestCameraPermissionsAsync();
       setHasPermission(status === 'granted');
     }
-  
+
     if (hasPermission) {
-      console.log("photo taken");
       let result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
-        quality: 1, // Consider setting a lower quality here as well
+        quality: 1,
       });
-  
+
       if (!result.canceled && result.assets) {
-        console.log("photo from library submitted");
         const base64Data = await resizeImage(result.assets[0].uri);
-        setImage(result.assets[0].uri); // Display the original image in your UI
+        setImage(result.assets[0].uri);
         setModalVisible(true);
-        sendImageToApi(base64Data); // Now sending the correct base64 string
+        sendImageToApi(base64Data);
       }
     }
   };
 
-  const closeModal = () => {
-    setModalVisible(false);
-    console.log("modal closing")
-  };
-
+  const closeModal = () => setModalVisible(false);
 
   async function sendImageToApi(base64Image) {
     try {
@@ -90,13 +80,34 @@ export default function MacroScanHome() {
         model: "claude-3-haiku-20240307",
         max_tokens: 1000,
         temperature: 0,
-        system: "You will be provided an image, If the image contains food, identify each food item and list all of its macronutrients in a structured format. Extract and include any relevant details from the image to support your analysis. For example, if you see a plate of spaghetti, categorize it as 'Carbohydrates' and estimate its macronutrient content. If the image does not feature food, simply respond with 'The image does not contain food. Try again.' Remember to always provide detailed estimates for any food items, avoiding conversational responses.",
-        messages: [{
+        system: `If the image depicts food, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
+        Name of food(s)
+        1. Carbohydrates (g)
+        2. Proteins (g)
+        3. Fats (g)
+        4. Total Calories (kcal)
+        5. Dietary Fiber (g)
+        6. Sugars (g)
+        7. Saturated Fats (g)
+        8. Trans Fats (g)
+      Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
+      Avoid providing data not requested, like per serving info or micronutrients. If no food is shown, respond with 'The image does not contain food. Try again.' without further comments.`,        messages: [{
           "role": "user",
           "content": [{
             "type": "text",
-            "text": "If the image shows food, write down the macronutrient data for each item, being extremely specific with the amounts. Use any relevant details from the image to make your analysis as precise as possible. For instance, if the image is of a chicken salad, list it with categories such as 'Protein' for chicken, including specific estimated amounts. If the image does not show food, simply respond with 'The image does not contain food. Try again.' Do not add any other comments."
-          }, {
+            "text": `If the image shows food, accurately detail the macronutrient data for each item, emphasizing:
+- Name of food(s) EXTREMELY IMPORTANT!!!
+- Carbohydrates (g)
+- Proteins (g)
+- Fats (g)
+- Total Calories (kcal)
+- Dietary Fiber (g)
+- Sugars (g)
+- Saturated Fats (g)
+- Trans Fats (g)
+Be extremely specific, leveraging image details for precision. E.g., for a bowl of oatmeal with nuts, list 'Carbohydrates' for oats, 'Proteins' for nuts, etc., with specific amounts for the macronutrients above.
+Do not collect or provide nutrient data not requested, such as per serving details. If the image doesn't feature food, simply state 'The image does not contain food. Try again.' But make sure with 100% certainity that it is not food before saying this.`
+    }, {
             "type": "image",
             "source": {
               "type": "base64",
@@ -115,32 +126,37 @@ export default function MacroScanHome() {
       console.error("Error sending message to Anthropic API:", error);
     }
   }
-  
 
   return (
     <View style={styles.container}>
-      <TouchableOpacity style={styles.button} onPress={takePhoto}>
-        <Text style={styles.buttonText}>Take Photo</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={pickImage}>
-        <Text style={styles.buttonText}>Pick an Image from Gallery</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Details')}>
-        <Text style={styles.buttonText}>Go to Details</Text>
-      </TouchableOpacity>
+      {/* Conditional rendering based on whether there's extracted text */}
+      {extractedText ? (
+        <View style={styles.extractedTextView}>
+          <Text style={styles.extractedText}>{extractedText}</Text>
+        </View>
+      ) : (
+        <Text style={styles.promptText}>Capture or select an image to extract text.</Text>
+      )}
 
-        {/* Display the extracted text here */}
-  {extractedText ? (
-    <View style={styles.extractedTextView}>
-      <Text style={styles.extractedText}>{extractedText}</Text>
-    </View>
-  ) : null}
+      {/* Action buttons */}
+      <View style={styles.buttonContainer}>
+        <TouchableOpacity style={styles.button} onPress={takePhoto}>
+          <Text style={styles.buttonText}>Take Photo</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.button} onPress={pickImage}>
+          <Text style={styles.buttonText}>Pick from Gallery</Text>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.detailButton} onPress={() => navigation.navigate('Details')}>
+          <Text style={styles.detailButtonText}>Details</Text>
+        </TouchableOpacity>
+      </View>
 
+      {/* Modal for image preview */}
       <Modal
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={closeModal} // This calls closeModal when attempting to close the modal on Android by back button
+        onRequestClose={closeModal}
       >
         <View style={styles.centeredView}>
           <View style={styles.modalView}>
@@ -157,101 +173,128 @@ export default function MacroScanHome() {
       </Modal>
     </View>
   );
-}
-
-// Defining constants for colors and spacing can help in maintaining consistency and ease of adjustments.
+};
+  
 const colors = {
   white: '#FFFFFF',
-  primaryBlue: '#007BFF',
-  modalBackground: 'rgba(0, 0, 0, 0.5)',
-  lightGrey: '#F0F0F0',
-  darkGrey: '#AAAAAA',
+  lightGray: '#AAAAAA',
+  blue: '#007BFF',
   black: '#000000',
+  modalOverlay: 'rgba(0, 0, 0, 0.5)',
+  shadow: '#000',
+  backgroundGray: '#F0F0F0',
 };
 
-const spacing = {
-  small: 10,
-  medium: 20,
-  large: 35,
-  xLarge: 300, // For image dimensions or larger elements
+const fontSizes = {
+  regular: 16,
+  small: 14,
+  large: 18,
 };
 
-const borderRadius = {
-  small: 5,
-  default: 20,
-};
-
-const shadow = {
-  default: {
-    shadowColor: colors.black,
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
-  },
-};
-
-const styles = StyleSheet.create({
+  const styles = StyleSheet.create({
+    // Container styles
   container: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: colors.white,
   },
-  button: {
-    backgroundColor: colors.primaryBlue,
-    borderRadius: borderRadius.default,
-    padding: spacing.small,
-    marginBottom: spacing.small,
-    elevation: 2,
+  centeredView: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: colors.modalOverlay,
+  },
+
+  // Text styles
+  promptText: {
+    color: colors.lightGray,
+    fontSize: fontSizes.regular,
+    textAlign: 'center',
+    marginHorizontal: 20,
+    marginBottom: 20,
   },
   buttonText: {
     color: colors.white,
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  centeredView: {
-    flex: 1,
-    justifyContent: 'center',
-    alignItems: 'center',
-    backgroundColor: colors.modalBackground,
+  detailButtonText: {
+    color: colors.white,
+    fontWeight: 'bold',
+    fontSize: fontSizes.small,
   },
-  modalView: {
-    backgroundColor: colors.white,
-    borderRadius: borderRadius.default,
-    padding: spacing.large,
-    alignItems: 'center',
-    ...shadow.default,
-  },
-  closeButton: {
-    backgroundColor: colors.darkGrey,
-    borderRadius: borderRadius.default,
-    padding: spacing.small,
-    elevation: 2,
-    marginTop: spacing.medium,
+  extractedText: {
+    color: colors.black,
+    fontSize: fontSizes.large,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   closeButtonText: {
     color: colors.white,
     fontWeight: 'bold',
     textAlign: 'center',
   },
-  imagePreview: {
-    width: spacing.xLarge, // Adjust the width as necessary
-    height: spacing.xLarge, // Adjust the height as necessary
-    borderRadius: borderRadius.small,
-    marginBottom: spacing.medium,
+
+  // Button styles
+  buttonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    width: '100%',
+    marginTop: 20,
   },
+  button: {
+    backgroundColor: colors.blue,
+    borderRadius: 20,
+    padding: 10,
+    marginHorizontal: 10,
+  },
+  detailButton: {
+    backgroundColor: colors.lightGray,
+    borderRadius: 10,
+    padding: 10,
+    paddingHorizontal: 20,
+  },
+  closeButton: {
+    backgroundColor: colors.lightGray,
+    borderRadius: 20,
+    padding: 10,
+    elevation: 2,
+    marginTop: 15,
+  },
+
+  // Other component styles
   extractedTextView: {
-    margin: spacing.medium,
-    padding: spacing.small,
-    backgroundColor: colors.lightGrey, // Light grey background
-    borderRadius: borderRadius.small,
+    margin: 20,
+    padding: 20,
+    backgroundColor: colors.backgroundGray,
+    borderRadius: 20,
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.23,
+    shadowRadius: 2.62,
+    elevation: 4,
+    width: '80%',
   },
-  extractedText: {
-    color: colors.black, // Black text color
-    textAlign: 'center',
+  modalView: {
+    backgroundColor: colors.white,
+    borderRadius: 20,
+    padding: 35,
+    alignItems: 'center',
+    shadowColor: colors.shadow,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
   },
-});
+  imagePreview: {
+    width: 300,
+    height: 300,
+    borderRadius: 10,
+    marginBottom: 15,
+  },
+  });
+
+  export default MacroScanHome;
+
