@@ -8,14 +8,16 @@ export default function DetailsScreen() {
       <View style={styles.content}>
         <Text style={styles.title}>MacroScan Details</Text>
         <Text style={styles.description}>
-          Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below. :
+          Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below.
         </Text>
+        <BoxComponent />
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 1: Take an Photo</Text>
           <Text style={styles.stepDescription}>
-          Take a photo using the in-app camera or select a photo from your camera roll.
+          Take a photo using the in-app camera or select an image from your camera roll.
           </Text>
         </View>
+        
         <View style={styles.stepContainer}>
           <Text style={styles.stepTitle}>Step 2: Select Continue</Text>
           <Text style={styles.stepDescription}>
@@ -36,6 +38,12 @@ export default function DetailsScreen() {
   );
 }
 
+const BoxComponent = () => {
+  return (
+    <View style={styles.box}></View>
+  );
+};
+
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -45,7 +53,7 @@ const styles = StyleSheet.create({
     padding: 20,
   },
   title: {
-    fontSize: 24,
+    fontSize: 30,
     fontWeight: 'bold',
     color: '#333',
     marginTop: -180, // Adjust this value as needed
@@ -53,10 +61,25 @@ const styles = StyleSheet.create({
     textAlign: 'center', // Center the title horizontally
   },
   description: {
-    fontSize: 16,
-    color: '#666',
-    marginBottom: 20,
-    marginTop: 30,
+    fontSize: 17,
+    color: '#333',
+    marginBottom: 40,
+    marginTop: 20,
+    textAlign: 'center',
+    paddingHorizontal: 4,
+    fontStyle: 'italic'
+  },
+  box: {
+    width: 350,
+    height: 12,
+    backgroundColor: '#5E5E5E',
+    zIndex: 1000,
+    borderColor: '#5E5E5E',
+    borderWidth: 1,
+    borderRadius: 5,
+    marginTop: -10,
+    marginBottom: 30,
+    alignContent: 'center',
   },
   stepContainer: {
     marginBottom: 20,
@@ -70,6 +93,7 @@ const styles = StyleSheet.create({
     fontSize: 16,
     color: '#666',
     marginTop: 5,
+    marginBottom: 15,
   },
   image: {
     width: '100%',
