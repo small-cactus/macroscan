@@ -1,11 +1,12 @@
-import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Image } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, } from 'react-native';
 import { Camera } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import axios from 'axios';
 import { useNavigation } from '@react-navigation/native';
 import Anthropic from "@anthropic-ai/sdk";
 import * as ImageManipulator from 'expo-image-manipulator';
+import * as Haptics from 'expo-haptics';
 
 const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -13,6 +14,23 @@ const MacroScanHome = () => {
   const [modalVisible, setModalVisible] = useState(false);
   const navigation = useNavigation();
   const [extractedText, setExtractedText] = useState("");
+  const [isLoading, setIsLoading] = useState(false);
+const buttonScale = useRef(new Animated.Value(1)).current;
+
+const animateButtonPressIn = () => {
+  Animated.spring(buttonScale, {
+    toValue: 0.95,
+    useNativeDriver: true,
+  }).start();
+};
+
+const animateButtonPressOut = () => {
+  Animated.spring(buttonScale, {
+    toValue: 1,
+    friction: 3,
+    useNativeDriver: true,
+  }).start();
+};
 
   useEffect(() => {
     (async () => {
@@ -71,6 +89,7 @@ const MacroScanHome = () => {
   const closeModal = () => setModalVisible(false);
 
   async function sendImageToApi(base64Image) {
+    setIsLoading(true); // Start loading
     try {
       const anthropic = new Anthropic({
         apiKey: "ANTHROPIC_API_KEY_REMOVED", // Ensure this is securely managed
@@ -125,8 +144,8 @@ Do not collect or provide nutrient data not requested, such as per serving detai
     } catch (error) {
       console.error("Error sending message to Anthropic API:", error);
     }
+    setIsLoading(false); // End loading
   }
-
   return (
     <View style={styles.container}>
       {/* Conditional rendering based on whether there's extracted text */}
@@ -138,14 +157,42 @@ Do not collect or provide nutrient data not requested, such as per serving detai
         <Text style={styles.promptText}>Capture or select an image to extract text.</Text>
       )}
 
+      {isLoading && <ActivityIndicator size="large" color="#0000ff" />}
+
       {/* Action buttons */}
       <View style={styles.buttonContainer}>
-        <TouchableOpacity style={styles.button} onPress={takePhoto}>
-          <Text style={styles.buttonText}>Take Photo</Text>
-        </TouchableOpacity>
-        <TouchableOpacity style={styles.button} onPress={pickImage}>
-          <Text style={styles.buttonText}>Pick from Gallery</Text>
-        </TouchableOpacity>
+      <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+  <TouchableOpacity
+      onPressIn={() => {
+          animateButtonPressIn();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }}
+      onPressOut={animateButtonPressOut}
+      onPress={() => {
+        takePhoto();
+      }}
+      style={styles.button}
+  >
+      <Text style={styles.buttonText}>Take Photo</Text>
+  </TouchableOpacity>
+</Animated.View>
+
+<Animated.View style={{ transform: [{ scale: buttonScale }] }}>
+  <TouchableOpacity
+      onPressIn={() => {
+          animateButtonPressIn();
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      }}
+      onPressOut={animateButtonPressOut}
+      onPress={() => {
+        pickImage();
+      }}
+      style={styles.button}
+  >
+      <Text style={styles.buttonText}>Pick from Gallery</Text>
+  </TouchableOpacity>
+</Animated.View>
+
         <TouchableOpacity style={styles.detailButton} onPress={() => navigation.navigate('Details')}>
           <Text style={styles.detailButtonText}>Details</Text>
         </TouchableOpacity>
@@ -241,19 +288,21 @@ const fontSizes = {
     flexDirection: 'row',
     justifyContent: 'space-around',
     alignItems: 'center',
+    alignItems: 'center',
     width: '100%',
     marginTop: 20,
+    backgroundColor: colors.white, // Add a background color to make the container visible
   },
   button: {
     backgroundColor: colors.blue,
     borderRadius: 20,
-    padding: 10,
+    padding: 12,
     marginHorizontal: 10,
   },
   detailButton: {
     backgroundColor: colors.lightGray,
-    borderRadius: 10,
-    padding: 10,
+    borderRadius: 20,
+    padding: 12,
     paddingHorizontal: 20,
   },
   closeButton: {
@@ -263,18 +312,11 @@ const fontSizes = {
     elevation: 2,
     marginTop: 15,
   },
-
-  // Other component styles
   extractedTextView: {
     margin: 20,
     padding: 20,
     backgroundColor: colors.backgroundGray,
     borderRadius: 20,
-    shadowColor: colors.shadow,
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.23,
-    shadowRadius: 2.62,
-    elevation: 4,
     width: '80%',
   },
   modalView: {
@@ -287,6 +329,7 @@ const fontSizes = {
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+    backdropFilter: 'blur(10px)', // Add this line
   },
   imagePreview: {
     width: 300,
