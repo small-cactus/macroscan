@@ -1,7 +1,9 @@
 import React from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, navigation} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 
 export default function DetailsScreen() {
+  const navigation = useNavigation();
   return (
     <ScrollView style={styles.container}>
       <Image source={{ uri: 'image-url' }} style={styles.image} />
@@ -29,7 +31,7 @@ export default function DetailsScreen() {
           View the macronutrients and nutritional facts, and enjoy your meal.
           </Text>
         </View>
-        <TouchableOpacity style={styles.button}>
+        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Home')}>
           <Text style={styles.buttonText}>Get Started</Text>
         </TouchableOpacity>
       </View>
@@ -57,7 +59,7 @@ const styles = StyleSheet.create({
     fontSize: 30,
     fontWeight: 'bold',
     color: '#333',
-    marginTop: -180, // Adjust this value as needed
+    marginTop: -100, // Adjust this value as needed
     marginBottom: 20, // Adjust this value as needed
     alignContent: 'center',
     textAlign: 'center', // Center the title horizontally
