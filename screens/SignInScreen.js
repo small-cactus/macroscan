@@ -67,6 +67,12 @@ export default function SignInScreen({ navigation }) {
             <Text style={styles.buttonText}>Sign In</Text>
           </TouchableOpacity>
           <BoxComponent />
+          <TouchableOpacity style={styles.AppleContinueButton} onPress={() => navigation.navigate('Home')}>
+        <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
+      </TouchableOpacity>
+      <TouchableOpacity style={styles.GoogleContinueButton} onPress={() => navigation.navigate('Home')}>
+        <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
+      </TouchableOpacity>
           <TouchableOpacity style={styles.SignInRedirect} onPress={() => navigation.navigate('SignUp')}>
         <Text style={styles.SignInText}>Dont Have an Account?</Text>
       </TouchableOpacity>
@@ -86,7 +92,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    marginTop: -330,
+    marginTop: -20,
   },
   title: {
     fontSize: 24,
@@ -140,5 +146,41 @@ const styles = StyleSheet.create({
   SignInRedirect: {
     textDecorationStyle: 'underline',
     textDecorationStyle: 'solid',
+  },
+  AppleContinueButton: {
+    alignSelf: 'center',
+    marginTop: 20,
+    marginBottom: 20,
+    borderWidth: 5,
+    width: '88%',
+    height: '7%',
+    justifyContent: 'center', // Center the content vertically
+    alignItems: 'center',
+    backgroundColor: "#000000",
+    borderRadius: 7,
+
+  },
+  AppleContinueText: {
+    color:'#ffffff',
+    fontWeight: 'bold',
+    fontSize: 18,
+  },
+  GoogleContinueButton: {
+    alignSelf: 'center',
+    marginTop: 20,
+    marginBottom: 60,
+    borderWidth: 5,
+    width: '88%',
+    height: '7%',
+    justifyContent: 'center', // Center the content vertically
+    alignItems: 'center',
+    backgroundColor: "#000000",
+    borderRadius: 7,
+    marginTop: 2,
+  },
+  GoogleContinueText: {
+    color:'#ffffff',
+    fontWeight: 'bold',
+    fontSize: 18
   },
 });
