@@ -1,5 +1,6 @@
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen'; // Assuming you have this screen
@@ -13,7 +14,7 @@ export default function App() {
       <StatusBar style="dark" />
       <NavigationContainer>
         <Stack.Navigator
-          initialRouteName="SignIn"
+          initialRouteName="SignUp"
           screenOptions={{
             headerStyle: {
               backgroundColor: '#f7f7f7', // Light gray background for the header
@@ -24,6 +25,7 @@ export default function App() {
             },
           }}
         >
+          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ title: 'Sign Up' }} />
           <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: 'Sign In' }} />
           <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'MacroScan' }} />
           <Stack.Screen name="Details" component={DetailsScreen} options={{ title: 'Details' }} />
