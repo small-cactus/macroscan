@@ -95,8 +95,8 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 20,
     borderWidth: 5,
-    width: '50%',
-    height: '7%',
+    width: '40%',
+    height: '5%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
@@ -106,7 +106,7 @@ const styles = StyleSheet.create({
   SignUpText: {
     textAlign: 'center',
     fontWeight: 'bold',
-    fontSize: 25,
+    fontSize: 20,
     color: "#ffffff",
   },
   SignInButton: {
