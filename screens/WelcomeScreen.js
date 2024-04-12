@@ -20,10 +20,6 @@ export default function SignInScreen({ navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
       <ScrollView contentContainerStyle={styles.scrollView}>
         <Text style={styles.title}>Welcome to MacroScan</Text>
         <Image
@@ -40,7 +36,6 @@ export default function SignInScreen({ navigation }) {
         <Text style={styles.SignInText}>Sign In</Text>
       </TouchableOpacity>
       </ScrollView>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -61,7 +56,7 @@ const styles = StyleSheet.create({
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
-    marginTop: 50, // Adjust as needed to position the title at the top
+    marginTop: 100, // Adjust as needed to position the title at the top
     marginBottom: 40,
   },
   input: {
@@ -100,18 +95,18 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 20,
     borderWidth: 5,
-    width: '77%',
-    height: '10%',
+    width: '50%',
+    height: '7%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
-    borderRadius: 20,
+    borderRadius: 200,
 
   },
   SignUpText: {
     textAlign: 'center',
     fontWeight: 'bold',
-    fontSize: 35,
+    fontSize: 25,
     color: "#ffffff",
   },
   SignInButton: {
@@ -119,17 +114,18 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 210,
     borderWidth: 5,
-    width: '77%',
-    height: '10%',
+    width: '40%',
+    height: '5%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
-    borderRadius: 20,
+    borderRadius: 200,
+    borderColor: "#000000",
   },
   SignInText: {
     textAlign: 'center',
     fontWeight: 'bold',
-    fontSize: 35,
-    color: "#ffffff"
+    fontSize: 20,
+    color: "#a9aaab"
   },
 });

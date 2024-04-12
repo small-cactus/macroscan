@@ -18,20 +18,14 @@ export default function App() {
         <Stack.Navigator
           initialRouteName="Welcome" // Set Welcome as the initial route
           screenOptions={{
-            headerStyle: {
-              backgroundColor: '#f7f7f7', // Light gray background for the header
-            },
-            headerTintColor: '#333', // Dark text for contrast
-            headerTitleStyle: {
-              fontWeight: 'bold',
-            },
+            headerShown: false, // Hide headers globally
           }}
         >
-          <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ title: 'Welcome' }} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ title: 'Sign Up' }} />
-          <Stack.Screen name="SignIn" component={SignInScreen} options={{ title: 'Sign In' }} />
-          <Stack.Screen name="Home" component={HomeScreen} options={{ title: 'MacroScan' }} />
-          <Stack.Screen name="Details" component={DetailsScreen} options={{ title: 'Details' }} />
+          <Stack.Screen name="Welcome" component={WelcomeScreen} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} />
+          <Stack.Screen name="SignIn" component={SignInScreen} />
+          <Stack.Screen name="Home" component={HomeScreen} />
+          <Stack.Screen name="Details" component={DetailsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
     </>

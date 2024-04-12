@@ -34,10 +34,6 @@ export default function SignInScreen({ navigation }) {
   };
 
   return (
-    <KeyboardAvoidingView
-      style={{ flex: 1 }}
-      behavior={Platform.OS === "ios" ? "padding" : "height"}
-    >
       <ScrollView contentContainerStyle={styles.scrollView}>
         <Text style={styles.title}>Sign Up for MacroScan</Text>
         <Image
@@ -87,7 +83,6 @@ export default function SignInScreen({ navigation }) {
       </TouchableOpacity>
         </View>
       </ScrollView>
-    </KeyboardAvoidingView>
   );
 }
 
@@ -109,6 +104,7 @@ const styles = StyleSheet.create({
     color: '#000',
     textAlign: 'center',
     marginTop: 20, // Adjust as needed to position the title at the top
+    marginTop: 100, // Adjust as needed to position the title at the top
     marginBottom: 20,
   },
   input: {
