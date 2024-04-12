@@ -1,84 +1,137 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ImageBackground } from 'react-native';
+import {
+  View,
+  Text,
+  TextInput,
+  TouchableOpacity,
+  StyleSheet,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
+  ScrollView,
+  Image,
+} from 'react-native';
+import * as Haptics from 'expo-haptics';
 
 export default function SignInScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const BoxComponent = () => {
     return (
-      <View style={styles.boxStyle}></View>
+      <View style={styles.seperatorBox}></View>
     );
   };
 
   const handleLogin = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    
     if (username === 'Macro' && password === 'Scan') {
-      // If the credentials are correct, navigate to the HomeScreen
       navigation.replace('Home');
     } else {
-      // If the credentials are incorrect, display an alert
       Alert.alert('Invalid Credentials', 'The username or password is incorrect.');
     }
   };
 
   return (
-    <View style={styles.container}>
-      <Text style={styles.title}>Sign In to MacroScan</Text>
-      <TextInput 
-        style={styles.input} 
-        placeholder="Username" 
-        value={username} 
-        onChangeText={setUsername} 
-        autoCapitalize="none" 
-      />
-      <TextInput 
-        style={styles.input} 
-        placeholder="Password" 
-        value={password} 
-        onChangeText={setPassword} 
-        secureTextEntry 
-        autoCapitalize="none" 
-      />
-      <Button title="Sign In" onPress={handleLogin} />
-      <BoxComponent style={styles.boxStyle}></BoxComponent>
-    </View>
+    <KeyboardAvoidingView
+      style={{ flex: 1 }}
+      behavior={Platform.OS === "ios" ? "padding" : "height"}
+    >
+      <ScrollView contentContainerStyle={styles.scrollView}>
+        <Text style={styles.title}>Sign In to MacroScan</Text>
+        <Image
+  source={require('../assets/icon.png')} // Adjust the path accordingly
+  style={styles.icon} // Define a style for your icon
+/>
+<View style={styles.container}></View>
+        <View style={styles.container}>
+          <TextInput
+            style={styles.input}
+            placeholder="Username"
+            placeholderTextColor="#A9A9A9"
+            value={username}
+            onChangeText={setUsername}
+            autoCapitalize="none"
+          />
+          <TextInput
+            style={styles.input}
+            placeholder="Password"
+            placeholderTextColor="#A9A9A9"
+            value={password}
+            onChangeText={setPassword}
+            secureTextEntry
+            autoCapitalize="none"
+          />
+          <TouchableOpacity style={styles.button} onPress={handleLogin}>
+            <Text style={styles.buttonText}>Sign In</Text>
+          </TouchableOpacity>
+          <BoxComponent />
+        </View>
+      </ScrollView>
+    </KeyboardAvoidingView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
+  scrollView: {
+    flexGrow: 1,
     justifyContent: 'center',
+  },
+  container: {
+    flexGrow: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: 20,
-    position: 'relative',
-    marginBottom: 350
+    marginTop: -330,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    marginBottom: 20,
+    color: '#000',
     textAlign: 'center',
+    marginTop: 30, // Adjust as needed to position the title at the top
+    marginBottom: -5,
   },
   input: {
-    backgroundColor: 'white',
-    marginBottom: 10,
+    width: '80%', // Adjust based on preference
+    backgroundColor: '#FFFFFF',
+    marginBottom: 12,
     paddingHorizontal: 15,
     paddingVertical: 10,
-    borderRadius: 5,
+    borderRadius: 20, // Increased borderRadius for more pronounced rounded corners
     borderWidth: 1,
     borderColor: 'gray',
+    color: '#000', // Text color
   },
-  boxStyle: {
-    height: 210,
-    width: 370,
-    backgroundColor: '#5E5E5E',
-    borderWidth: 2,
-    borderColor: '#000000',
-    borderRadius: 10,
-    position: 'absolute',
-    top: 88,
-    left: 9,
-    opacity: .5,
-    zIndex: -1,
-
+  button: {
+    width: '80%', // Match the input fields width
+    backgroundColor: '#000000',
+    padding: 10,
+    borderRadius: 20, // Maintain rounded corners for consistency
+    alignItems: 'center',
+    marginTop: 10,
   },
+  buttonText: {
+    color: '#FFFFFF',
+    fontWeight: 'bold',
+    fontSize: 16,
+  },
+  icon: {
+    width: 100, // Adjust the width as needed
+    height: 100, // Adjust the height as needed
+    alignSelf: 'center', // Center the icon horizontally
+    marginBottom: -420, // Space between icon and the next element
+    marginTop: 15
+  },
+  seperatorBox: {
+    width: 330,
+    height: 5,
+    backgroundColor: '#C8C8C8',
+    borderWidth:0,
+    zIndex: 1,
+    marginTop: 20,
+    marginBottom: 10,
+    borderRadius: 3,
+  }
 });
