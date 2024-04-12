@@ -76,6 +76,9 @@ export default function SignInScreen({ navigation }) {
             <Text style={styles.buttonText}>Sign Up</Text>
           </TouchableOpacity>
           <BoxComponent />
+          <TouchableOpacity style={styles.SignUpRedirect} onPress={() => navigation.navigate('SignIn')}>
+        <Text style={styles.SignUpText}>Already Have an Account?</Text>
+      </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -105,7 +108,7 @@ const styles = StyleSheet.create({
   input: {
     width: '80%', // Adjust based on preference
     backgroundColor: '#FFFFFF',
-    marginBottom: 12,
+    marginBottom: 10,
     paddingHorizontal: 15,
     paddingVertical: 10,
     borderRadius: 20, // Increased borderRadius for more pronounced rounded corners
@@ -127,8 +130,8 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   icon: {
-    width: 100, // Adjust the width as needed
-    height: 100, // Adjust the height as needed
+    width: 95, // Adjust the width as needed
+    height: 95, // Adjust the height as needed
     alignSelf: 'center', // Center the icon horizontally
     marginBottom: -380, // Space between icon and the next element
     marginTop: -10
@@ -142,5 +145,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 10,
     borderRadius: 3,
-  }
+  },
+  SignUpRedirect: {
+    textDecorationStyle: 'underline',
+    textDecorationStyle: 'solid',
+  },
 });

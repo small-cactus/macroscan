@@ -67,6 +67,9 @@ export default function SignInScreen({ navigation }) {
             <Text style={styles.buttonText}>Sign In</Text>
           </TouchableOpacity>
           <BoxComponent />
+          <TouchableOpacity style={styles.SignInRedirect} onPress={() => navigation.navigate('SignUp')}>
+        <Text style={styles.SignInText}>Dont Have an Account?</Text>
+      </TouchableOpacity>
         </View>
       </ScrollView>
     </KeyboardAvoidingView>
@@ -133,5 +136,9 @@ const styles = StyleSheet.create({
     marginTop: 20,
     marginBottom: 10,
     borderRadius: 3,
-  }
+  },
+  SignInRedirect: {
+    textDecorationStyle: 'underline',
+    textDecorationStyle: 'solid',
+  },
 });
