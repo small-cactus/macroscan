@@ -33,7 +33,7 @@ export default function SignInScreen({ navigation }) {
         <Text style={styles.SignUpText}>Sign Up</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.SignInButton} onPress={() => navigation.navigate('SignIn')}>
-        <Text style={styles.SignInText}>Sign In</Text>
+        <Text style={styles.SignInText}>Already Have an Account?</Text>
       </TouchableOpacity>
       </ScrollView>
   );
@@ -113,19 +113,14 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 20,
     marginBottom: 210,
-    borderWidth: 5,
-    width: '40%',
+    width: '100%',
     height: '5%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
-    backgroundColor: "#000000",
-    borderRadius: 200,
-    borderColor: "#000000",
   },
   SignInText: {
     textAlign: 'center',
-    fontWeight: 'bold',
-    fontSize: 20,
-    color: "#a9aaab"
+    fontSize: 18,
+    color: "#000000"
   },
 });

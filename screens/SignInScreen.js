@@ -139,8 +139,7 @@ const styles = StyleSheet.create({
     borderRadius: 3,
   },
   SignInRedirect: {
-    textDecorationStyle: 'underline',
-    textDecorationStyle: 'solid',
+    textDecorationLine: 'underline',
   },
   AppleContinueButton: {
     alignSelf: 'center',
