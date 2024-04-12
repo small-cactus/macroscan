@@ -120,7 +120,7 @@ const styles = StyleSheet.create({
   },
   SignInText: {
     textAlign: 'center',
-    fontSize: 18,
+    fontSize: 15,
     color: "#000000"
   },
 });
