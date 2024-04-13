@@ -74,7 +74,7 @@ export default function SignUpScreen({ navigation }) {
 }}>
   <Text style={styles.buttonText}>Sign Up</Text>
 </TouchableOpacity>
-
+<BoxComponent />
 <TouchableOpacity style={styles.AppleContinueButton} onPress={async () => {
   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   navigation.navigate('Home');
