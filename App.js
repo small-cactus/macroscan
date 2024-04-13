@@ -7,6 +7,9 @@ import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen';
 import { StatusBar } from 'expo-status-bar';
+import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+
+const Tab = createBottomTabNavigator();
 
 const Stack = createNativeStackNavigator();
 
@@ -28,6 +31,11 @@ export default function App() {
           <Stack.Screen name="Details" component={DetailsScreen} />
         </Stack.Navigator>
       </NavigationContainer>
+      <NavigationContainer>
+      <Tab.Navigator tabBarOptions={{activeTintColor: 'tomato'}}>
+        <Tab.Screen name="Home" component={HomeScreen} />
+      </Tab.Navigator>
+    </NavigationContainer>
     </>
   );
 }

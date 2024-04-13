@@ -241,7 +241,7 @@ const MacroScanHome = () => {
           </TouchableOpacity>
         </Animated.View>
       </View>
-      <View>
+      <View> 
       <TouchableOpacity style={styles.NeedHelp} onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
              navigation.navigate('Details');
