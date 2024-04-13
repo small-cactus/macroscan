@@ -8,7 +8,7 @@ export default function DetailsScreen() {
     <ScrollView style={styles.container}>
       <Image source={{ uri: 'image-url' }} style={styles.image} />
       <View style={styles.content}>
-        <Text style={styles.title}>MacroScan Details</Text>
+        <Text style={styles.title}>MacroScan Help</Text>
         <Text style={styles.description}>
           Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below.
         </Text>
