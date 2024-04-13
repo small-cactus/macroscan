@@ -240,6 +240,12 @@ const MacroScanHome = () => {
             <Text style={styles.buttonText}>Pick from Gallery</Text>
           </TouchableOpacity>
         </Animated.View>
+        <TouchableOpacity style={styles.NeedHelp} onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+             navigation.navigate('Details');
+            }}>
+            <Text style={styles.NeedHelpText}>Need Help?</Text>
+            </TouchableOpacity>
       </View>
       <Modal
         animationType="slide"
@@ -374,6 +380,19 @@ const styles = StyleSheet.create({
     marginTop: 10,
     marginBottom: 20,
   },
+  NeedHelpText: {
+    textDecorationLine: 'underline',
+    marginBottom: 20,
+    alignSelf: 'center',
+    textAlign: 'center'
+  },
+  NeedHelp: {
+    marginBottom: -600,
+    alignContent: 'center',
+    alignSelf: 'center',
+    alignContent: 'center',
+    textAlign: 'center'
+  }
 });
 
 export default MacroScanHome;
