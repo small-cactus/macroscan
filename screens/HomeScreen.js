@@ -194,7 +194,7 @@ const MacroScanHome = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.productName}>{nutrientData ? nutrientData.productName : 'Product Name'}</Text>
+      <Text style={styles.productName}>{nutrientData ? nutrientData.productName : 'No image selected'}</Text>
       {homeScreenImageUri && (
   <Image source={{ uri: homeScreenImageUri }} style={styles.productImage} />
 )}
@@ -210,7 +210,7 @@ const MacroScanHome = () => {
             );
           }
         }) : (
-          <Text style={styles.promptText}>Capture or select an image to get Macros.</Text>
+          <Text style={styles.promptText}>Capture or select an image to get Macros, you can also take a picture of the nutrients label for more accurate information.</Text>
         )}
       </ScrollView>
       <View style={styles.buttonContainer}>
