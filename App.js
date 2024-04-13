@@ -23,10 +23,16 @@ function HomeTabs() {
         tabBarLabelStyle: styles.tabBarLabelStyle,
         tabBarIcon: ({ focused, color, size }) => {
           let iconName;
-          if (route.name === 'Home') {
-            iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Details') {
-            iconName = focused ? 'list' : 'list-outline';
+          switch (route.name) {
+            case 'Home':
+              iconName = focused ? 'scan' : 'scan-outline';  // Corrected the icon for consistency
+              break;
+            case 'Details':
+              iconName = focused ? 'list' : 'list-outline';
+              break;
+            case 'Settings':
+              iconName = focused ? 'settings' : 'settings-outline';  // Settings icon
+              break;
           }
           return <Icon name={iconName} size={size} color={color} />;
         },
@@ -34,8 +40,9 @@ function HomeTabs() {
         tabBarInactiveTintColor: 'gray',
       })}
     >
-      <Tab.Screen name="Home" component={HomeScreen} options={{ }} />
+      <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Details" component={DetailsScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
     </Tab.Navigator>
   );
 }
