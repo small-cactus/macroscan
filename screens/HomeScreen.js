@@ -224,7 +224,7 @@ const MacroScanHome = () => {
     }}
             style={styles.button}
           >
-            <Text style={styles.buttonText}>Take Photo</Text>
+            <Text style={styles.buttonText}>Take Photo Now</Text>
           </TouchableOpacity>
         </Animated.View>
         <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
