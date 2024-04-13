@@ -68,14 +68,18 @@ export default function SignInScreen({ navigation }) {
 <BoxComponent />
 <TouchableOpacity style={styles.AppleContinueButton} onPress={async () => {
   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  navigation.navigate('Home');
+  navigation.navigate('HomeTabs', {
+    screen: 'Home',
+  });
 }}>
   <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
 </TouchableOpacity>
 
 <TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
   await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  navigation.navigate('Home');
+  navigation.navigate('HomeTabs', {
+    screen: 'Home',
+  });
 }}>
   <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
 </TouchableOpacity>
