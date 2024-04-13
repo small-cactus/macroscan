@@ -25,7 +25,7 @@ function HomeTabs() {
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
           } else if (route.name === 'Details') {
-            iconName = focused ? 'list' : 'list-outline';
+            iconName = focused ? 'help-circle' : 'help-circle-outline';
           }
           return <Icon name={iconName} size={size} color={color} />;
         },
