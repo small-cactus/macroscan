@@ -59,19 +59,33 @@ export default function SignInScreen({ navigation }) {
             secureTextEntry
             autoCapitalize="none"
           />
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Sign In</Text>
-          </TouchableOpacity>
-          <BoxComponent />
-          <TouchableOpacity style={styles.AppleContinueButton} onPress={() => navigation.navigate('Home')}>
-        <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.GoogleContinueButton} onPress={() => navigation.navigate('Home')}>
-        <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
-      </TouchableOpacity>
-          <TouchableOpacity style={styles.SignInRedirect} onPress={() => navigation.navigate('SignUp')}>
-        <Text style={styles.SignInText}>Dont Have an Account?</Text>
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  handleLogin();
+}}>
+  <Text style={styles.buttonText}>Sign In</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.AppleContinueButton} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('Home');
+}}>
+  <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('Home');
+}}>
+  <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.SignInRedirect} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('SignUp');
+}}>
+  <Text style={styles.SignInText}>Dont Have an Account?</Text>
+</TouchableOpacity>
         </View>
       </ScrollView>
   );

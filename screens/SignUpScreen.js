@@ -68,19 +68,33 @@ export default function SignUpScreen({ navigation }) {
             secureTextEntry
             autoCapitalize="none"
           />
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Sign Up</Text>
-          </TouchableOpacity>
-          <BoxComponent />
-      <TouchableOpacity style={styles.AppleContinueButton} onPress={() => navigation.navigate('Home')}>
-        <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.GoogleContinueButton} onPress={() => navigation.navigate('Home')}>
-        <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.SignUpRedirect} onPress={() => navigation.navigate('SignIn')}>
-        <Text style={styles.SignUpText}>Already Have an Account?</Text>
-      </TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  handleLogin(); // You may want to rename this function to handleSignUp or create a new function for handling sign up logic
+}}>
+  <Text style={styles.buttonText}>Sign Up</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.AppleContinueButton} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('Home');
+}}>
+  <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('Home');
+}}>
+  <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.SignUpRedirect} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('SignIn');
+}}>
+  <Text style={styles.SignUpText}>Already Have an Account?</Text>
+</TouchableOpacity>
         </View>
       </ScrollView>
   );

@@ -29,12 +29,19 @@ export default function SignInScreen({ navigation }) {
 <View style={styles.container}></View>
         <View style={styles.container}>
         </View>
-        <TouchableOpacity style={styles.SignUpButton} onPress={() => navigation.navigate('SignUp')}>
-        <Text style={styles.SignUpText}>Sign Up</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.SignInButton} onPress={() => navigation.navigate('SignIn')}>
-        <Text style={styles.SignInText}>Already Have an Account?</Text>
-      </TouchableOpacity>
+        <TouchableOpacity style={styles.SignUpButton} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('SignUp');
+}}>
+  <Text style={styles.SignUpText}>Sign Up</Text>
+</TouchableOpacity>
+
+<TouchableOpacity style={styles.SignInButton} onPress={async () => {
+  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  navigation.navigate('SignIn');
+}}>
+  <Text style={styles.SignInText}>Already Have an Account?</Text>
+</TouchableOpacity>
       </ScrollView>
   );
 }
