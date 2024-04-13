@@ -4,17 +4,20 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar, StyleSheet } from 'react-native';
 import Icon from 'react-native-vector-icons/Ionicons';
+
+// Screens
 import WelcomeScreen from './screens/WelcomeScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen';
 import SettingsScreen from './screens/SettingsScreen';  // Import the SettingsScreen
-import AccountScreen from './screens/AccoutScreen';
 
+// Define Stack and Tab Navigators
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Tab Navigator for Home, Details, Settings
 function HomeTabs() {
   return (
     <Tab.Navigator
@@ -26,13 +29,13 @@ function HomeTabs() {
           let iconName;
           switch (route.name) {
             case 'Home':
-              iconName = focused ? 'scan' : 'scan-outline';  // Corrected the icon for consistency
+              iconName = focused ? 'scan' : 'scan-outline';
               break;
             case 'Details':
               iconName = focused ? 'list' : 'list-outline';
               break;
             case 'Settings':
-              iconName = focused ? 'settings' : 'settings-outline';  // Settings icon
+              iconName = focused ? 'settings' : 'settings-outline';
               break;
             case 'Account':
               iconName = focused ? 'person' : 'person-outline';  // Settings icon
@@ -52,6 +55,7 @@ function HomeTabs() {
   );
 }
 
+// Styles
 const styles = StyleSheet.create({
   headerStyle: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -71,6 +75,7 @@ const styles = StyleSheet.create({
   },
 });
 
+// App Component
 export default function App() {
   return (
     <NavigationContainer>
@@ -87,7 +92,10 @@ export default function App() {
         <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }}/>
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }}/>
         <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
-
+        {/* Stack screens for setting details */}
+        <Stack.Screen name="GeneralSettings" component={GeneralSettingsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
       <StatusBar style="auto" />
     </NavigationContainer>
