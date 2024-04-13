@@ -24,7 +24,7 @@ function HomeTabs() {
           let iconName;
           if (route.name === 'Home') {
             iconName = focused ? 'home' : 'home-outline';
-          } else if (route.name === 'Details') {
+          } else if (route.name === 'Help') {
             iconName = focused ? 'help-circle' : 'help-circle-outline';
           }
           return <Icon name={iconName} size={size} color={color} />;
@@ -34,7 +34,7 @@ function HomeTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} options={{ }} />
-      <Tab.Screen name="Details" component={DetailsScreen} />
+      <Tab.Screen name="Help" component={DetailsScreen} />
     </Tab.Navigator>
   );
 }
