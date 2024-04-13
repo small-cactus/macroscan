@@ -242,12 +242,6 @@ const MacroScanHome = () => {
         </Animated.View>
       </View>
       <View> 
-      <TouchableOpacity style={styles.NeedHelp} onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-             navigation.navigate('Details');
-            }}>
-            <Text style={styles.NeedHelpText}>Need Help?</Text>
-            </TouchableOpacity>
       </View>
       <Modal
         animationType="slide"
