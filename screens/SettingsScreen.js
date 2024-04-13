@@ -8,6 +8,7 @@ const SETTINGS = [
   { id: '3', title: 'Notifications', screen: 'NotificationSettings' },
 ];
 
+
 const SettingsScreen = ({ navigation }) => {
   const renderItem = ({ item }) => (
     <TouchableOpacity

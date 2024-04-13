@@ -12,6 +12,8 @@ import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen';
 import SettingsScreen from './screens/SettingsScreen';  // Import the SettingsScreen
+import AccountScreen from './screens/AccountScreen';
+import { GeneralSettingsScreen, AccountSettingsScreen, NotificationSettingsScreen } from './screens/SettingsElements';
 
 // Define Stack and Tab Navigators
 const Stack = createNativeStackNavigator();
