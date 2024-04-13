@@ -10,6 +10,7 @@ import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen';
 import SettingsScreen from './screens/SettingsScreen';  // Import the SettingsScreen
+import AccountScreen from './screens/AccoutScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -33,6 +34,9 @@ function HomeTabs() {
             case 'Settings':
               iconName = focused ? 'settings' : 'settings-outline';  // Settings icon
               break;
+            case 'Account':
+              iconName = focused ? 'person' : 'person-outline';  // Settings icon
+              break;
           }
           return <Icon name={iconName} size={size} color={color} />;
         },
@@ -43,6 +47,7 @@ function HomeTabs() {
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="Details" component={DetailsScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Account" component={AccountScreen} />
     </Tab.Navigator>
   );
 }
