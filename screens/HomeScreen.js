@@ -6,6 +6,10 @@ import * as ImagePicker from 'expo-image-picker';
 import Anthropic from "@anthropic-ai/sdk";
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
+//import { useColorScheme } from 'react-native-appearance';
+import { Appearance } from 'react-native';
+
+const colorScheme = Appearance.getColorScheme();
 
 const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -276,7 +280,7 @@ const styles = StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'center',
     paddingTop: 20,
-    backgroundColor: '#FFFFFF',
+    backgroundColor: '#fff'
   },
   productName: {
     fontSize: 30,

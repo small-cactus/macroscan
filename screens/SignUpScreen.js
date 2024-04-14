@@ -15,6 +15,9 @@ import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
 import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Appearance } from 'react-native';
+
+const colorScheme = Appearance.getColorScheme();
 
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');

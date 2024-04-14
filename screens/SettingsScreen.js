@@ -1,6 +1,9 @@
 import React from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialIcons';  // Import the icons
+import { Appearance } from 'react-native';
+
+const colorScheme = Appearance.getColorScheme();
 
 const SETTINGS = [
   { id: '1', title: 'General', screen: 'GeneralSettings' },

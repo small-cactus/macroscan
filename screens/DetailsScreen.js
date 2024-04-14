@@ -1,6 +1,9 @@
 import React from 'react';
 import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, navigation} from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { Appearance } from 'react-native';
+
+const colorScheme = Appearance.getColorScheme();
 
 export default function DetailsScreen() {
   const navigation = useNavigation();
