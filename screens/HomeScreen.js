@@ -283,28 +283,28 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontSize: 30,
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#fff' : '#000',
-    marginTop: 90,
-    marginBottom: 10,
+    marginTop: '15%',
+    marginBottom: '3%',
     textAlign: 'center'
   },
   nutrientContainer: {
-    width: '90%',
-    maxHeight: 300,
+    width: '95%',
+    maxHeight: '40%',
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     borderRadius: 10,
-    padding: 10,
+    padding: '3%',
   },
   nutrientItem: {
     flexDirection: 'column',  // Ensures vertical stacking of content and separator
     alignItems: 'stretch',
-    marginBottom: 5,          // Space between items
+    marginBottom: '2%',          // Space between items
     width: '100%',
   },
   nutrientContent: {          // New style for horizontal layout of label and value
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: 5,          // Margin before the separator
+    marginBottom: '1%',          // Margin before the separator
   },
   nutrientLabel: {
     fontWeight: 'bold',
@@ -384,8 +384,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   productImage: {
-    width: 350,
-    height: 180,
+    width: '85%',
+    height: '30%',
     borderRadius: 25,
     marginTop: 10,
     marginBottom: 20,

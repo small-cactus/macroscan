@@ -17,7 +17,8 @@
     "ios": {
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to scan food items.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images."
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to provide localized pricing based on your geographic location."
       },
       "bundleIdentifier": "com.smallcactus.MacroScan"
     },
@@ -25,7 +26,11 @@
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
-      }
+      },
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"

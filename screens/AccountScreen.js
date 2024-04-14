@@ -277,18 +277,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     textAlign: 'center',
     fontWeight: 'bold',
   },
-  purchaseButton: {
-    backgroundColor: '#ffffff',
-    padding: 15,
-    borderRadius: 100,
-    marginTop: 10,
-  },
-  purchaseButtonText: {
-    color: 'black',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
   titleWithLogo: {
     flexDirection: 'row', // Align children in a row
     alignItems: 'center', // Align children vertically in the center
