@@ -15,11 +15,11 @@ import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is insta
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
 
-const colorScheme = Appearance.getColorScheme();
-
 export default function SignInScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const colorScheme = Appearance.getColorScheme();
+  const styles = getDynamicStyles(colorScheme);
 
   const handleLogin = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -130,7 +130,7 @@ export default function SignInScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
   scrollView: {
     flexGrow: 1,
     justifyContent: 'center',

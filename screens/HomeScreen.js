@@ -6,10 +6,7 @@ import * as ImagePicker from 'expo-image-picker';
 import Anthropic from "@anthropic-ai/sdk";
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
-//import { useColorScheme } from 'react-native-appearance';
 import { Appearance } from 'react-native';
-
-const colorScheme = Appearance.getColorScheme();
 
 const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -22,6 +19,8 @@ const MacroScanHome = () => {
   const buttonScale = useRef(new Animated.Value(1)).current;
   const [nutrientData, setNutrientData] = useState(null);
   const [apiSuccess, setApiSuccess] = useState(false);
+  const colorScheme = Appearance.getColorScheme();
+  const styles = getDynamicStyles(colorScheme);
 
   const animateButtonPressIn = () => {
     Animated.spring(buttonScale, {
@@ -195,7 +194,6 @@ const MacroScanHome = () => {
   
     return { productName, ...nutrients };
   }
-
   return (
     <View style={styles.container}>
       <Text style={styles.productName}>{nutrientData ? nutrientData.productName : 'No image selected'}</Text>
@@ -261,7 +259,7 @@ const MacroScanHome = () => {
   <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
 )}
             {isLoading ? (
-              <ActivityIndicator size="large" color="#000000" />
+              <ActivityIndicator size="large" color={styles.activityIndicatorColor.color} />
             ) : (
               <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
                 <Text style={styles.closeButtonText}>Close</Text>
@@ -273,19 +271,18 @@ const MacroScanHome = () => {
     </View>
   );
 };
-
-const styles = StyleSheet.create({
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
   container: {
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
     paddingTop: 20,
-    backgroundColor: '#fff'
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF', // Dark mode has dark background
   },
   productName: {
     fontSize: 30,
     fontWeight: 'bold',
-    color: '#000000',
+    color: colorScheme === 'dark' ? '#fff' : '#000',
     marginTop: 90,
     marginBottom: 10,
     textAlign: 'center'
@@ -293,7 +290,7 @@ const styles = StyleSheet.create({
   nutrientContainer: {
     width: '90%',
     maxHeight: 300,
-    backgroundColor: "#ffffff",
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     borderRadius: 10,
     padding: 10,
   },
@@ -312,16 +309,18 @@ const styles = StyleSheet.create({
   nutrientLabel: {
     fontWeight: 'bold',
     fontSize: 17,
+    color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
   },
   nutrientValue: {
     color: "#7a7a7a",
     textAlign: 'right',
     fontSize: 16,
     fontWeight: '600',
+    color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
   },
   separator: {
     height: 1,
-    backgroundColor: '#CCCCCC',
+    backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
     width: '100%',
     marginTop: 5,             // Ensures separation from the text
   },
@@ -337,29 +336,29 @@ const styles = StyleSheet.create({
     marginTop: 20,
   },
   button: {
-    backgroundColor: '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
     borderRadius: 20,
     padding: 12,
     marginHorizontal: 10,
     width: 150
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     textAlign: 'center'
   },
   detailButton: {
-    backgroundColor: '#000000',
+    backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
     borderRadius: 20,
     padding: 12,
     paddingHorizontal: 20,
   },
   modalView: {
-    backgroundColor: '#FFFFFF',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFF',
     borderRadius: 20,
     padding: 20,
     alignItems: 'center',
-    shadowColor: '#000000',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#000',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
     shadowRadius: 4,
@@ -399,7 +398,10 @@ const styles = StyleSheet.create({
   NeedHelp: {
     marginTop: 50,
     textAlign: 'center',
-  }
+  },
+  activityIndicatorColor: {
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
 });
 
 export default MacroScanHome;

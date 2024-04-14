@@ -5,12 +5,14 @@ import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import { Appearance } from 'react-native';
 
-const colorScheme = Appearance.getColorScheme();
 
 export default function AccountScreen() {
   const [imageUri, setImageUri] = useState(null);
   const [name, setName] = useState('');
   const [loadError, setLoadError] = useState(false);
+  const colorScheme = Appearance.getColorScheme();
+  const styles = getDynamicStyles(colorScheme);
+
 
   useEffect(() => {
     async function loadProfile() {
@@ -100,7 +102,11 @@ const saveData = async (uri) => {
           }}
         />
           <View style={styles.iconOverlay}>
-            <MaterialCommunityIcons name="pencil" size={24} color="white" />
+          <MaterialCommunityIcons
+                name="pencil"
+                size={24}
+                color={colorScheme === 'dark' ? 'black' : 'white'}  // Dynamic color based on mode
+            />
           </View>
         </TouchableOpacity>
       </View>
@@ -186,10 +192,10 @@ const saveData = async (uri) => {
   );
 }
 
-const styles = StyleSheet.create({
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'white',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     paddingTop: 60,
     paddingHorizontal: 20,
   },
@@ -205,12 +211,12 @@ const styles = StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#333',
+    color: colorScheme === 'dark' ? '#fff' : '#333',
     marginBottom: 20,
   },
   description: {
     fontSize: 16,
-    color: '#666',
+    color: colorScheme === 'dark' ? '#b0b0b0' : '#666',
     textAlign: 'center',
     marginTop: 10,
   },
@@ -223,7 +229,8 @@ const styles = StyleSheet.create({
   },
   input: {
     borderWidth: 1,
-    borderColor: '#ddd',
+    borderColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
+    color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
     padding: 10,
     fontSize: 18,
     borderRadius: 6,
@@ -233,7 +240,7 @@ const styles = StyleSheet.create({
     position: 'absolute',
     right: 5,
     bottom: 5,
-    backgroundColor: '#000000',
+    backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
     padding: 5,
     paddingHorizontal: 5,
     borderRadius: 12,

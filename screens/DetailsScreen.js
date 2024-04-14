@@ -3,10 +3,10 @@ import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, navigation
 import { useNavigation } from '@react-navigation/native';
 import { Appearance } from 'react-native';
 
-const colorScheme = Appearance.getColorScheme();
 
 export default function DetailsScreen() {
   const navigation = useNavigation();
+  const colorScheme = Appearance.getColorScheme();
   return (
     <ScrollView style={styles.container}>
       <Image source={{ uri: 'image-url' }} style={styles.image} />

@@ -17,17 +17,18 @@ import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is insta
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
 
-const colorScheme = Appearance.getColorScheme();
-
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const colorScheme = Appearance.getColorScheme();
+  const styles = getDynamicStyles(colorScheme);
   const BoxComponent = () => {
     return (
       <View style={styles.seperatorBox}></View>
     );
   };
+
 
   const storeData = async (value) => {
     try {
@@ -150,7 +151,7 @@ export default function SignUpScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
   scrollView: {
     flexGrow: 1,
     justifyContent: 'center',

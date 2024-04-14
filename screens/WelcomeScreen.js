@@ -14,10 +14,10 @@ import {
 import * as Haptics from 'expo-haptics';
 import { Appearance } from 'react-native';
 
-const colorScheme = Appearance.getColorScheme();
 
 export default function SignInScreen({ navigation }) {
-
+  const colorScheme = Appearance.getColorScheme();
+  const styles = getDynamicStyles(colorScheme);
   const handleLogin = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
@@ -49,7 +49,7 @@ export default function SignInScreen({ navigation }) {
   );
 }
 
-const styles = StyleSheet.create({
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
   scrollView: {
     flexGrow: 1,
     justifyContent: 'center',
