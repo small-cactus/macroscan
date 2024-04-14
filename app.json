@@ -18,7 +18,8 @@
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to scan food items.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images."
-      }
+      },
+      "bundleIdentifier": "com.smallcactus.MacroScan"
     },
     "android": {
       "adaptiveIcon": {
@@ -28,6 +29,11 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "extra": {
+      "eas": {
+        "projectId": "c42ab5b9-26da-4317-9520-8926f5560290"
+      }
     }
   }
 }

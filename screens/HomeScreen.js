@@ -199,20 +199,22 @@ const MacroScanHome = () => {
   <Image source={{ uri: homeScreenImageUri }} style={styles.productImage} />
 )}
       <ScrollView style={styles.nutrientContainer} showsVerticalScrollIndicator={false}>
-        {nutrientData ? Object.entries(nutrientData).map(([key, value]) => {
-          if (key !== 'productName') {
-            return (
-              <View key={key} style={styles.nutrientItem}>
-                <Text style={styles.nutrientLabel}>{key}:</Text>
-                <Text style={styles.nutrientValue}>{value}</Text>
-                <View style={styles.separator}></View>
-              </View>
-            );
-          }
-        }) : (
-          <Text style={styles.promptText}>Capture or select an image to get Macros, you can also take a picture of the nutrients label for more accurate information.</Text>
-        )}
-      </ScrollView>
+  {nutrientData ? Object.entries(nutrientData).map(([key, value]) => {
+    if (key !== 'productName') {
+      return (
+        <View key={key} style={styles.nutrientItem}>
+          <View style={styles.nutrientContent}>
+            <Text style={styles.nutrientLabel}>{key}:</Text>
+            <Text style={styles.nutrientValue}>{value}</Text>
+          </View>
+          <View style={styles.separator}></View>
+        </View>
+      );
+    }
+  }) : (
+    <Text style={styles.promptText}>Capture or select an image to get Macros, you can also take a picture of the nutrients label for more accurate information.</Text>
+  )}
+</ScrollView>
       <View style={styles.buttonContainer}>
         <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
           <TouchableOpacity
@@ -292,13 +294,19 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   nutrientItem: {
-    flexDirection: 'column',
+    flexDirection: 'column',  // Ensures vertical stacking of content and separator
     alignItems: 'stretch',
+    marginBottom: 5,          // Space between items
     width: '100%',
+  },
+  nutrientContent: {          // New style for horizontal layout of label and value
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 5,          // Margin before the separator
   },
   nutrientLabel: {
     fontWeight: 'bold',
-    marginBottom: -5,
     fontSize: 17,
   },
   nutrientValue: {
@@ -311,6 +319,7 @@ const styles = StyleSheet.create({
     height: 1,
     backgroundColor: '#CCCCCC',
     width: '100%',
+    marginTop: 5,             // Ensures separation from the text
   },
   promptText: {
     color: '#AAAAAA',

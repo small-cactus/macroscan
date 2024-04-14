@@ -1,140 +1,199 @@
-import React from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, navigation} from 'react-native';
-import { useNavigation } from '@react-navigation/native';
+import React, { useState, useEffect } from 'react';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as ImagePicker from 'expo-image-picker';
+import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 
-export default function DetailsScreen() {
-  const navigation = useNavigation();
+export default function AccountScreen() {
+  const [imageUri, setImageUri] = useState(null);
+  const [name, setName] = useState('');
+  const [loadError, setLoadError] = useState(false);
+
+  useEffect(() => {
+    async function loadProfile() {
+        try {
+            const savedName = await AsyncStorage.getItem('userName');
+            const savedImageUri = await AsyncStorage.getItem('userImageUri');
+            console.log('Loaded URI:', savedImageUri); // Confirm what URI is loaded
+            setName(savedName || '');
+            setImageUri(savedImageUri || 'https://via.placeholder.com/150');
+        } catch (error) {
+            Alert.alert('Error', 'Failed to load user data.');
+            console.error(error);
+        }
+    }
+    loadProfile();
+}, []);
+
+
+const resetImageUri = async () => {
+  try {
+      // Remove the userImageUri key from AsyncStorage
+      await AsyncStorage.removeItem('userImageUri');
+      // Reset the imageUri state to null or directly to the placeholder URI
+      setImageUri('https://via.placeholder.com/150');
+      Alert.alert('Reset Done', 'The profile image has been reset.');
+  } catch (error) {
+      Alert.alert('Error', 'Failed to reset the profile image.');
+      console.error(error);
+  }
+};
+
+const saveData = async (uri) => {
+  try {
+      await AsyncStorage.setItem('userName', name);
+      if (uri) {
+          console.log('Attempting to save URI:', uri);
+          await AsyncStorage.setItem('userImageUri', uri);
+          console.log('URI saved to storage:', uri);
+      }
+  } catch (error) {
+      Alert.alert('Error', 'Failed to save the data.');
+      console.error(error);
+  }
+};
+
+  const pickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+        return;
+    }
+
+    try {
+        const result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [1, 1],
+            quality: 1,
+        });
+
+        console.log('Picker Result:', result); // Log the full result object
+
+        if (!result.cancelled && result.assets && result.assets.length > 0) {
+          const newImageUri = result.assets[0].uri;
+          console.log('Picked URI:', newImageUri);
+          setImageUri(newImageUri);
+          await saveData(newImageUri); // Pass URI directly to the save function
+        } else {
+            console.log('Image picker was cancelled or no assets');
+        }
+    } catch (error) {
+        Alert.alert('Error', 'An error occurred while picking the image.');
+        console.error(error);
+    }
+};
+
   return (
     <ScrollView style={styles.container}>
-      <Image source={{ uri: 'image-url' }} style={styles.image} />
-      <View style={styles.content}>
-        <Text style={styles.title}>ACCOUNT NIGGA</Text>
-        <Text style={styles.description}>
-          Welcome to MacroScan! MacroScan utilizes innovative AI Image Recognition technology to identify and calculate important nutrition facts and macronutrients. See how you can begin below.
-        </Text>
-        <View style={styles.stepContainer}>
-          <BoxComponent />
-          <Text style={styles.stepTitle}>Step 1: Take an Photo</Text>
-          <Text style={styles.stepDescription}>
-          Take a photo using the in-app camera or select an image from your camera roll.
-          </Text>
-        </View>
-        <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Step 2: Select Continue</Text>
-          <Text style={styles.stepDescription}>
-          Click on the "Continue" button and wait for the AI to generate nutrient facts about your meal.
-          </Text>
-        </View>
-        <View style={styles.stepContainer}>
-          <Text style={styles.stepTitle}>Step 3: Read and Enjoy!</Text>
-          <Text style={styles.stepDescription}>
-          View the macronutrients and nutritional facts, and enjoy your meal.
-          </Text>
-        </View>
-        <TouchableOpacity style={styles.button} onPress={() => navigation.navigate('Home')}>
-          <Text style={styles.buttonText}>Get Started</Text>
+      <View style={styles.imageContainer}>
+        <TouchableOpacity onPress={pickImage}>
+        <Image
+          source={{ uri: loadError ? 'https://via.placeholder.com/150' : imageUri }}
+          style={styles.image}
+          onError={() => {
+            console.log('Failed to load image:', imageUri); // Debug: Log on image load failure
+            setLoadError(true); // Indicate an error without changing the original URI
+          }}
+        />
+          <View style={styles.iconOverlay}>
+            <MaterialCommunityIcons name="pencil" size={24} color="white" />
+          </View>
         </TouchableOpacity>
+      </View>
+      <View style={styles.content}>
+      <Text style={styles.title}>
+        {name && name.split(" ")[0] ? `Hi, ${name.split(" ")[0]}!` : "Your Account"}
+      </Text>
+      <TextInput
+        style={styles.input}
+        value={name}
+        onChangeText={setName}
+        placeholder="Enter your full name"
+        onBlur={() => {
+          // Split the name by spaces to check for multiple parts
+          const parts = name.trim().split(/\s+/);
+          if (parts.length < 2) {
+            // Not a full name, clear the input and show an alert
+            Alert.alert("Both Names Please!", "Please enter your full name (first and last name).");
+            setName(''); // Clear the text input
+          } else {
+            // If valid, save the name
+            saveData();
+          }
+        }}
+      />
+        <Text style={styles.description}>
+          {name && name.split(" ")[0] 
+          ? `Hello, ${name.split(" ")[0]}! You can manage your account, and subscribe to MacroScan+ here.` 
+          : "Welcome to MacroScan! You can manage your account settings here."}        
+        </Text>
       </View>
     </ScrollView>
   );
 }
 
-const BoxComponent = () => {
-  return (
-    <View style={styles.box}></View>
-  );
-};
-
 const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: 'white',
-    alignContent: 'center',
+    paddingTop: 60,
+    paddingHorizontal: 20,
   },
-  content: {
-    alignContent: 'center',
-    padding: 20,
-  },
-  title: {
-    fontSize: 30,
-    fontWeight: 'bold',
-    color: '#333',
-    marginTop: -100, // Adjust this value as needed
-    marginBottom: 20, // Adjust this value as needed
-    alignContent: 'center',
-    textAlign: 'center', // Center the title horizontally
-  },
-  description: {
-    fontSize: 17,
-    color: '#333',
-    marginBottom: 40,
-    marginTop: 20,
-    textAlign: 'center',
-    paddingHorizontal: 4,
-    alignContent: 'center',
-    fontStyle: 'italic'
-    
-  },
-  box: {
-    width: 350,
-    height: 7,
-    opacity: 0.5,
-    backgroundColor: '#C8C8C8',
-    zIndex: 1000,
-    borderColor: '#C8C8C8',
-    borderWidth: 1,
-    borderRadius: 5,
-    marginTop: 0,
-    marginBottom: 30,
-    alignContent: 'center',
-    shadowColor: '#00000',
-    shadowOffset: {
-      width: 0,
-      height: 2,
-    },
-    shadowOpacity: 0.18, // Shadow opacity
-    shadowRadius: 3.84, 
-    elevation: 5, 
-  },
-  stepContainer: {
-    alignContent: 'center',
+  imageContainer: {
     alignItems: 'center',
     marginBottom: 20,
+    position: 'relative',
   },
-  stepTitle: {
-    fontSize: 18,
-    fontWeight: 'bold',
-    alignContent: 'center',
+  content: {
     alignItems: 'center',
-    color: '#333',
+    marginTop: 20,
   },
-  stepDescription: {
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: '#333',
+    marginBottom: 20,
+  },
+  description: {
     fontSize: 16,
-    alignContent: 'center',
-    textAlign: 'center',
     color: '#666',
-    marginTop: 5,
-    marginBottom: 15,
+    textAlign: 'center',
+    marginTop: 10,
   },
   image: {
-    width: '100%',
-    height: 200,
-    alignItems: 'center',
-    resizeMode: 'cover',
+    width: 150,
+    height: 150,
+    borderRadius: 75,
+    alignSelf: 'center',
+    backgroundColor: '#ddd',
   },
-  button: {
-    backgroundColor: '#000000',
-    alignContent: 'center',
-    padding: 15,
-    borderRadius: 25,
-    alignItems: 'center',
-  },
-  buttonText: {
-    color: 'white',
-    alignContent: 'center',
-    alignItems: 'center',
+  input: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    padding: 10,
     fontSize: 18,
-    fontWeight: 'bold',
+    borderRadius: 6,
+    width: '100%',
   },
-  // Feel free to adjust the colors, fonts, and other styling as needed
+  iconOverlay: {
+    position: 'absolute',
+    right: 5,
+    bottom: 5,
+    backgroundColor: '#000000',
+    padding: 5,
+    paddingHorizontal: 5,
+    borderRadius: 12,
+  },
+  resetButton: {
+    marginTop: 20,
+    backgroundColor: 'black',
+    padding: 10,
+    borderRadius: 100,
+},
+resetButtonText: {
+    color: 'white',
+    textAlign: 'center',
+    fontSize: 16,
+}
 });
