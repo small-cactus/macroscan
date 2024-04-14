@@ -12,6 +12,9 @@ import {
   Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import * as AppleAuthentication from 'expo-apple-authentication';
+import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');
@@ -23,13 +26,52 @@ export default function SignUpScreen({ navigation }) {
     );
   };
 
+  const storeData = async (value) => {
+    try {
+      console.log("Storing data:", value); // Add logging to see what is being stored
+      const jsonValue = JSON.stringify(value);
+      await AsyncStorage.setItem('@user', jsonValue);
+    } catch (e) {
+      console.error("Failed to store data:", e);
+    }
+  };
+
   const handleLogin = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
     if (username === 'Macro' && password === 'Scan') {
-      navigation.replace('Home');
+      navigation.navigate('HomeTabs', { screen: 'Home' });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'HomeTabs' }],
+      });
     } else {
       Alert.alert('Invalid Credentials', 'The username or password is incorrect.');
+    }
+  };
+
+  const signInWithApple = async () => {
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    try {
+      const credential = await AppleAuthentication.signInAsync({
+        requestedScopes: [
+          AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+          AppleAuthentication.AppleAuthenticationScope.EMAIL,
+        ],
+      });
+      console.log(credential);
+      await storeData(credential);
+      navigation.navigate('HomeTabs', { screen: 'Home' });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'HomeTabs' }],
+      });
+    } catch (e) {
+      if (e.code === 'ERR_CANCELED') {
+        console.log('Sign in with Apple was cancelled!');
+      } else {
+        console.error(e);
+      }
     }
   };
 
@@ -37,10 +79,9 @@ export default function SignUpScreen({ navigation }) {
       <ScrollView contentContainerStyle={styles.scrollView}>
         <Text style={styles.title}>Sign Up for MacroScan</Text>
         <Image
-  source={require('../assets/icon.png')} // Adjust the path accordingly
-  style={styles.icon} // Define a style for your icon
-/>
-<View style={styles.container}></View>
+          source={require('../assets/icon.png')} // Adjust the path accordingly
+          style={styles.icon} // Define a style for your icon
+        />
         <View style={styles.container}>
           <TextInput
             style={styles.input}
@@ -68,37 +109,39 @@ export default function SignUpScreen({ navigation }) {
             secureTextEntry
             autoCapitalize="none"
           />
-          <TouchableOpacity style={styles.button} onPress={async () => {
-  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  handleLogin(); // You may want to rename this function to handleSignUp or create a new function for handling sign up logic
-}}>
-  <Text style={styles.buttonText}>Sign Up</Text>
-</TouchableOpacity>
-<BoxComponent />
-<TouchableOpacity style={styles.AppleContinueButton} onPress={async () => {
-  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  navigation.navigate('HomeTabs', {
-    screen: 'Home',
-  });
-}}>
-  <Text style={styles.AppleContinueText}>APPLE PLACEHOLDER</Text>
-</TouchableOpacity>
+          <TouchableOpacity style={styles.button} onPress={handleLogin}>
+            <Text style={styles.buttonText}>Sign Up</Text>
+          </TouchableOpacity>
+          <BoxComponent />
+          <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={styles.AppleContinueText}>
+                Continue with Apple
+              </Text>
+              <FontAwesome name="apple" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
+            </View>
+          </TouchableOpacity>
 
-<TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
-  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  navigation.navigate('HomeTabs', {
-    screen: 'Home',
-  });
-}}>
-  <Text style={styles.GoogleContinueText}>GOOGLE PLACEHOLDER</Text>
-</TouchableOpacity>
+          <TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.navigate('HomeTabs', {
+              screen: 'Home',
+            });
+          }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+              <Text style={styles.GoogleContinueText}>
+                Continue with Google
+              </Text>
+              <FontAwesome name="google" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
+            </View>
+          </TouchableOpacity>
 
-<TouchableOpacity style={styles.SignUpRedirect} onPress={async () => {
-  await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-  navigation.navigate('SignIn');
-}}>
-  <Text style={styles.SignUpText}>Already Have an Account?</Text>
-</TouchableOpacity>
+          <TouchableOpacity style={styles.SignUpRedirect} onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            navigation.navigate('SignIn');
+          }}>
+            <Text style={styles.SignUpText}>Already Have an Account?</Text>
+          </TouchableOpacity>
         </View>
       </ScrollView>
   );
@@ -114,33 +157,32 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     padding: 20,
-    marginTop: 0,
+    marginTop: 200,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
-    marginTop: 20, // Adjust as needed to position the title at the top
-    marginTop: 100, // Adjust as needed to position the title at the top
+    marginTop: 100,
     marginBottom: 20,
   },
   input: {
-    width: '80%', // Adjust based on preference
+    width: '80%',
     backgroundColor: '#FFFFFF',
     marginBottom: 10,
     paddingHorizontal: 15,
     paddingVertical: 10,
-    borderRadius: 20, // Increased borderRadius for more pronounced rounded corners
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: 'gray',
-    color: '#000', // Text color
+    color: '#000',
   },
   button: {
-    width: '80%', // Match the input fields width
+    width: '80%',
     backgroundColor: '#000000',
     padding: 10,
-    borderRadius: 20, // Maintain rounded corners for consistency
+    borderRadius: 20,
     alignItems: 'center',
     marginTop: 10,
   },
@@ -150,25 +192,19 @@ const styles = StyleSheet.create({
     fontSize: 16,
   },
   icon: {
-    width: 95, // Adjust the width as needed
-    height: 95, // Adjust the height as needed
-    alignSelf: 'center', // Center the icon horizontally
-    marginBottom: -380, // Space between icon and the next element
+    width: 120,
+    height: 120,
+    alignSelf: 'center',
+    marginBottom: -380,
     marginTop: -10
   },
   seperatorBox: {
     width: 330,
     height: 5,
     backgroundColor: '#C8C8C8',
-    borderWidth:0,
-    zIndex: 1,
     marginTop: 20,
     marginBottom: 10,
     borderRadius: 3,
-  },
-  SignUpRedirect: {
-    textDecorationStyle: 'underline',
-    textDecorationStyle: 'solid',
   },
   AppleContinueButton: {
     alignSelf: 'center',
@@ -177,11 +213,10 @@ const styles = StyleSheet.create({
     borderWidth: 5,
     width: '88%',
     height: '7%',
-    justifyContent: 'center', // Center the content vertically
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: "#000000",
-    borderRadius: 7,
-
+    borderRadius: 100,
   },
   AppleContinueText: {
     color:'#ffffff',
@@ -195,15 +230,19 @@ const styles = StyleSheet.create({
     borderWidth: 5,
     width: '88%',
     height: '7%',
-    justifyContent: 'center', // Center the content vertically
+    justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: "#000000",
-    borderRadius: 7,
+    borderRadius: 100,
     marginTop: 2,
   },
   GoogleContinueText: {
     color:'#ffffff',
     fontWeight: 'bold',
     fontSize: 18
+  },
+  SignUpRedirect: {
+    textDecorationStyle: 'underline',
+    textDecorationStyle: 'solid',
   },
 });

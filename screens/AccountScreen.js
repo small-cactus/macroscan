@@ -129,6 +129,56 @@ const saveData = async (uri) => {
           : "Welcome to MacroScan! You can manage your account settings here."}        
         </Text>
       </View>
+      <View style={styles.subscriptionContainer}>
+  <View style={styles.subscriptionOption1}>
+  <View style={styles.titleWithLogo}>
+      <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+      <Text style={styles.subscriptionTitle}>MacroScan++</Text>
+      <TouchableOpacity style={styles.subscribeButton1}>
+        <Text style={styles.subscribeButtonText}>Subscribe</Text>
+      </TouchableOpacity>
+    </View>
+    <View style={styles.rightPart}>
+
+      <Text style={styles.priceText}>$8.99/Month</Text>
+    </View>
+    <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+    <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
+    <Text style={styles.subscriptionFeature}>• No Ads</Text>
+  </View>
+  <View style={styles.subscriptionOption2}>
+  <View style={styles.titleWithLogo}>
+      <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+      <Text style={styles.subscriptionTitle}>MacroScan+</Text>
+      <TouchableOpacity style={styles.subscribeButton2}>
+        <Text style={styles.subscribeButtonText}>Subscribe</Text>
+      </TouchableOpacity>
+    </View>
+    <View style={styles.rightPart}>
+
+      <Text style={styles.priceText}>$3.99/Month</Text>
+    </View>
+    <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+    <Text style={styles.subscriptionFeature}>• Access to more accurate recognition</Text>
+    <Text style={styles.subscriptionFeature}>• No Ads</Text>
+  </View>
+  <View style={styles.subscriptionOption3}>
+  <View style={styles.titleWithLogo}>
+      <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+      <Text style={styles.subscriptionTitle}>Remove Ads</Text>
+      <TouchableOpacity style={styles.subscribeButton3}>
+        <Text style={styles.subscribeButtonText}>Purchase</Text>
+      </TouchableOpacity>
+    </View>
+    <View style={styles.rightPart}>
+
+      <Text style={styles.priceText}>$5.99 Once</Text>
+    </View>
+    <Text style={styles.subscriptionFeature}>• No Ads</Text>
+    <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
+    <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
+  </View>
+</View>
     </ScrollView>
   );
 }
@@ -190,10 +240,107 @@ const styles = StyleSheet.create({
     backgroundColor: 'black',
     padding: 10,
     borderRadius: 100,
-},
-resetButtonText: {
+  },
+  resetButtonText: {
     color: 'white',
     textAlign: 'center',
     fontSize: 16,
-}
+  },
+  subscriptionContainer: {
+    marginTop: 30,
+    alignItems: 'center',
+    paddingBottom: 60,
+  },
+  subscriptionTitle: {
+    color: 'white',
+    fontSize: 20,
+    fontWeight: 'bold',
+  },
+  subscriptionFeature: {
+    color: 'white',
+    fontSize: 16,
+    marginBottom: 5,
+  },
+  subscribeButtonText: {
+    color: 'black',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  purchaseButton: {
+    backgroundColor: '#ffffff',
+    padding: 15,
+    borderRadius: 100,
+    marginTop: 10,
+  },
+  purchaseButtonText: {
+    color: 'black',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  titleWithLogo: {
+    flexDirection: 'row', // Align children in a row
+    alignItems: 'center', // Align children vertically in the center
+    marginBottom: 10, // Space below the row
+  },
+  logo: {
+    width: 40, // Adjust width as needed
+    height: 40, // Adjust height as needed
+    marginRight: 10, // Space between logo and title
+    resizeMode: 'contain', // So the logo does not get stretched
+  },
+  priceText: {
+    color: 'white',
+    fontSize: 16,
+    fontWeight: '700',
+    marginTop: 4, // Adjust the space between the button and the price text as needed
+    textAlign: 'right',
+    marginRight: 25,
+  },
+  subscribeButton1: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    width: '40%',
+    borderRadius: 100,
+    marginTop: 0,
+    marginLeft: 22,
+  },
+  subscribeButton2: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    width: '40%',
+    borderRadius: 100,
+    marginTop: 0,
+    marginLeft: 36,
+  },
+  subscribeButton3: {
+    backgroundColor: '#ffffff',
+    padding: 12,
+    width: '40%',
+    borderRadius: 100,
+    marginTop: 0,
+    marginLeft: 43,
+  },
+  subscriptionOption1: {
+    backgroundColor: 'black',
+    padding: 20,
+    borderRadius: 30,
+    width: '100%',
+    marginBottom: 20,
+  },
+  subscriptionOption2: {
+    backgroundColor: '#232323',
+    padding: 20,
+    borderRadius: 30,
+    width: '100%',
+    marginBottom: 20,
+  },
+  subscriptionOption3: {
+    backgroundColor: '#424242',
+    padding: 20,
+    borderRadius: 30,
+    width: '100%',
+    marginBottom: 20,
+  },
 });

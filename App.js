@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar, StyleSheet } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 
 // Screens
@@ -11,15 +12,13 @@ import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
 import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen';
-import SettingsScreen from './screens/SettingsScreen';  // Import the SettingsScreen
+import SettingsScreen from './screens/SettingsScreen';
 import AccountScreen from './screens/AccountScreen';
 import { GeneralSettingsScreen, AccountSettingsScreen, NotificationSettingsScreen } from './screens/SettingsElements';
 
-// Define Stack and Tab Navigators
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
-// Tab Navigator for Home, Details, Settings
 function HomeTabs() {
   return (
     <Tab.Navigator
@@ -40,7 +39,7 @@ function HomeTabs() {
               iconName = focused ? 'settings' : 'settings-outline';
               break;
             case 'Account':
-              iconName = focused ? 'person' : 'person-outline';  // Settings icon
+              iconName = focused ? 'person' : 'person-outline';
               break;
           }
           return <Icon name={iconName} size={size} color={color} />;
@@ -57,7 +56,6 @@ function HomeTabs() {
   );
 }
 
-// Styles
 const styles = StyleSheet.create({
   headerStyle: {
     backgroundColor: 'rgba(0, 0, 0, 0.6)',
@@ -77,12 +75,35 @@ const styles = StyleSheet.create({
   },
 });
 
-// App Component
 export default function App() {
+  const [initialRoute, setInitialRoute] = useState('Welcome');
+  const navigationRef = useRef(null);
+
+  useEffect(() => {
+    const checkUser = async () => {
+      try {
+        const user = await AsyncStorage.getItem('@user');
+        if (user && navigationRef.current) {
+          // Using `reset` to clear the navigation stack and navigate to HomeTabs
+          navigationRef.current.reset({
+            index: 0,
+            routes: [{ name: 'HomeTabs' }],
+          });
+        } else if (!user) {
+          setInitialRoute('Welcome'); // Set initial route to Welcome if no user
+        }
+      } catch (e) {
+        console.error('Failed to fetch the data from storage');
+      }
+    };
+  
+    checkUser();
+  }, []);
+
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={navigationRef}>
       <Stack.Navigator
-        initialRouteName="Welcome"
+        initialRouteName={initialRoute}
         screenOptions={{
           headerStyle: styles.headerStyle,
           headerTintColor: '#fff',
@@ -91,10 +112,9 @@ export default function App() {
         }}
       >
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }}/>
-        <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }}/>
+        <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
         <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
-        {/* Stack screens for setting details */}
         <Stack.Screen name="GeneralSettings" component={GeneralSettingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ headerShown: false }} />
