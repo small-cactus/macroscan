@@ -3,6 +3,9 @@ import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput,
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
+import { Appearance } from 'react-native';
+
+const colorScheme = Appearance.getColorScheme();
 
 export default function AccountScreen() {
   const [imageUri, setImageUri] = useState(null);

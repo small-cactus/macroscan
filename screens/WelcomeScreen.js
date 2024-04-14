@@ -12,6 +12,9 @@ import {
   Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
+import { Appearance } from 'react-native';
+
+const colorScheme = Appearance.getColorScheme();
 
 export default function SignInScreen({ navigation }) {
 
