@@ -257,7 +257,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontSize: 16,
   },
   subscriptionContainer: {
-    marginTop: 30,
+    marginTop: '10%',
     alignItems: 'center',
     paddingBottom: 60,
   },
@@ -269,7 +269,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   subscriptionFeature: {
     color: 'white',
     fontSize: 16,
-    marginBottom: 5,
+    marginBottom: '2%',
   },
   subscribeButtonText: {
     color: 'black',
@@ -280,12 +280,12 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   titleWithLogo: {
     flexDirection: 'row', // Align children in a row
     alignItems: 'center', // Align children vertically in the center
-    marginBottom: 10, // Space below the row
+    marginBottom: '2%',
   },
   logo: {
     width: 40, // Adjust width as needed
     height: 40, // Adjust height as needed
-    marginRight: 10, // Space between logo and title
+    marginRight: '4%', // Space between logo and title
     resizeMode: 'contain', // So the logo does not get stretched
   },
   priceText: {
@@ -294,7 +294,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: '700',
     marginTop: 4, // Adjust the space between the button and the price text as needed
     textAlign: 'right',
-    marginRight: 25,
+    marginRight: '7%',
   },
   subscribeButton1: {
     backgroundColor: '#ffffff',
@@ -302,7 +302,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: 22,
+    marginLeft: '6%',
   },
   subscribeButton2: {
     backgroundColor: '#ffffff',
@@ -310,7 +310,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: 36,
+    marginLeft: '10%',
   },
   subscribeButton3: {
     backgroundColor: '#ffffff',
@@ -318,7 +318,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: 43,
+    marginLeft: '11%',
   },
   subscriptionOption1: {
     backgroundColor: 'black',

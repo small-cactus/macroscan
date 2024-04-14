@@ -339,8 +339,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
     borderRadius: 20,
     padding: 12,
-    marginHorizontal: 10,
-    width: 150
+    marginHorizontal: '3%',
+    width: '88%',
   },
   buttonText: {
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
