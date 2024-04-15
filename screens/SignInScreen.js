@@ -23,7 +23,7 @@ export default function SignInScreen({ navigation }) {
   const styles = getDynamicStyles(colorScheme);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+    clientId: '830662615947-43bqv545rv1a658ubolq5g3pbjlpu0ib.apps.googleusercontent.com',
     scopes: ['profile', 'email'],
   });
   

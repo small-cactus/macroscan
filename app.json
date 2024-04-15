@@ -5,34 +5,26 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
+    "scheme": "https://auth.expo.io/@smallcactus/MacroScan",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
-    "expo": {
-      "scheme": "com.googleusercontent.apps.830662615947-dfegs54vrr3juofumtac1ic7hilg547",
-      "ios": {
-        "bundleIdentifier": "host.exp.exponent",
-        "config": {
-          "googleSignIn": {
-            "apiKey": "GOOGLE_SIGNIN_API_KEY_REMOVED",
-            "clientId": "830662615947-dfegs54vrr3juofumtac1ic7hilg547j.apps.googleusercontent.com"
-          }
-        }
-      }
-    },    
-    "assetBundlePatterns": [
-      "**/*"
-    ],
     "ios": {
+      "bundleIdentifier": "com.smallcactus.MacroScan",
+      "config": {
+        "googleSignIn": {
+          "apiKey": "GOOGLE_SIGNIN_API_KEY_REMOVED",
+          "clientId": "830662615947-43bqv545rv1a658ubolq5g3pbjlpu0ib.apps.googleusercontent.com"
+        }
+      },
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to scan food items.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",
         "NSLocationWhenInUseUsageDescription": "This app needs access to your location to provide localized pricing based on your geographic location."
-      },
-      "bundleIdentifier": "com.smallcactus.MacroScan"
+      }
     },
     "android": {
       "adaptiveIcon": {
@@ -54,6 +46,7 @@
     },
     "plugins": [
       "expo-secure-store"
-    ]
+    ],
+    "owner": "macroscan"
   }
 }

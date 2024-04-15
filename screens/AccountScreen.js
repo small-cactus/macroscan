@@ -1,9 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import { Appearance } from 'react-native';
+
+const { width, height } = Dimensions.get('window');
+const fontSize = width * 0.045; // 5% of screen width
 
 
 export default function AccountScreen() {
@@ -12,6 +15,7 @@ export default function AccountScreen() {
   const [loadError, setLoadError] = useState(false);
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
+
 
 
   useEffect(() => {
@@ -278,7 +282,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   subscriptionTitle: {
     color: 'white',
-    fontSize: 20,
+    fontSize: fontSize,
     fontWeight: 'bold',
   },
   subscriptionFeature: {
