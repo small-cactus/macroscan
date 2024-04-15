@@ -8,6 +8,8 @@ import { Appearance } from 'react-native';
 const { width, height } = Dimensions.get('window');
 const fontSize = width * 0.045; // 5% of screen width
 const logoSize = width * 0.1; // 5% of screen width
+const subcriptionFeatureSize = width * 0.037; // 5% of screen width
+const priceTextSize = width * 0.037; // 5% of screen width
 
 
 export default function AccountScreen() {
@@ -288,7 +290,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   subscriptionFeature: {
     color: 'white',
-    fontSize: 16,
+    fontSize: subcriptionFeatureSize,
     marginBottom: '2%',
   },
   subscribeButtonText: {
@@ -310,7 +312,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   priceText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: priceTextSize,
     fontWeight: '700',
     marginTop: 4, // Adjust the space between the button and the price text as needed
     textAlign: 'right',
