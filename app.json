@@ -11,6 +11,18 @@
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
+    "expo": {
+      "scheme": "com.googleusercontent.apps.830662615947-dfegs54vrr3juofumtac1ic7hilg547",
+      "ios": {
+        "bundleIdentifier": "host.exp.exponent",
+        "config": {
+          "googleSignIn": {
+            "apiKey": "GOOGLE_SIGNIN_API_KEY_REMOVED",
+            "clientId": "830662615947-dfegs54vrr3juofumtac1ic7hilg547j.apps.googleusercontent.com"
+          }
+        }
+      }
+    },    
     "assetBundlePatterns": [
       "**/*"
     ],

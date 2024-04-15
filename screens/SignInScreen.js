@@ -14,12 +14,37 @@ import * as AppleAuthentication from 'expo-apple-authentication';
 import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
+import * as Google from 'expo-auth-session/providers/google';
 
 export default function SignInScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: 'YOUR_CLIENT_ID.apps.googleusercontent.com',
+    scopes: ['profile', 'email'],
+  });
+  
+  React.useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+  
+      // Optionally send the ID token to your server for validation and to create a session
+      storeData(response.params); // Assuming storeData can handle this object
+  
+      navigation.navigate('HomeTabs', { screen: 'Home' });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'HomeTabs' }],
+      });
+    } else if (response?.type === 'cancel') {
+      console.log('Google Sign-in cancelled');
+    } else if (response?.type === 'error') {
+      Alert.alert("Google Sign-In Error", response.error);
+    }
+  }, [response]);
 
   const handleLogin = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -107,12 +132,13 @@ export default function SignInScreen({ navigation }) {
               <FontAwesome name="apple" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
             </View>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            navigation.navigate('HomeTabs', {
-              screen: 'Home',
-            });
-          }}>
+          <TouchableOpacity
+            style={styles.GoogleContinueButton}
+            onPress={() => {
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              promptAsync();
+            }}
+          >
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={styles.GoogleContinueText}>
                 Continue with Google

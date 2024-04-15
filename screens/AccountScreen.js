@@ -44,6 +44,18 @@ const resetImageUri = async () => {
   }
 };
 
+const deleteAccount = async () => {
+  try {
+      // Remove the userImageUri key from AsyncStorage
+      await AsyncStorage.removeItem('@user');
+      // Reset the imageUri state to null or directly to the placeholder URI
+      Alert.alert('Account deleted', 'Your account has been deleted, restart the app.');
+  } catch (error) {
+      Alert.alert('Error', 'Failed to delete account.');
+      console.error(error);
+  }
+};
+
 const saveData = async (uri) => {
   try {
       await AsyncStorage.setItem('userName', name);
@@ -108,6 +120,9 @@ const saveData = async (uri) => {
                 color={colorScheme === 'dark' ? 'black' : 'white'}  // Dynamic color based on mode
             />
           </View>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
+          <Text style={styles.deleteButtonText}>Delete Account</Text>
         </TouchableOpacity>
       </View>
       <View style={styles.content}>
@@ -343,5 +358,18 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 30,
     width: '100%',
     marginBottom: '3%',
+  },
+  deleteButton: {
+    marginTop: 20,
+    backgroundColor: '#FF4136', // Red color for a delete action
+    padding: 15,
+    borderRadius: 8,
+    width: '100%',
+  },
+  deleteButtonText: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
   },
 });
