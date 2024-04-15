@@ -7,6 +7,7 @@ import { Appearance } from 'react-native';
 
 const { width, height } = Dimensions.get('window');
 const fontSize = width * 0.045; // 5% of screen width
+const logoSize = width * 0.1; // 5% of screen width
 
 
 export default function AccountScreen() {
@@ -302,8 +303,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: '2%',
   },
   logo: {
-    width: 40, // Adjust width as needed
-    height: 40, // Adjust height as needed
+    width: logoSize, // Adjust width as needed
+    height: logoSize, // Adjust height as needed
     marginRight: '4%', // Space between logo and title
     resizeMode: 'contain', // So the logo does not get stretched
   },
