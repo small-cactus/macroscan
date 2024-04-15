@@ -368,7 +368,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   deleteButtonText: {
     color: 'white',
-    fontSize: 16,
+    fontSize: 17,
     textAlign: 'center',
     fontWeight: 'bold',
   },
