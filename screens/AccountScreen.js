@@ -75,7 +75,7 @@ const deleteAccount = async () => {
             await AsyncStorage.removeItem('userImageUri');
             await AsyncStorage.removeItem('userName');
             // Reset the imageUri state to null or directly to the placeholder URI
-            Alert.alert('Account deleted', 'Your account has been deleted, restart the app.');
+            Alert.alert('Account deleted', 'Your account has been deleted.');
             navigation.reset({
               index: 0,
               routes: [{ name: 'Goodbye' }],
@@ -157,13 +157,10 @@ const saveData = async (uri) => {
             />
           </View>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
-          <Text style={styles.deleteButtonText}>Delete Account</Text>
-        </TouchableOpacity>
       </View>
       <View style={styles.content}>
       <Text style={styles.title}>
-        {name && name.split(" ")[0] ? `Hi, ${name.split(" ")[0]}!` : "Your Account"}
+        {name && name.split(" ")[0] ? `Hi, ${name.split(" ")[0]}! 👋` : "Your Account"}
       </Text>
       <TextInput
         style={styles.input}
@@ -238,6 +235,11 @@ const saveData = async (uri) => {
     <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
     <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
   </View>
+  <Text style={styles.dangerSection}>⚠️ Danger Section ⚠️</Text>
+  <View style={styles.separatorBox}></View>
+  <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
+          <Text style={styles.deleteButtonText}>Delete Account</Text>
+        </TouchableOpacity>
 </View>
     </ScrollView>
   );
@@ -396,16 +398,30 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: '3%',
   },
   deleteButton: {
-    marginTop: 20,
+    marginTop: '6%',
     backgroundColor: '#FF4136', // Red color for a delete action
     padding: 15,
-    borderRadius: 8,
-    width: '100%',
+    borderRadius: 100,
+    width: '45%',
+    marginBottom: '10%',
   },
   deleteButtonText: {
     color: 'white',
-    fontSize: 17,
+    fontSize: 16,
     textAlign: 'center',
     fontWeight: 'bold',
+  },
+  dangerSection: {
+    marginTop: '5%',
+    marginBottom: '5%',
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 18,
+    fontWeight: 'bold',
+  },
+  separatorBox: {
+    width: 330,
+    height: 5,
+    backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
+    borderRadius: 3,
   },
 });

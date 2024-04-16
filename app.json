@@ -14,35 +14,39 @@
     },
     "ios": {
       "bundleIdentifier": "com.smallcactus.MacroScan"
-      },
-      "infoPlist": {
-        "NSCameraUsageDescription": "This app uses the camera to scan food items.",
-        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",
-        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to provide localized pricing based on your geographic location."
-      }
     },
-    "android": {
-      "adaptiveIcon": {
-        "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
-      },
-      "permissions": [
-        "ACCESS_FINE_LOCATION",
-        "ACCESS_COARSE_LOCATION"
-      ],
-      "package": "com.smallcactus.MacroScan"
-    },
-    "web": {
-      "favicon": "./assets/favicon.png"
+    "infoPlist": {
+      "NSCameraUsageDescription": "This app uses the camera to scan food items.",
+      "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",
+      "NSLocationWhenInUseUsageDescription": "This app needs access to your location to provide localized pricing based on your geographic location."
     },
     "extra": {
       "eas": {
         "projectId": "c42ab5b9-26da-4317-9520-8926f5560290"
       }
+    }
+  },
+  "android": {
+    "adaptiveIcon": {
+      "foregroundImage": "./assets/adaptive-icon.png",
+      "backgroundColor": "#ffffff"
     },
-    "plugins": [
-      "expo-secure-store"
+    "permissions": [
+      "ACCESS_FINE_LOCATION",
+      "ACCESS_COARSE_LOCATION"
     ],
-    "owner": "macroscan"
-  }
-
+    "package": "com.smallcactus.MacroScan"
+  },
+  "web": {
+    "favicon": "./assets/favicon.png"
+  },
+  "extra": {
+    "eas": {
+      "projectId": "c42ab5b9-26da-4317-9520-8926f5560290"
+    }
+  },
+  "plugins": [
+    "expo-secure-store"
+  ],
+  "owner": "macroscan"
+}
