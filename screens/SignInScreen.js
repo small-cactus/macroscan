@@ -44,6 +44,14 @@ export default function SignInScreen({ navigation }) {
     }
   }, [response]);
 
+  const navigateHome = () => {
+    navigation.navigate('HomeTabs', { screen: 'Home' });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeTabs' }],
+    });
+  };
+
   const handleLogin = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
@@ -106,6 +114,7 @@ export default function SignInScreen({ navigation }) {
           source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
           style={styles.icon} // Define a style for your icon
         />
+<<<<<<< Updated upstream
         <View style={styles.container}>
           <TextInput
             style={styles.input}
@@ -156,6 +165,48 @@ export default function SignInScreen({ navigation }) {
             <Text style={styles.SignUpRedirect}>Don't Have an Account?</Text>
           </TouchableOpacity>
         </View>
+=======
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#A9A9A9"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+        <TouchableOpacity style={styles.button} onPress={handleLogin}>
+          <Text style={styles.buttonText}>Sign In</Text>
+        </TouchableOpacity>
+        <View style={styles.separatorBox}></View>
+        <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.AppleContinueText}>
+              Continue with Apple
+            </Text>
+            <FontAwesome name="apple" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.GoogleContinueButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            promptAsync();
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.GoogleContinueText}>
+              Continue with Google
+            </Text>
+            <FontAwesome name="google" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.SignInRedirect} onPress={() => {
+          navigation.navigate('SignUp');
+        }}>
+          <Text style={styles.SignInText}>Don't Have an Account?</Text>
+        </TouchableOpacity>
+>>>>>>> Stashed changes
       </View>
   );
 }
