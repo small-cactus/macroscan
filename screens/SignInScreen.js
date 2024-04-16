@@ -22,7 +22,7 @@ WebBrowser.maybeCompleteAuthSession();
 export default function SignInScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const colorScheme = Appearance.getColorScheme();
+  const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
@@ -43,6 +43,13 @@ export default function SignInScreen({ navigation }) {
       Alert.alert("Google Sign-In Error", response.error);
     }
   }, [response]);
+
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setColorScheme(colorScheme);
+    });
+    return () => subscription.remove();
+  }, []);
 
   const navigateHome = () => {
     navigation.navigate('HomeTabs', { screen: 'Home' });
@@ -135,7 +142,7 @@ export default function SignInScreen({ navigation }) {
           <TouchableOpacity style={styles.button} onPress={handleLogin}>
             <Text style={styles.buttonText}>Sign In</Text>
           </TouchableOpacity>
-          <View style={styles.seperatorBox}></View>
+          <View style={styles.separatorBox}></View>
           <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={styles.AppleContinueText}>
@@ -184,12 +191,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#000',
+    color: colorScheme === 'dark' ? '#fff' : '#000',
     textAlign: 'center',
     marginTop: 100,
     marginBottom: 40,
-    color: colorScheme === 'dark' ? '#fff' : '#333',
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    zIndex: 1,
   },
   input: {
     width: '80%',

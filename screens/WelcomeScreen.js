@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -16,11 +16,18 @@ import { Appearance } from 'react-native';
 
 
 export default function SignInScreen({ navigation }) {
-  const colorScheme = Appearance.getColorScheme();
+  const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
   const handleLogin = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
   };
+
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setColorScheme(colorScheme);
+    });
+    return () => subscription.remove();
+  }, []);
 
   return (
       <View style={styles.View}>

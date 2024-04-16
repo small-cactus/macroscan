@@ -23,7 +23,7 @@ export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
-  const colorScheme = Appearance.getColorScheme();
+  const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
@@ -42,6 +42,13 @@ export default function SignUpScreen({ navigation }) {
       Alert.alert("Google Sign-In Error", response.error);
     }
   }, [response]);
+
+  useEffect(() => {
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      setColorScheme(colorScheme);
+    });
+    return () => subscription.remove();
+  }, []);
 
   const navigateHome = () => {
     navigation.navigate('HomeTabs', { screen: 'Home' });
@@ -141,7 +148,7 @@ export default function SignUpScreen({ navigation }) {
           <TouchableOpacity style={styles.button} onPress={handleSignUp}>
             <Text style={styles.buttonText}>Sign Up</Text>
           </TouchableOpacity>
-          <BoxComponent />
+          <View style={styles.seperatorBox}></View>
           <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
               <Text style={styles.AppleContinueText}>
