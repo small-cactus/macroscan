@@ -147,7 +147,7 @@ export default function SignInScreen({ navigation }) {
             <Text style={styles.GoogleContinueText}>
               Continue with Google
             </Text>
-            <FontAwesome name="google" size='20' color="#ffffff" style={{ marginLeft: 10 }} />
+            <FontAwesome name="google" fontSize="20" color="#ffffff" style={{ marginLeft: 10 }} />
           </View>
         </TouchableOpacity>
         <TouchableOpacity style={styles.SignInRedirect} onPress={() => {
