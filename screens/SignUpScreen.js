@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,16 +6,18 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
+import * as WebBrowser from "expo-web-browser";
+import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import { Appearance } from 'react-native';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');
@@ -23,34 +25,61 @@ export default function SignUpScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
-  const BoxComponent = () => {
-    return (
-      <View style={styles.seperatorBox}></View>
-    );
+
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: '675290991564-r29a0q0hf25s70vnh3u29m7tsupihm3f.apps.googleusercontent.com', // Replace with your actual client ID
+    scopes: ['profile', 'email'],
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      storeData(response.params);
+      navigateHome();
+    } else if (response?.type === 'cancel') {
+      console.log('Google Sign-in cancelled');
+    } else if (response?.type === 'error') {
+      Alert.alert("Google Sign-In Error", response.error);
+    }
+  }, [response]);
+
+  const navigateHome = () => {
+    navigation.navigate('HomeTabs', { screen: 'Home' });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeTabs' }],
+    });
   };
 
+  const handleSignUp = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  
+    // Check if either password or confirm password is null (empty)
+    if (!password || !confirmPassword) {
+      Alert.alert('Invalid Input', 'Password fields cannot be empty.');
+      return; // Stop the function execution if validation fails
+    }
+  
+    // Check if passwords match
+    if (password !== confirmPassword) {
+      Alert.alert('Password Mismatch', 'The passwords do not match.');
+      return; // Stop the function execution if validation fails
+    }
+  
+    // If all checks pass, navigate to the HomeTabs screen
+    navigation.navigate('HomeTabs', { screen: 'Home' });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeTabs' }],
+    });
+  };
 
   const storeData = async (value) => {
     try {
-      console.log("Storing data:", value); // Add logging to see what is being stored
       const jsonValue = JSON.stringify(value);
       await AsyncStorage.setItem('@user', jsonValue);
     } catch (e) {
       console.error("Failed to store data:", e);
-    }
-  };
-
-  const handleLogin = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    if (username === 'Macro' && password === 'Scan') {
-      navigation.navigate('HomeTabs', { screen: 'Home' });
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeTabs' }],
-      });
-    } else {
-      Alert.alert('Invalid Credentials', 'The username or password is incorrect.');
     }
   };
 
@@ -65,11 +94,7 @@ export default function SignUpScreen({ navigation }) {
       });
       console.log(credential);
       await storeData(credential);
-      navigation.navigate('HomeTabs', { screen: 'Home' });
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeTabs' }],
-      });
+      navigateHome();
     } catch (e) {
       if (e.code === 'ERR_CANCELED') {
         console.log('Sign in with Apple was cancelled!');
@@ -80,74 +105,78 @@ export default function SignUpScreen({ navigation }) {
   };
 
   return (
-      <ScrollView contentContainerStyle={styles.scrollView}>
-        <Text style={styles.title}>Sign Up for MacroScan</Text>
-        <Image
-          source={require('../assets/icon.png')} // Adjust the path accordingly
-          style={styles.icon} // Define a style for your icon
+    <ScrollView contentContainerStyle={styles.scrollView}>
+      <Text style={styles.title}>Sign Up for MacroScan</Text>
+      <Image
+        source={require('../assets/icon.png')}
+        style={styles.icon}
+      />
+      <View style={styles.container}>
+        <TextInput
+          style={styles.input}
+          placeholder="Username"
+          placeholderTextColor="#A9A9A9"
+          value={username}
+          onChangeText={setUsername}
+          autoCapitalize="none"
         />
-        <View style={styles.container}>
-          <TextInput
-            style={styles.input}
-            placeholder="Username"
-            placeholderTextColor="#A9A9A9"
-            value={username}
-            onChangeText={setUsername}
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Password"
-            placeholderTextColor="#A9A9A9"
-            value={password}
-            onChangeText={setPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-          <TextInput
-            style={styles.input}
-            placeholder="Confirm Password"
-            placeholderTextColor="#A9A9A9"
-            value={confirmPassword}
-            onChangeText={setConfirmPassword}
-            secureTextEntry
-            autoCapitalize="none"
-          />
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
-            <Text style={styles.buttonText}>Sign Up</Text>
-          </TouchableOpacity>
-          <BoxComponent />
-          <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={styles.AppleContinueText}>
-                Continue with Apple
-              </Text>
-              <FontAwesome name="apple" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.GoogleContinueButton} onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            navigation.navigate('HomeTabs', {
-              screen: 'Home',
-            });
-          }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
-              <Text style={styles.GoogleContinueText}>
-                Continue with Google
-              </Text>
-              <FontAwesome name="google" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
-            </View>
-          </TouchableOpacity>
-
-          <TouchableOpacity style={styles.SignUpRedirect} onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            navigation.navigate('SignIn');
-          }}>
-            <Text style={styles.SignUpText}>Already Have an Account?</Text>
-          </TouchableOpacity>
-        </View>
-      </ScrollView>
+        <TextInput
+          style={styles.input}
+          placeholder="Password"
+          placeholderTextColor="#A9A9A9"
+          value={password}
+          onChangeText={setPassword}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+        <TextInput
+          style={styles.input}
+          placeholder="Confirm Password"
+          placeholderTextColor="#A9A9A9"
+          value={confirmPassword}
+          onChangeText={setConfirmPassword}
+          secureTextEntry
+          autoCapitalize="none"
+        />
+        <TouchableOpacity style={styles.button} onPress={() => {
+          if (password === confirmPassword) {
+            handleSignUp();
+          } else {
+            Alert.alert('Error', 'Passwords do not match');
+          }
+        }}>
+          <Text style={styles.buttonText}>Sign Up</Text>
+        </TouchableOpacity>
+        <View style={styles.separatorBox}></View>
+        <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.AppleContinueText}>
+              Continue with Apple
+            </Text>
+            <FontAwesome name="apple" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity
+          style={styles.GoogleContinueButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            promptAsync();
+          }}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
+            <Text style={styles.GoogleContinueText}>
+              Continue with Google
+            </Text>
+            <FontAwesome name="google" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
+          </View>
+        </TouchableOpacity>
+        <TouchableOpacity style={styles.SignInRedirect} onPress={() => {
+          navigation.navigate('SignIn');
+        }}>
+          <Text style={styles.SignInText}>Already Have an Account?</Text>
+        </TouchableOpacity>
+      </View>
+    </ScrollView>
   );
 }
 
