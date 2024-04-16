@@ -138,7 +138,7 @@ export default function SignUpScreen({ navigation }) {
             secureTextEntry
             autoCapitalize="none"
           />
-          <TouchableOpacity style={styles.button} onPress={handleLogin}>
+          <TouchableOpacity style={styles.button} onPress={handleSignUp}>
             <Text style={styles.buttonText}>Sign Up</Text>
           </TouchableOpacity>
           <BoxComponent />
