@@ -14,6 +14,7 @@ import DetailsScreen from './screens/DetailsScreen';
 import SignInScreen from './screens/SignInScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AccountScreen from './screens/AccountScreen';
+import GoodbyeScreen from './screens/GoodbyeScreen';
 import { GeneralSettingsScreen, AccountSettingsScreen, NotificationSettingsScreen } from './screens/SettingsElements';
 
 const Stack = createNativeStackNavigator();
@@ -104,6 +105,7 @@ function App() {
         <Stack.Screen name="GeneralSettings" component={GeneralSettingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="AccountSettings" component={AccountSettingsScreen} options={{ headerShown: false }} />
         <Stack.Screen name="NotificationSettings" component={NotificationSettingsScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
       <StatusBar style={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
     </NavigationContainer>

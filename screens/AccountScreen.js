@@ -4,6 +4,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import { Appearance } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
+
+
 
 const { width, height } = Dimensions.get('window');
 const fontSize = width * 0.045; // 5% of screen width
@@ -18,7 +21,7 @@ export default function AccountScreen() {
   const [loadError, setLoadError] = useState(false);
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
-
+  const navigation = useNavigation();  // Correctly use the navigation hook here
 
 
   useEffect(() => {
@@ -37,7 +40,6 @@ export default function AccountScreen() {
     loadProfile();
 }, []);
 
-
 const resetImageUri = async () => {
   try {
       // Remove the userImageUri key from AsyncStorage
@@ -52,15 +54,42 @@ const resetImageUri = async () => {
 };
 
 const deleteAccount = async () => {
-  try {
-      // Remove the userImageUri key from AsyncStorage
-      await AsyncStorage.removeItem('@user');
-      // Reset the imageUri state to null or directly to the placeholder URI
-      Alert.alert('Account deleted', 'Your account has been deleted, restart the app.');
-  } catch (error) {
-      Alert.alert('Error', 'Failed to delete account.');
-      console.error(error);
-  }
+  // Ask user for confirmation before deleting the account
+  Alert.alert(
+    'Delete Account', // Title of the alert
+    'Are you sure you want to delete your account? This action cannot be undone.', // Message of the alert
+    [
+      // Array of buttons
+      {
+        text: 'Cancel',
+        onPress: () => console.log('Account deletion cancelled'), // Log message or handle cancellation
+        style: 'cancel', // Style of the cancel button
+      },
+      {
+        text: 'Delete',
+        onPress: async () => {
+          // Proceed with account deletion
+          try {
+            // Remove the userImageUri key from AsyncStorage
+            await AsyncStorage.removeItem('@user');
+            await AsyncStorage.removeItem('userImageUri');
+            await AsyncStorage.removeItem('userName');
+            // Reset the imageUri state to null or directly to the placeholder URI
+            Alert.alert('Account deleted', 'Your account has been deleted, restart the app.');
+            navigation.reset({
+              index: 0,
+              routes: [{ name: 'Goodbye' }],
+            });
+          } catch (error) {
+            Alert.alert('Error', 'Failed to delete account.');
+            console.error(error);
+          }
+        },
+        style: 'destructive', // Style to indicate this is a destructive action
+      }
+    ],
+    { cancelable: false } // Makes it so the alert is not dismissible outside of clicking buttons
+  );
 };
 
 const saveData = async (uri) => {
