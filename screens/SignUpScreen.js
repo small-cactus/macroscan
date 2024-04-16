@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,17 +6,18 @@ import {
   TouchableOpacity,
   StyleSheet,
   Alert,
-  KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Image,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
-import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
+import * as WebBrowser from "expo-web-browser";
+import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import { Appearance } from 'react-native';
 
+WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');
@@ -24,35 +25,61 @@ export default function SignUpScreen({ navigation }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
-  const BoxComponent = () => {
 
-    return (
-      <View style={styles.seperatorBox}></View>
-    );
+  const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
+    clientId: '675290991564-r29a0q0hf25s70vnh3u29m7tsupihm3f.apps.googleusercontent.com', // Replace with your actual client ID
+    scopes: ['profile', 'email'],
+  });
+
+  useEffect(() => {
+    if (response?.type === 'success') {
+      const { id_token } = response.params;
+      storeData(response.params);
+      navigateHome();
+    } else if (response?.type === 'cancel') {
+      console.log('Google Sign-in cancelled');
+    } else if (response?.type === 'error') {
+      Alert.alert("Google Sign-In Error", response.error);
+    }
+  }, [response]);
+
+  const navigateHome = () => {
+    navigation.navigate('HomeTabs', { screen: 'Home' });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeTabs' }],
+    });
   };
 
+  const handleSignUp = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  
+    // Check if either password or confirm password is null (empty)
+    if (!password || !confirmPassword) {
+      Alert.alert('Invalid Input', 'Password fields cannot be empty.');
+      return; // Stop the function execution if validation fails
+    }
+  
+    // Check if passwords match
+    if (password !== confirmPassword) {
+      Alert.alert('Password Mismatch', 'The passwords do not match.');
+      return; // Stop the function execution if validation fails
+    }
+  
+    // If all checks pass, navigate to the HomeTabs screen
+    navigation.navigate('HomeTabs', { screen: 'Home' });
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'HomeTabs' }],
+    });
+  };
 
   const storeData = async (value) => {
     try {
-      console.log("Storing data:", value); // Add logging to see what is being stored
       const jsonValue = JSON.stringify(value);
       await AsyncStorage.setItem('@user', jsonValue);
     } catch (e) {
       console.error("Failed to store data:", e);
-    }
-  };
-
-  const handleLogin = () => {
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    
-    if (username === 'Macro' && password === 'Scan') {
-      navigation.navigate('HomeTabs', { screen: 'Home' });
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeTabs' }],
-      });
-    } else {
-      Alert.alert('Invalid Credentials', 'The username or password is incorrect.');
     }
   };
 
@@ -67,11 +94,7 @@ export default function SignUpScreen({ navigation }) {
       });
       console.log(credential);
       await storeData(credential);
-      navigation.navigate('HomeTabs', { screen: 'Home' });
-      navigation.reset({
-        index: 0,
-        routes: [{ name: 'HomeTabs' }],
-      });
+      navigateHome();
     } catch (e) {
       if (e.code === 'ERR_CANCELED') {
         console.log('Sign in with Apple was cancelled!');
