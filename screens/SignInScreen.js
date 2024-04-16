@@ -229,7 +229,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: 120,
     height: 120,
     alignSelf: 'center',
-    marginBottom: '-90%',
+    marginBottom: '-80%',
     marginTop: '-2%',
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     zIndex: 1,
