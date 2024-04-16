@@ -23,11 +23,11 @@ export default function SignInScreen({ navigation }) {
   };
 
   return (
-      <ScrollView contentContainerStyle={styles.scrollView}>
+      <View style={styles.View}>
         <Text style={styles.title}>Welcome to MacroScan</Text>
         <Image
-  source={require('../assets/icon.png')} // Adjust the path accordingly
-  style={styles.icon} // Define a style for your icon
+  source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
+  style={styles.icon} // Define a style for your icon icon
 />
 <View style={styles.container}></View>
         <View style={styles.container}>
@@ -45,14 +45,14 @@ export default function SignInScreen({ navigation }) {
 }}>
   <Text style={styles.SignInText}>Already Have an Account?</Text>
 </TouchableOpacity>
-      </ScrollView>
+      </View>
   );
 }
 
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
-  scrollView: {
+  View: {
     flexGrow: 1,
-    justifyContent: 'center',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
   },
   container: {
     flexGrow: 1,
@@ -60,6 +60,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     marginTop: -330,
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
   },
   title: {
     fontSize: 30,
@@ -68,6 +69,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     textAlign: 'center',
     marginTop: 100, // Adjust as needed to position the title at the top
     marginBottom: 40,
+    color: colorScheme === 'dark' ? '#fff' : '#333',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    zIndex: 1,
   },
   input: {
     width: '80%', // Adjust based on preference
@@ -78,8 +82,10 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 20, // Increased borderRadius for more pronounced rounded corners
     borderWidth: 1,
     borderColor: 'gray',
-    color: '#000', // Text color
-  },
+    color: '#000',
+    borderColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#fff',
+  }, // Text color
   button: {
     width: '80%', // Match the input fields width
     backgroundColor: '#000000',
@@ -87,9 +93,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 20, // Maintain rounded corners for consistency
     alignItems: 'center',
     marginTop: 10,
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
   },
   buttonText: {
     color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     fontSize: 16,
   },
@@ -98,23 +106,27 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     height: 150, // Adjust the height as needed
     alignSelf: 'center', // Center the icon horizontally
     marginBottom: -380, // Space between icon and the next element
-    marginTop: -10
+    marginTop: -10,
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    zIndex: 1,
   },
   SignUpButton:{
     alignSelf: 'center',
     marginTop: 20,
     marginBottom: 20,
-    borderWidth: 5,
+    borderWidth: 0,
     width: '40%',
     height: '5%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
     borderRadius: 200,
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
 
   },
   SignUpText: {
     textAlign: 'center',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     fontSize: 20,
     color: "#ffffff",
@@ -131,6 +143,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   SignInText: {
     textAlign: 'center',
     fontSize: 15,
-    color: "#000000"
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    textDecorationLine: 'underline'
   },
 });

@@ -17,6 +17,7 @@ import { FontAwesome } from '@expo/vector-icons'; // Ensure FontAwesome is insta
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
 
+
 export default function SignUpScreen({ navigation }) {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -24,6 +25,7 @@ export default function SignUpScreen({ navigation }) {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const BoxComponent = () => {
+
     return (
       <View style={styles.seperatorBox}></View>
     );
@@ -80,10 +82,10 @@ export default function SignUpScreen({ navigation }) {
   };
 
   return (
-      <ScrollView contentContainerStyle={styles.scrollView}>
+    <View style={styles.view}>
         <Text style={styles.title}>Sign Up for MacroScan</Text>
         <Image
-          source={require('../assets/icon.png')} // Adjust the path accordingly
+          source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
           style={styles.icon} // Define a style for your icon
         />
         <View style={styles.container}>
@@ -144,17 +146,17 @@ export default function SignUpScreen({ navigation }) {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             navigation.navigate('SignIn');
           }}>
-            <Text style={styles.SignUpText}>Already Have an Account?</Text>
+            <Text style={styles.SignUpRedirect}>Already Have an Account?</Text>
           </TouchableOpacity>
         </View>
-      </ScrollView>
+  </View>      
   );
 }
 
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
-  scrollView: {
+  view: {
     flexGrow: 1,
-    justifyContent: 'center',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF', // Apply background color here
   },
   container: {
     flexGrow: 1,
@@ -162,6 +164,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     padding: 20,
     marginTop: 200,
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    color: colorScheme === 'dark' ? '#161618' : '#FFF',
+    
   },
   title: {
     fontSize: 24,
@@ -170,6 +175,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     textAlign: 'center',
     marginTop: 100,
     marginBottom: 20,
+    color: colorScheme === 'dark' ? '#fff' : '#333',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    zIndex: 1,
   },
   input: {
     width: '80%',
@@ -180,7 +188,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 20,
     borderWidth: 1,
     borderColor: 'gray',
-    color: '#000',
+    color: colorScheme === 'dark' ? '#FFF' : '#000',
+    borderColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#fff',
   },
   button: {
     width: '80%',
@@ -189,9 +199,10 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     marginTop: 10,
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
   },
   buttonText: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     fontSize: 16,
   },
@@ -199,13 +210,15 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: 120,
     height: 120,
     alignSelf: 'center',
-    marginBottom: -380,
-    marginTop: -10
+    marginTop: '-2%',
+    marginBottom: "-80%",
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    zIndex: 1,
   },
   seperatorBox: {
     width: 330,
     height: 5,
-    backgroundColor: '#C8C8C8',
+    backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
     marginTop: 20,
     marginBottom: 10,
     borderRadius: 3,
@@ -214,16 +227,17 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignSelf: 'center',
     marginTop: 20,
     marginBottom: 20,
-    borderWidth: 5,
+    borderWidth: 0,
     width: '88%',
     height: '7%',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: "#000000",
     borderRadius: 100,
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
   },
   AppleContinueText: {
-    color:'#ffffff',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     fontSize: 18,
   },
@@ -231,22 +245,22 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignSelf: 'center',
     marginTop: 20,
     marginBottom: 60,
-    borderWidth: 5,
+    borderWidth: 0,
     width: '88%',
     height: '7%',
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: "#000000",
     borderRadius: 100,
     marginTop: 2,
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
   },
   GoogleContinueText: {
-    color:'#ffffff',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     fontSize: 18
   },
   SignUpRedirect: {
-    textDecorationStyle: 'underline',
-    textDecorationStyle: 'solid',
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    textDecorationLine: 'underline'
   },
 });
