@@ -5,7 +5,7 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "https://auth.expo.io/@smallcactus/MacroScan",
+    "scheme": "MacroScan",
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
@@ -13,12 +13,7 @@
       "backgroundColor": "#ffffff"
     },
     "ios": {
-      "bundleIdentifier": "com.smallcactus.MacroScan",
-      "config": {
-        "googleSignIn": {
-          "apiKey": "GOOGLE_SIGNIN_API_KEY_REMOVED",
-          "clientId": "830662615947-43bqv545rv1a658ubolq5g3pbjlpu0ib.apps.googleusercontent.com"
-        }
+      "bundleIdentifier": "com.smallcactus.MacroScan"
       },
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to scan food items.",
@@ -34,7 +29,8 @@
       "permissions": [
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION"
-      ]
+      ],
+      "package": "com.smallcactus.MacroScan"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -49,4 +45,4 @@
     ],
     "owner": "macroscan"
   }
-}
+
