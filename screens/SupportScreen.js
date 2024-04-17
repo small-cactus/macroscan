@@ -86,6 +86,9 @@ const SupportScreen = () => {
 
   return (
     <SafeAreaView style={styles.safeArea}>
+      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
+        <Ionicons name="chevron-back" size={24} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+      </TouchableOpacity>
       <ScrollView style={styles.container}>
         <Text style={styles.title}>Support</Text>
         <View style={styles.content}>
@@ -189,6 +192,20 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: colorScheme === 'dark' ? '#fff' : '#fff',
     fontSize: 16,
     fontWeight: 'bold'
+  },
+  backButton: {
+    position: 'absolute', // Corrected to 'absolute' for exact placement
+    left: '5%',  // 5% from the right edge of the screen
+    top: '9%',  // 20% from the top of the screen
+    zIndex: 10, // Ensures the button is clickable over other elements
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+    borderRadius: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3,
+    elevation: 5,
+    padding: 10,
   },
 });
 

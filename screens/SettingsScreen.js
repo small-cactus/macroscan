@@ -1,72 +1,101 @@
 import React from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, SafeAreaView } from 'react-native';
-import Icon from 'react-native-vector-icons/MaterialIcons';  // Import the icons
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+} from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { Appearance } from 'react-native';
+import { Ionicons } from '@expo/vector-icons';
 
-const colorScheme = Appearance.getColorScheme();
+const SettingsScreen = () => {
+  const navigation = useNavigation();
+  const colorScheme = Appearance.getColorScheme();
+  const styles = getDynamicStyles(colorScheme);
 
-const SETTINGS = [
-  { id: '1', title: 'General', screen: 'GeneralSettings' },
-  { id: '2', title: 'Account', screen: 'AccountSettings' },
-  { id: '3', title: 'Notifications', screen: 'NotificationSettings' },
-];
+  const settingsOptions = [
+    {
+      title: "Account Settings",
+      navigateTo: "AccountSettingsScreen"
+    },
+    {
+      title: "Notification Preferences",
+      navigateTo: "NotificationSettingsScreen"
+    },
+    {
+      title: "Privacy and Security",
+      navigateTo: "PrivacySettingsScreen"
+    },
+    {
+      title: "About MacroScan",
+      navigateTo: "AboutScreen"
+    },
+    {
+      title: "Help and Support",
+      navigateTo: "SupportScreen"
+    },
+  ];
 
-
-const SettingsScreen = ({ navigation }) => {
-  const renderItem = ({ item }) => (
-    <TouchableOpacity
-      style={styles.itemContainer}
-      onPress={() => navigation.navigate(item.screen)}>
-      <Text style={styles.itemText}>{item.title}</Text>
-      <Icon name="chevron-right" size={25} color="#ccc" />
-    </TouchableOpacity>
-  );
+  const handleSettingPress = (navigateTo) => {
+    navigation.navigate(navigateTo);
+  };
 
   return (
-    <SafeAreaView style={styles.container}>
-      <Text style={styles.title}>Settings</Text>
-      <FlatList
-        data={SETTINGS}
-        renderItem={renderItem}
-        keyExtractor={item => item.id}
-        ItemSeparatorComponent={() => <View style={styles.separator} />}
-      />
+    <SafeAreaView style={styles.safeArea}>
+      <ScrollView style={styles.container}>
+        <Text style={styles.title}>Settings</Text>
+        <View style={styles.content}>
+          {settingsOptions.map((setting, index) => (
+            <TouchableOpacity 
+              key={index} 
+              style={styles.settingItemContainer} 
+              onPress={() => handleSettingPress(setting.navigateTo)}
+            >
+              <Text style={styles.settingTitle}>{setting.title}</Text>
+              <Ionicons name="chevron-forward" size={24} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+            </TouchableOpacity>
+          ))}
+        </View>
+      </ScrollView>
     </SafeAreaView>
   );
 };
 
-const styles = StyleSheet.create({
-  container: {
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
+  safeArea: {
     flex: 1,
-    backgroundColor: '#fff', // Add background color for entire screen
-    paddingTop: 20, // Increase padding at the top
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+  },
+  container: {
+    padding: '5%',
   },
   title: {
-    fontSize: 22,
+    fontSize: 28,
     fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#FFF' : '#000',
     textAlign: 'center',
-    paddingVertical: 20,
+    marginBottom: '5%',
   },
-  itemContainer: {
-    backgroundColor: '#FFFFFF',
-    paddingVertical: 15,
-    paddingHorizontal: 20,
+  content: {
+    marginTop: '2%',
+    marginBottom: '20%',
+  },
+  settingItemContainer: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
     alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: '3%',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#CCC',
+    padding: 10,
+    borderRadius: 10,
   },
-  itemText: {
-    fontSize: 16,
+  settingTitle: {
+    fontSize: 18,
     fontWeight: 'bold',
-  },
-  icon: {
-    fontSize: 25,  // Adjust size accordingly
-    color: '#ccc',
-  },
-  separator: {
-    height: 1,
-    backgroundColor: '#E2E2E2',
-    marginLeft: 20,
+    color: colorScheme === 'dark' ? '#FFF' : '#000',
   },
 });
 
