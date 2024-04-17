@@ -36,7 +36,7 @@ export default function GoodbyeScreen({ navigation }) {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Goodbye, User.</Text>
+      <Text style={styles.title}>Goodbye, User. 😔</Text>
       <Image
         source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
         style={styles.icon}

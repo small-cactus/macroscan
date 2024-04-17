@@ -10,11 +10,12 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import WelcomeScreen from './screens/WelcomeScreen';
 import SignUpScreen from './screens/SignUpScreen';
 import HomeScreen from './screens/HomeScreen';
-import DetailsScreen from './screens/DetailsScreen';
+import SupportScreen from './screens/SupportScreen';
 import SignInScreen from './screens/SignInScreen';
 import SettingsScreen from './screens/SettingsScreen';
 import AccountScreen from './screens/AccountScreen';
 import GoodbyeScreen from './screens/GoodbyeScreen';
+import HistoryScreen from './screens/HistoryScreen';
 import { GeneralSettingsScreen, AccountSettingsScreen, NotificationSettingsScreen } from './screens/SettingsElements';
 
 const Stack = createNativeStackNavigator();
@@ -63,11 +64,11 @@ function App() {
               case 'Home':
                 iconName = focused ? 'scan' : 'scan-outline';
                 break;
-              case 'Details':
+              case 'History':
                 iconName = focused ? 'list' : 'list-outline';
                 break;
-              case 'Settings':
-                iconName = focused ? 'settings' : 'settings-outline';
+              case 'Support':
+                iconName = focused ? 'help-buoy' : 'help-buoy-outline';
                 break;
               case 'Account':
                 iconName = focused ? 'person' : 'person-outline';
@@ -80,8 +81,8 @@ function App() {
         })}
       >
         <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="Details" component={DetailsScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
+        <Tab.Screen name="History" component={HistoryScreen} />
+        <Tab.Screen name="Support" component={SupportScreen} />
         <Tab.Screen name="Account" component={AccountScreen} />
       </Tab.Navigator>
     );

@@ -7,6 +7,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
 import { Appearance } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
 
 const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -21,6 +23,7 @@ const MacroScanHome = () => {
   const [apiSuccess, setApiSuccess] = useState(false);
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
+  const fadeAnims = useRef([]);
 
   const animateButtonPressIn = () => {
     Animated.spring(buttonScale, {
@@ -44,11 +47,65 @@ const MacroScanHome = () => {
   }, []);
 
   useEffect(() => {
+    if (apiSuccess && modalImageUri && nutrientData && !nutrientData.productName.toLowerCase().includes("image")) {
+        storeProductDetails({
+            productName: nutrientData.productName,
+            imageUri: modalImageUri,
+            nutrients: nutrientData
+        });
+        // Ensure we reset API success status only after all conditions are met
+        setApiSuccess(false);
+    }
+}, [apiSuccess, modalImageUri, nutrientData]); // Watching all dependencies
+
+
+  useEffect(() => {
     if (!modalVisible && apiSuccess && modalImageUri) {
       setHomeScreenImageUri(modalImageUri);
       setApiSuccess(false); // Reset apiSuccess to false for the next API request
     }
   }, [modalVisible, apiSuccess, modalImageUri]);
+
+  useEffect(() => {
+    if (nutrientData && Object.keys(nutrientData).length > 0) {
+      Object.keys(nutrientData).forEach((_, index) => fadeAnims[index] = new Animated.Value(0));
+      animateNutrients();
+    }
+  }, [nutrientData]);
+
+  const animateNutrients = () => {
+    const animations = Object.keys(nutrientData).map((_, index) => {
+      return Animated.timing(fadeAnims[index], {
+        toValue: 1,
+        duration: 200,
+        useNativeDriver: true,
+        delay: index * 2 // Delays subsequent animations
+      });
+    });
+    Animated.sequence(animations).start();
+  };
+
+  const storeProductDetails = async (productDetails) => {
+    try {
+        const existingHistoryJson = await AsyncStorage.getItem('@product_history');
+        let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
+        if (!Array.isArray(existingHistory)) {
+            existingHistory = [];  // Reset if corrupted
+        }
+
+        const productDetailsWithDate = {
+            ...productDetails,
+            date: new Date().toISOString() // Ensuring date is always fresh
+        };
+
+        existingHistory.push(productDetailsWithDate);
+        const newHistoryJson = JSON.stringify(existingHistory);
+        await AsyncStorage.setItem('@product_history', newHistoryJson);
+        console.log("Updated History: ", existingHistory);
+    } catch (e) {
+        console.error("Error storing product details: ", e);
+    }
+};
 
   const resizeImage = async (uri) => {
     const result = await ImageManipulator.manipulateAsync(
@@ -112,7 +169,7 @@ const MacroScanHome = () => {
         model: "claude-3-haiku-20240307",
         max_tokens: 4096,
         temperature: 0,
-        system: `If the image depicts food or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
+        system: `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
         Name of food(s) (number of food items, eg. bags, plates, pieces, example: 2 burgers. 2 bags. 2 pieces. 2 plates. 2 bowls. If 1 item, do not specify the item number)
         Carbohydrates (g) per item
         Proteins (g) per item
@@ -121,7 +178,7 @@ const MacroScanHome = () => {
         Dietary Fiber (g) per item
         Sugars (g) per item
         Saturated Fats (g) per item
-        Trans Fats (g) per item
+        Sodium (mg) per item
 
         IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
 
@@ -130,7 +187,7 @@ const MacroScanHome = () => {
           "role": "user",
           "content": [{
             "type": "text",
-            "text": `If the image depicts food or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
+            "text": `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
             Name of food(s) (number of food items, eg. bags, plates, pieces, example: 2 burgers. 2 bags. 2 pieces. 2 plates. 2 bowls. If 1 item, do not specify the item number)
             Carbohydrates (g) per item
             Proteins (g) per item
@@ -139,7 +196,7 @@ const MacroScanHome = () => {
             Dietary Fiber (g) per item
             Sugars (g) per item
             Saturated Fats (g) per item
-            Trans Fats (g) per item
+            Sodium (mg) per item
     
             IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
     
@@ -198,25 +255,25 @@ const MacroScanHome = () => {
     <View style={styles.container}>
       <Text style={styles.productName}>{nutrientData ? nutrientData.productName : 'No image selected'}</Text>
       {homeScreenImageUri && (
-  <Image source={{ uri: homeScreenImageUri }} style={styles.productImage} />
-)}
+        <Image source={{ uri: homeScreenImageUri }} style={styles.productImage} />
+      )}
       <ScrollView style={styles.nutrientContainer} showsVerticalScrollIndicator={false}>
-  {nutrientData ? Object.entries(nutrientData).map(([key, value]) => {
-    if (key !== 'productName') {
-      return (
-        <View key={key} style={styles.nutrientItem}>
-          <View style={styles.nutrientContent}>
-            <Text style={styles.nutrientLabel}>{key}:</Text>
-            <Text style={styles.nutrientValue}>{value}</Text>
-          </View>
-          <View style={styles.separator}></View>
-        </View>
-      );
-    }
-  }) : (
-    <Text style={styles.promptText}>Capture or select an image to get Macros, you can also take a picture of the nutrients label for more accurate information.</Text>
-  )}
-</ScrollView>
+        {nutrientData ? Object.entries(nutrientData).map(([key, value], index) => {
+          if (key !== 'productName') {
+            return (
+              <Animated.View key={key} style={[styles.nutrientItem, {opacity: fadeAnims[index]}]}>
+                <View style={styles.nutrientContent}>
+                  <Text style={styles.nutrientLabel}>{key}:</Text>
+                  <Text style={styles.nutrientValue}>{value}</Text>
+                </View>
+                <View style={styles.separator}></View>
+              </Animated.View>
+            );
+          }
+        }) : (
+          <Text style={styles.promptText}>Capture or select an image to get Macros, you can also take a picture of the nutrients label for more accurate information.</Text>
+        )}
+      </ScrollView>
       <View style={styles.buttonContainer}>
         <Animated.View style={{ transform: [{ scale: buttonScale }] }}>
           <TouchableOpacity
@@ -251,17 +308,17 @@ const MacroScanHome = () => {
         animationType="slide"
         transparent={true}
         visible={modalVisible}
-        onRequestClose={closeModal}
+        onRequestClose={() => setModalVisible(false)}
       >
         <View style={styles.centeredView}>
           <View style={styles.modalView}>
-          {modalImageUri && (
-  <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
-)}
+            {modalImageUri && (
+              <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
+            )}
             {isLoading ? (
               <ActivityIndicator size="large" color={styles.activityIndicatorColor.color} />
             ) : (
-              <TouchableOpacity style={styles.closeButton} onPress={closeModal}>
+              <TouchableOpacity style={styles.closeButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.closeButtonText}>Close</Text>
               </TouchableOpacity>
             )}
