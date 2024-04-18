@@ -18,16 +18,12 @@ const SettingsScreen = () => {
 
   const settingsOptions = [
     {
-      title: "Account Settings",
-      navigateTo: "AccountSettingsScreen"
-    },
-    {
       title: "Notification Preferences",
       navigateTo: "NotificationSettingsScreen"
     },
     {
       title: "Privacy and Security",
-      navigateTo: "PrivacySettingsScreen"
+      navigateTo: "PrivacyScreen"
     },
     {
       title: "About MacroScan",
@@ -88,13 +84,13 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: '3%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#CCC',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#eee',
     padding: 10,
     borderRadius: 10,
   },
   settingTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: '500',
     color: colorScheme === 'dark' ? '#FFF' : '#000',
   },
 });

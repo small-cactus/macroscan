@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar, StyleSheet, Appearance } from 'react-native';
+import { StatusBar, StyleSheet, Appearance, useColorScheme } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
 
@@ -16,21 +16,17 @@ import SettingsScreen from './screens/SettingsScreen';
 import AccountScreen from './screens/AccountScreen';
 import GoodbyeScreen from './screens/GoodbyeScreen';
 import HistoryScreen from './screens/HistoryScreen';
+import PrivacyScreen from './screens/PrivacyScreen';
+
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
 function App() {
-  const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
-  const styles = getDynamicStyles(colorScheme);
   const navigationRef = useRef(null);
-
-  useEffect(() => {
-    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
-      setColorScheme(colorScheme);
-    });
-    return () => subscription.remove();
-  }, []);
+  const systemScheme = useColorScheme(); // This hook automatically updates on theme change
+  const [theme, setTheme] = useState(systemScheme); // Initialize theme based on system settings
+  const colorScheme = Appearance.getColorScheme();
 
   useEffect(() => {
     const checkUser = async () => {
@@ -47,8 +43,21 @@ function App() {
       }
     };
   
+    const subscription = Appearance.addChangeListener(({ colorScheme }) => {
+      AsyncStorage.getItem('@theme').then(savedTheme => {
+        if (!savedTheme || savedTheme === 'automatic') {
+          setTheme(colorScheme);
+        }
+      });
+    });
+  
     checkUser();
+  
+    return () => subscription.remove();
   }, []);
+  
+
+  const styles = getDynamicStyles(colorScheme);
 
   function HomeTabs() {
     return (
@@ -60,18 +69,10 @@ function App() {
           tabBarIcon: ({ focused, color, size }) => {
             let iconName;
             switch (route.name) {
-              case 'Home':
-                iconName = focused ? 'scan' : 'scan-outline';
-                break;
-              case 'History':
-                iconName = focused ? 'list' : 'list-outline';
-                break;
-              case 'Settings':
-                iconName = focused ? 'settings' : 'settings-outline';
-                break;
-              case 'Account':
-                iconName = focused ? 'person' : 'person-outline';
-                break;
+              case 'Home': iconName = focused ? 'scan' : 'scan-outline'; break;
+              case 'History': iconName = focused ? 'list' : 'list-outline'; break;
+              case 'Settings': iconName = focused ? 'settings' : 'settings-outline'; break;
+              case 'Account': iconName = focused ? 'person' : 'person-outline'; break;
             }
             return <Icon name={iconName} size={size} color={color} />;
           },
@@ -96,16 +97,16 @@ function App() {
           headerTintColor: '#fff',
           headerTitleStyle: styles.headerTitleStyle,
           headerTitleAlign: 'center',
-        }}
-      >
+        }}>
         <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
         <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
         <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
         <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
-      <StatusBar style={colorScheme === 'dark' ? 'light-content' : 'dark-content'} />
+      <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
     </NavigationContainer>
   );
 }

@@ -13,18 +13,18 @@ import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
 
-const SupportScreen = () => {
+const PrivacyScreen = () => {
   const navigation = useNavigation();
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
 
-  const [faqOpen, setFaqOpen] = useState(new Array(8).fill(false));
-  const [animatedTexts, setAnimatedTexts] = useState(new Array(8).fill(""));
+  const [faqOpen, setFaqOpen] = useState(new Array(4).fill(false));
+  const [animatedTexts, setAnimatedTexts] = useState(new Array(4).fill(""));
 
   const handleContactPress = () => {
     const email = "macroscan.help@gmail.com";
-    const subject = encodeURIComponent("Support Request");
-    const body = encodeURIComponent("Please describe your issue or question:");
+    const subject = encodeURIComponent("Privacy Inquiry");
+    const body = encodeURIComponent("Please describe your privacy concern or question:");
     Linking.openURL(`mailto:${email}?subject=${subject}&body=${body}`);
   };
 
@@ -51,36 +51,20 @@ const SupportScreen = () => {
 
   const faqQuestions = [
     {
-      question: "What is MacroScan?",
-      answer: "MacroScan is a mobile application that allows you to scan images of food items to quickly and easily determine their macronutrient content, including fats, proteins, and carbohydrates."
+      question: "What personal data does MacroScan collect?",
+      answer: "MacroScan collects no personal data. All app functionalities except image processing are processed on-device, even your account login, history, and settings are all saved locally, that means nothing is available for us or anyone else to see."
     },
     {
-      question: "How does MacroScan work?",
-      answer: "Simply take a photo of your meal using MacroScan, and it will analyze the image to estimate the macronutrient values of the food. The app uses advanced image recognition and machine learning technology to identify food items and calculate their nutrients."
+      question: "How does MacroScan handle my photos?",
+      answer: "Photos taken in MacroScan are sent to our partner, Anthropic, for macronutrient analysis via their vision models. These photos are used solely for this purpose and are not stored or used after processing for any other purposes."
     },
     {
-      question: "Do I need to photograph the nutrition label for accurate results?",
-      answer: "No, you do not need to photograph the nutrition label for MacroScan to work. However, if you do include the nutrition label in your photo, MacroScan can provide more precise nutrient information."
+      question: "Can I delete data stored by MacroScan?",
+      answer: "Since all data is stored locally on your device, you can delete it at any time by uninstalling the app, deleting scan history, or deleting your account from the corresponding screens."
     },
     {
-      question: "How accurate is MacroScan?",
-      answer: "MacroScan is always within 80% of the real macronutrient content of your food. The accuracy may vary based on the quality of the image and the visibility of the food items."
-    },
-    {
-      question: "Can MacroScan identify all types of food?",
-      answer: "MacroScan can identify a wide range of common foods and dishes. However, its ability to recognize highly unusual or complex dishes may be limited."
-    },
-    {
-      question: "Is there a limit to how many foods I can scan in a day?",
-      answer: "Yes, there is a 5 scan a day limit to how many times you can use MacroScan in a day on the free plan. MacroScan+ and MacroScan++ remove the daily limit."
-    },
-    {
-      question: "What should I do if MacroScan does not recognize a food item?",
-      answer: "If MacroScan struggles to recognize a food item, try taking a clearer picture with better lighting."
-    },
-    {
-      question: "Can I save my meal history in MacroScan?",
-      answer: "Yes, MacroScan automatically saves and tracks the nutrient content of every meal you scan. This feature helps you keep track of your daily intake and nutritional goals. You can delete the history at any time."
+      question: "How can I ensure my data remains private?",
+      answer: "Since we don't store any data in the cloud, the only way for someone to steal your data, would be to physically steal your device and open MacroScan."
     }
   ];
 
@@ -90,15 +74,15 @@ const SupportScreen = () => {
         <Ionicons name="chevron-back" size={24} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
       </TouchableOpacity>
       <ScrollView style={styles.container}>
-        <Text style={styles.title}>Support</Text>
+        <Text style={styles.title}>Privacy and Security</Text>
         <View style={styles.content}>
           <Text style={styles.description}>
-            If you can't find what you're looking for in the FAQ below, don't hesitate to contact us.
+            If you have any privacy concerns, even small ones, feel free to reach out to us.
           </Text>
           <TouchableOpacity style={styles.contactButton} onPress={handleContactPress}>
-            <Text style={styles.contactButtonText}>Contact Us</Text>
+            <Text style={styles.contactButtonText}>Contact Us About Privacy Concerns</Text>
           </TouchableOpacity>
-          <Text style={styles.faqHeader}>Frequently Asked Questions</Text>
+          <Text style={styles.faqHeader}>Frequently Asked Privacy Questions</Text>
           {faqQuestions.map((faq, index) => (
             <View key={index} style={styles.faqItemContainer}>
               <TouchableOpacity style={styles.faqTitleContainer} onPress={() => toggleFaq(index)}>
@@ -147,9 +131,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: colorScheme === 'dark' ? '#FFF' : '#000',
     marginBottom: '4%',
   },
-  faqItem: {
-    marginBottom: '3%',
-  },
   faqItemContainer: {
     marginBottom: '3%',
     backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#eee',
@@ -177,7 +158,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     paddingRight: '5%',
     paddingTop: '1%',
     paddingBottom: '3%',
-    borderRadius: 50,
   },
   contactButton: {
     marginTop: 10,
@@ -194,10 +174,10 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold'
   },
   backButton: {
-    position: 'absolute', // Corrected to 'absolute' for exact placement
-    left: '5%',  // 5% from the right edge of the screen
-    top: '9%',  // 20% from the top of the screen
-    zIndex: 10, // Ensures the button is clickable over other elements
+    position: 'absolute',
+    left: '5%',
+    top: '9%',
+    zIndex: 10,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
     borderRadius: 14,
     shadowColor: '#000',
@@ -209,4 +189,4 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
 });
 
-export default SupportScreen;
+export default PrivacyScreen;
