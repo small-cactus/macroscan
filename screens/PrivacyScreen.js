@@ -101,92 +101,96 @@ const PrivacyScreen = () => {
 };
 
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
-  safeArea: {
-    flex: 1,
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
-  },
-  container: {
-    padding: '5%',
-  },
-  title: {
-    fontSize: 28,
-    fontWeight: 'bold',
-    color: colorScheme === 'dark' ? '#FFF' : '#000',
-    textAlign: 'center',
-    marginBottom: '5%',
-  },
-  content: {
-    marginTop: '2%',
-    marginBottom: '20%',
-  },
-  description: {
-    fontSize: 16,
-    color: colorScheme === 'dark' ? '#EEE' : '#666',
-    textAlign: 'center',
-    marginBottom: '5%',
-  },
-  faqHeader: {
-    fontSize: 20,
-    fontWeight: 'bold',
-    color: colorScheme === 'dark' ? '#FFF' : '#000',
-    marginBottom: '4%',
-  },
-  faqItemContainer: {
-    marginBottom: '3%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#eee',
-    borderRadius: 10,
-    overflow: 'hidden',
-  },
-  faqTitleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: '2%',
-    paddingRight: 10,
-    paddingLeft: 5,
-  },
-  faqTitle: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: colorScheme === 'dark' ? '#FFF' : '#000',
-    marginLeft: '2%',
-    flexShrink: 1, // Allow text to shrink to prevent overflow
-  },
-  answer: {
-    fontSize: 16,
-    color: colorScheme === 'dark' ? '#e1e1e1' : '#2a2a2a',
-    paddingLeft: '7%',
-    paddingRight: '5%',
-    paddingTop: '1%',
-    paddingBottom: '3%',
-  },
-  contactButton: {
-    marginTop: 10,
-    marginBottom: 20,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
-    borderRadius: 90,
-    padding: 10,
-    alignItems: 'center', // Center text horizontally
-    justifyContent: 'center', // Center text vertically
-  },
-  contactButtonText: {
-    color: colorScheme === 'dark' ? '#fff' : '#fff',
-    fontSize: 16,
-    fontWeight: 'bold'
-  },
-  backButton: {
-    position: 'absolute',
-    left: '5%',
-    top: '9%',
-    zIndex: 10,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
-    borderRadius: 14,
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 3,
-    elevation: 5,
-    padding: 10,
-  },
-});
+    safeArea: {
+        flex: 1,
+        backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+      },
+      container: {
+        padding: '5%',
+      },
+      title: {
+        fontSize: 28,
+        fontWeight: 'bold',
+        color: colorScheme === 'dark' ? '#FFF' : '#000',
+        textAlign: 'center',
+        marginBottom: '5%',
+      },
+      content: {
+        marginTop: '2%',
+        marginBottom: '20%',
+      },
+      description: {
+        fontSize: 16,
+        color: colorScheme === 'dark' ? '#EEE' : '#666',
+        textAlign: 'center',
+        marginBottom: '5%',
+      },
+      faqHeader: {
+        fontSize: 20,
+        fontWeight: 'bold',
+        color: colorScheme === 'dark' ? '#FFF' : '#000',
+        marginBottom: '4%',
+      },
+      faqItem: {
+        marginBottom: '3%',
+      },
+      faqItemContainer: {
+        marginBottom: '3%',
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#eee',
+        borderRadius: 10,
+        overflow: 'hidden',
+      },
+      faqTitleContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        paddingVertical: '2%',
+        paddingRight: 10,
+        paddingLeft: 5,
+      },
+      faqTitle: {
+        fontSize: 18,
+        fontWeight: '500',
+        color: colorScheme === 'dark' ? '#FFF' : '#000',
+        marginLeft: '2%',
+        flexShrink: 1, // Allow text to shrink to prevent overflow
+      },
+      answer: {
+        fontSize: 16,
+        color: colorScheme === 'dark' ? '#e1e1e1' : '#2a2a2a',
+        paddingLeft: '7%',
+        paddingRight: '5%',
+        paddingTop: '1%',
+        paddingBottom: '3%',
+        borderRadius: 50,
+      },
+      contactButton: {
+        marginTop: 10,
+        marginBottom: 20,
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+        borderRadius: 90,
+        padding: 10,
+        alignItems: 'center', // Center text horizontally
+        justifyContent: 'center', // Center text vertically
+      },
+      contactButtonText: {
+        color: colorScheme === 'dark' ? '#fff' : '#fff',
+        fontSize: 16,
+        fontWeight: 'bold'
+      },
+      backButton: {
+        position: 'absolute', // Corrected to 'absolute' for exact placement
+        left: '5%',  // 5% from the right edge of the screen
+        top: '9%',  // 20% from the top of the screen
+        zIndex: 10, // Ensures the button is clickable over other elements
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+        borderRadius: 14,
+        shadowColor: '#000',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.25,
+        shadowRadius: 3,
+        elevation: 5,
+        padding: 10,
+      },
+    });
 
 export default PrivacyScreen;
