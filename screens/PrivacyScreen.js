@@ -74,7 +74,7 @@ const PrivacyScreen = () => {
         <Ionicons name="chevron-back" size={24} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
       </TouchableOpacity>
       <ScrollView style={styles.container}>
-        <Text style={styles.title}>Privacy and Security</Text>
+        <Text style={styles.title}>Privacy</Text>
         <View style={styles.content}>
           <Text style={styles.description}>
             If you have any privacy concerns, even small ones, feel free to reach out to us.
