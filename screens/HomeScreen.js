@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, ScrollView } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, ScrollView, TextInput } from 'react-native';
 import { Camera } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -8,6 +8,9 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
 import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Progress } from 'react-native-progress';
+import Icon from 'react-native-vector-icons/Ionicons';
+
 
 
 const MacroScanHome = () => {
@@ -24,6 +27,64 @@ const MacroScanHome = () => {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const fadeAnims = useRef([]);
+  const fadeInAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
+  const [isInputModalVisible, setInputModalVisible] = useState(false);
+  const [userInput, setUserInput] = useState('');
+
+  const handleCorrectPress = () => {
+    console.log("User confirmed correctness")
+    fadeOutFeedback();
+  };
+
+  // Function to handle when user marks the nutrient data as incorrect
+  const handleIncorrectPress = () => {
+    console.log("User marked the response as incorrect.");
+    setInputModalVisible(true);
+    fadeOutFeedback();
+    removeLatestHistoryEntry(); // Function to remove the last entry from the history
+  };
+
+  // Function to remove the latest entry from the product history in AsyncStorage
+  const removeLatestHistoryEntry = async () => {
+    try {
+      const existingHistoryJson = await AsyncStorage.getItem('@product_history');
+      let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
+      if (existingHistory.length > 0) {
+        existingHistory.pop(); // Remove the last item from the array
+        await AsyncStorage.setItem('@product_history', JSON.stringify(existingHistory));
+        console.log("Latest history entry removed.");
+      } else {
+        console.log("No history to remove.");
+      }
+    } catch (e) {
+      console.error("Error removing latest history entry: ", e);
+    }
+  };
+
+  const submitUserInput = async () => {
+    console.log("User entered food type:", userInput);
+    setInputModalVisible(false); // Close the modal
+    if (userInput.trim()) { // Check if input is not just empty spaces
+      await sendImageToApiWithHint(userInput.trim());
+    }
+    setUserInput(''); // Optionally reset the input
+  };
+
+  const fadeOutFeedback = () => {
+    Animated.timing(fadeInAnim, {
+      toValue: 0, // Fade in to full opacity
+      duration: 1000, // Duration in milliseconds
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const fadeInFeedback = () => {
+    Animated.timing(fadeInAnim, {
+      toValue: 1, // Fade in to full opacity
+      duration: 1000, // Duration in milliseconds
+      useNativeDriver: true,
+    }).start();
+  };
 
   const animateButtonPressIn = () => {
     Animated.spring(buttonScale, {
@@ -47,7 +108,7 @@ const MacroScanHome = () => {
   }, []);
 
   useEffect(() => {
-    if (apiSuccess && modalImageUri && nutrientData && !nutrientData.productName.toLowerCase().includes("image")) {
+    if (apiSuccess && modalImageUri && nutrientData && !nutrientData.productName.toLowerCase().includes("again")) {
         storeProductDetails({
             productName: nutrientData.productName,
             imageUri: modalImageUri,
@@ -58,6 +119,21 @@ const MacroScanHome = () => {
     }
 }, [apiSuccess, modalImageUri, nutrientData]); // Watching all dependencies
 
+useEffect(() => {
+  if (apiSuccess && nutrientData.productName.toLowerCase().includes("again")) {
+    setTimeout(() => {
+      fadeInFeedback(); // Trigger the fade in animation
+    }, 750); // This can still be delayed as per your existing logic
+  }
+}, [apiSuccess, modalImageUri, nutrientData]);
+
+useEffect(() => {
+  if (apiSuccess) {
+    setTimeout(() => {
+      fadeInFeedback(); // Trigger the fade in animation
+    }, 1650); // This can still be delayed as per your existing logic
+  }
+}, [apiSuccess, modalImageUri, nutrientData]);
 
   useEffect(() => {
     if (!modalVisible && apiSuccess && modalImageUri) {
@@ -158,6 +234,75 @@ const MacroScanHome = () => {
     setModalVisible(false);
   };
 
+  async function sendImageToApiWithHint(userHint) {
+    setIsLoading(true); // Start loading indicator
+    try {
+      const anthropic = new Anthropic({
+        apiKey: "ANTHROPIC_API_KEY_REMOVED", // Make sure to manage this securely
+      });
+  
+      const base64Image = await resizeImage(modalImageUri);
+  
+      const msg = await anthropic.messages.create({
+        model: "claude-3-haiku-20240307",
+        max_tokens: 4096,
+        temperature: 0,
+        system: `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
+          Name of food(s) (number of food items, eg. bags, plates, pieces, example: 2 burgers. 2 bags. 2 pieces. 2 plates. 2 bowls. If 1 item, do not specify the item number)
+          Carbohydrates (g) per item
+          Proteins (g) per item
+          Fats (g) per item
+          Total Calories (cal) both items
+          Dietary Fiber (g) per item
+          Sugars (g) per item
+          Saturated Fats (g) per item
+          Sodium (mg) per item
+  
+          NOTE: Only include calculations based on the quantity depicted. Exclude additional categories. Name meals by their collective identity, e.g., McDonalds Meal (number of items). Always include the unit next to the measurement.
+
+    Focus on precise amounts, detailing visible food items for an accurate nutrient breakdown, e.g., separate 'Proteins' for chicken.
+    Avoid discussing unrequested details like serving sizes or micronutrients. If no food or beverage is present, simply state 'No food found. Try again.' and cease further comments.`,
+        messages: [{
+          "role": "user",
+          "content": [{
+            "type": "text",
+            "text": `Hint, a detail about the food is: ${userHint}
+            
+            Please check my hint before trusting it with these guidelines:
+            CRUCIAL GUIDANCE FOR USER INPUT:
+      1. If the user's count is excessively inaccurate, e.g., you observe 8 items and the user claims 700, respond only with 'There aren't 700 items.' EXTREMELY IMPORTANT: Do not add further comments or descriptions.
+      2. Exercise judgment regarding the user's reliability before responding. If unsure, either reply with a concise four-word message or provide macronutrient data as outlined above.
+
+        DO NOT REPLY WITH MORE THAN 2 SENTENCES OR ANYTHING OTHER THAN EXACTLY WHAT YOU HAVE BEEN TOLD TO RESPOND WITH.`
+          }, {
+            "type": "image",
+            "source": {
+              "type": "base64",
+              "media_type": "image/jpeg",
+              "data": base64Image
+            }
+          }]
+        }]
+      });
+  
+      const textResponse = msg.content && msg.content.length > 0 && msg.content[0].text ? msg.content[0].text : "No text data available in the response.";
+      setIsLoading(false); // Stop loading indicator
+      setExtractedText(textResponse);
+  
+      if (textResponse !== "No text data available in the response.") {
+        const parsedData = parseNutrientData(textResponse);
+        setNutrientData(parsedData);
+      }
+  
+      closeModal(); // Close modal after processing
+      setApiSuccess(true); // Set apiSuccess to true after successful API request
+    } catch (error) {
+      console.error("Error sending message to Anthropic API:", error);
+      setIsLoading(false); // Stop loading indicator if there's an error
+      closeModal(); // Close modal after processing
+    }
+  }
+
   async function sendImageToApi(base64Image) {
     setIsLoading(true); // Start loading
     try {
@@ -183,7 +328,7 @@ const MacroScanHome = () => {
         IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
 
       Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
-      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'The image does not contain food. Try again.' without further comments.`,        messages: [{
+      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`,        messages: [{
           "role": "user",
           "content": [{
             "type": "text",
@@ -201,7 +346,7 @@ const MacroScanHome = () => {
             IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
     
           Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
-          Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'The image does not contain food. Try again.' without further comments.`
+          Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`
     }, {
             "type": "image",
             "source": {
@@ -253,11 +398,17 @@ const MacroScanHome = () => {
   }
   return (
     <View style={styles.container}>
-      <Text style={styles.productName}>{nutrientData ? nutrientData.productName : 'No image selected'}</Text>
+      <Text 
+        style={styles.productName} 
+        numberOfLines={2} 
+        ellipsizeMode="tail" // Adds an ellipsis at the end of the text if it's too long
+      >
+        {nutrientData ? nutrientData.productName : 'No image selected'}
+      </Text>
       {homeScreenImageUri && (
         <Image source={{ uri: homeScreenImageUri }} style={styles.productImage} />
       )}
-      <ScrollView style={styles.nutrientContainer} showsVerticalScrollIndicator={false}>
+      <ScrollView style={styles.nutrientContainer} showsVerticalScrollIndicator={true}>
         {nutrientData ? Object.entries(nutrientData).map(([key, value], index) => {
           if (key !== 'productName') {
             return (
@@ -304,6 +455,25 @@ const MacroScanHome = () => {
       </View>
       <View> 
       </View>
+      <Animated.View style={[styles.feedbackContainer, {opacity: fadeInAnim}]}>
+  <Text style={styles.feedbackText}>Did we get this right?</Text>
+  <View style={styles.iconButtonContainer}>
+    <TouchableOpacity onPress={handleCorrectPress} style={[styles.iconButton, {backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000'}]}>
+      <Icon 
+        name="checkmark-outline" // Using just the checkmark without the circle
+        size={25} 
+        color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
+      />
+    </TouchableOpacity>
+    <TouchableOpacity onPress={handleIncorrectPress} style={[styles.iconButton, {backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000'}]}>
+      <Icon 
+        name="close-outline" // Using just the close without the circle
+        size={25} 
+        color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
+      />
+    </TouchableOpacity>
+  </View>
+</Animated.View>
       <Modal
         animationType="slide"
         transparent={true}
@@ -325,6 +495,36 @@ const MacroScanHome = () => {
           </View>
         </View>
       </Modal>
+      <Modal
+  animationType="slide"
+  transparent={true}
+  visible={isInputModalVisible}
+  onRequestClose={() => setInputModalVisible(false)}
+>
+  <View style={styles.centeredView}>
+    <View style={styles.inputModalView}>
+      <Text style={styles.inputModalText}>Please enter the name or type of the food you entered:</Text>
+      <TextInput
+        style={styles.input}
+        onChangeText={setUserInput}
+        value={userInput}
+        placeholder="Name or type of food"
+        keyboardType="default"
+      />
+      <TouchableOpacity
+        style={styles.inputModalButton}
+        onPress={() => {
+          console.log("User entered food type:", userInput);
+          setInputModalVisible(false);
+          submitUserInput();
+          setUserInput(''); // Optionally reset the input
+        }}
+      >
+        <Text style={styles.inputModalButtonText}>Submit</Text>
+      </TouchableOpacity>
+    </View>
+  </View>
+</Modal>
     </View>
   );
 };
@@ -340,7 +540,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontSize: 30,
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#fff' : '#000',
-    marginTop: '15%',
+    marginTop: '10%',
     marginBottom: '3%',
     textAlign: 'center'
   },
@@ -390,7 +590,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    marginTop: 20,
+    marginTop: '10%',
   },
   button: {
     backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
@@ -398,6 +598,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: 12,
     marginHorizontal: '3%',
     width: '88%',
+    marginTop: '-10%',
   },
   buttonText: {
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
@@ -459,6 +660,76 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   activityIndicatorColor: {
     color: colorScheme === 'dark' ? '#ffffff' : '#000000',
   },
+  feedbackContainer: {
+    flexDirection: 'column',
+    justifyContent: 'center', // Ensures vertical alignment is centered
+    alignItems: 'center',     // Centers children horizontally
+    padding: '2.5%',
+    width: '100%',            // Makes sure the container takes full width of its parent
+  },
+  feedbackText: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#AAAAAA' : '#AAAAAA', // Ensure visibility in both themes
+    marginBottom: 10,
+  },
+  iconButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center', // Horizontally centers the icons
+    alignItems: 'center',     // Vertically align items in this container
+    width: '100%',            // Takes full width to allow centering inside a larger parent
+  },
+  iconButton: {
+    padding: 3,
+    marginHorizontal: 30, // This sets space between the buttons
+    backgroundColor: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+    borderRadius: 100,
+  },
+  inputModalView: {
+    margin: 20,
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFF',
+    borderRadius: 40,
+    padding: 35,
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 4,
+    elevation: 5
+  },
+  input: {
+    height: 40,
+    margin: 12,
+    borderWidth: 1,
+    padding: 10,
+    width: 300, // Adjust width as needed
+    borderColor: '#ccc',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+    borderRadius: 100,
+  },
+  inputModalButton: {
+    backgroundColor: "#AAAAAA",
+    borderRadius: 20,
+    padding: 10,
+    paddingHorizontal: 20,
+    elevation: 2,
+    marginTop: 10
+  },
+  inputModalButtonText: {
+    color: "white",
+    fontWeight: "bold",
+    textAlign: "center"
+  },
+  inputModalText: {
+    marginBottom: 15,
+    textAlign: "center",
+    fontSize: 16,
+    fontWeight: "600",
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+  },
+  
 });
 
 export default MacroScanHome;
