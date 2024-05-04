@@ -1,3 +1,9 @@
+<div align="center">
+    <img src="assets/image.png" alt="macroscan-cover-image" width="700">
+</div>
+<br><br/>
+
+
 # Project Scripts Overview 📄
 
 This document provides an overview of the key scripts included in the project. Below is a summary table for each script, detailing its purpose, a link for more detailed information, and the basic command to run it.
