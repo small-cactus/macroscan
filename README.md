@@ -1,6 +1,13 @@
 # Project Scripts Overview 📄
 
-This document provides an overview of several scripts included in the project, their functionalities, and how to interact with them.
+This document provides an overview of the key scripts included in the project. Below is a summary table for each script, detailing its purpose, a link for more detailed information, and the basic command to run it.
+
+| Script File                     | Description                      | More Info | Command to Run             |
+|---------------------------------|----------------------------------|-----------|----------------------------|
+| `validate_user_and_test_api.js` | User validation and API testing  | [Details](#validate_user_and_test_apijs) | `node validate_user_and_test_api.js` |
+| `upload_api_keys.js`            | Uploads API keys                 | [Details](#upload_api_keysjs) | `node upload_api_keys.js`            |
+| `firestore_management_tool.py`  | Manages Firestore data           | [Details](#firestore_management_toolpy) | `python firestore_management_tool.py` |
+| `create_and_save_users.py`      | Adds new users to the database   | [Details](#create_and_save_userspy) | `python create_and_save_users.py`    |
 
 ## Scripts and Their Functions 🛠️
 
