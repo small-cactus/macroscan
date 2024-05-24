@@ -18,6 +18,10 @@ const SettingsScreen = () => {
 
   const settingsOptions = [
     {
+      title: "Features",
+      navigateTo: "FeaturesScreen"
+    },
+    {
       title: "Notification Preferences",
       navigateTo: "NotificationSettingsScreen"
     },
@@ -28,6 +32,10 @@ const SettingsScreen = () => {
     {
       title: "About MacroScan",
       navigateTo: "AboutScreen"
+    },
+    {
+      title: "Developer",
+      navigateTo: "DebuggingScreen"
     },
     {
       title: "Help and Support",

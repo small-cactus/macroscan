@@ -1,11 +1,24 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
 import { Appearance } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import * as RNIap from 'react-native-iap';
 
+const itemSkus = Platform.select({
+  ios: [
+    'macroscan_plusplus_subscription',
+    'macroscan_plus_subscription',
+    'remove_ads_one_time'
+  ],
+  android: [
+    'macroscan_plusplus_subscription',
+    'macroscan_plus_subscription',
+    'remove_ads_one_time'
+  ]
+});
 
 
 const { width, height } = Dimensions.get('window');
@@ -22,7 +35,124 @@ export default function AccountScreen() {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const navigation = useNavigation();  // Correctly use the navigation hook here
+  const [products, setProducts] = useState([]);
+  const [isSubscribedPlusPlus, setIsSubscribedPlusPlus] = useState(false);
+  const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
+  const [hasPurchasedAdsRemoval, setHasPurchasedAdsRemoval] = useState(false);
+  
 
+
+  useEffect(() => {
+    const initIAP = async () => {
+      try {
+        console.log('IAP Connection initialized, fetching products...');
+        await RNIap.initConnection();
+        const prods = await RNIap.getProducts({ skus: itemSkus });
+        console.log('Products fetched:', prods);
+        setProducts(prods);
+      } catch (error) {
+        console.error('Failed to initialize IAP:', error);
+      }
+
+      // Cleanup function to end the IAP connection
+      return () => {
+        console.log('Ending IAP connection...');
+        RNIap.endConnection();
+      };
+    };
+
+    initIAP();
+  }, []);
+
+  const handlePurchase = async (productId) => {
+    console.log('Attempting to purchase SKU:', productId);
+    try {
+      if (productId === 'macroscan_plusplus_subscription') {
+        await RNIap.requestSubscription({ sku: productId });
+        setIsSubscribedPlusPlus(true);
+      } else if (productId === 'macroscan_plus_subscription') {
+        await RNIap.requestSubscription({ sku: productId });
+        setIsSubscribedPlus(true);
+      } else if (productId === 'remove_ads_one_time') {
+        await RNIap.requestPurchase({ sku: productId });
+        setHasPurchasedAdsRemoval(true);
+      }
+      console.log('Purchase successful for:', productId);
+    } catch (error) {
+      console.error('Purchase failed', error);
+    }
+  };
+
+  const checkSubscription = async () => {
+    try {
+      const purchases = await RNIap.getAvailablePurchases();
+      const subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
+      const subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
+      const purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
+  
+      setIsSubscribedPlusPlus(subscribedPlusPlus);
+      setIsSubscribedPlus(subscribedPlus);
+      setHasPurchasedAdsRemoval(purchasedAdsRemoval);
+    } catch (error) {
+      console.error('Failed to restore purchases:', error);
+    }
+  };
+  
+  useEffect(() => {
+    checkSubscription();
+  }, []);
+
+  useEffect(() => {
+    const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+      console.log('Purchase updated:', purchase);
+      const receipt = purchase.transactionReceipt ? purchase.transactionReceipt : purchase.originalJson;
+      if (receipt) {
+        try {
+          // Confirm receipt with your server and unlock content
+          const ackResult = await RNIap.finishTransaction(purchase, true);
+          console.log('Transaction finished:', ackResult);
+  
+          // Check product ID and update state accordingly
+          if (purchase.productId === 'macroscan_plusplus_subscription') {
+            setIsSubscribedPlusPlus(true);
+          } else if (purchase.productId === 'macroscan_plus_subscription') {
+            setIsSubscribedPlus(true);
+          } else if (purchase.productId === 'remove_ads_one_time') {
+            setHasPurchasedAdsRemoval(true);
+          }
+  
+          // Additional app-specific logic here
+          unlockFeatures(purchase.productId);
+        } catch (error) {
+          console.warn('Finish transaction error:', error);
+        }
+      }
+    });
+  
+    return () => {
+      purchaseUpdateSubscription.remove();
+    };
+  }, []);
+
+  const unlockFeatures = (productId) => {
+    switch (productId) {
+      case 'macroscan_plusplus_subscription':
+        // Unlock features specific to MacroScan++
+        console.log("Features for MacroScan++ Unlocked!");
+        break;
+      case 'macroscan_plus_subscription':
+        // Unlock features specific to MacroScan+
+        console.log("Features for MacroScan+ Unlocked!");
+        break;
+      case 'remove_ads_one_time':
+        // Remove ads
+        console.log("Ads Removed!");
+        break;
+      default:
+        console.log("Unknown product ID");
+        break;
+    }
+  };
 
   useEffect(() => {
     async function loadProfile() {
@@ -187,29 +317,34 @@ const saveData = async (uri) => {
         </Text>
       </View>
       <View style={styles.subscriptionContainer}>
-  <View style={styles.subscriptionOption1}>
+      <View style={styles.subscriptionOption1}>
   <View style={styles.titleWithLogo}>
-      <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-      <Text style={styles.subscriptionTitle}>MacroScan++</Text>
-      <TouchableOpacity style={styles.subscribeButton1}>
-        <Text style={styles.subscribeButtonText}>Subscribe</Text>
-      </TouchableOpacity>
-    </View>
-    <View style={styles.rightPart}>
-
-      <Text style={styles.priceText}>$8.99/Month</Text>
-    </View>
-    <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
-    <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
-    <Text style={styles.subscriptionFeature}>• No Ads</Text>
+    <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+    <Text style={styles.subscriptionTitle}>MacroScan++</Text>
+    <TouchableOpacity
+  style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled1 : styles.subscribeButton1}
+  onPress={() => handlePurchase('macroscan_plusplus_subscription')}
+  disabled={isSubscribedPlusPlus}>
+  <Text style={styles.subscribeButtonText}>Subscribe</Text>
+</TouchableOpacity>
   </View>
-  <View style={styles.subscriptionOption2}>
+  <View style={styles.rightPart}>
+    <Text style={styles.priceText}>$8.99/Month</Text>
+  </View>
+  <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+  <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
+  <Text style={styles.subscriptionFeature}>• No Ads</Text>
+</View>
+<View style={styles.subscriptionOption2}>
   <View style={styles.titleWithLogo}>
       <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
       <Text style={styles.subscriptionTitle}>MacroScan+</Text>
-      <TouchableOpacity style={styles.subscribeButton2}>
-        <Text style={styles.subscribeButtonText}>Subscribe</Text>
-      </TouchableOpacity>
+      <TouchableOpacity
+  style={isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
+  onPress={() => handlePurchase('macroscan_plus_subscription')}
+  disabled={isSubscribedPlus}>
+  <Text style={styles.subscribeButtonText}>Subscribe</Text>
+</TouchableOpacity>
     </View>
     <View style={styles.rightPart}>
 
@@ -219,22 +354,24 @@ const saveData = async (uri) => {
     <Text style={styles.subscriptionFeature}>• Access to more accurate recognition</Text>
     <Text style={styles.subscriptionFeature}>• No Ads</Text>
   </View>
-  <View style={styles.subscriptionOption3}>
+<View style={styles.subscriptionOption3}>
   <View style={styles.titleWithLogo}>
-      <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-      <Text style={styles.subscriptionTitle}>Remove Ads</Text>
-      <TouchableOpacity style={styles.subscribeButton3}>
-        <Text style={styles.subscribeButtonText}>Purchase</Text>
-      </TouchableOpacity>
-    </View>
-    <View style={styles.rightPart}>
-
-      <Text style={styles.priceText}>$5.99 Once</Text>
-    </View>
-    <Text style={styles.subscriptionFeature}>• No Ads</Text>
-    <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
-    <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
+    <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+    <Text style={styles.subscriptionTitle}>Remove Ads</Text>
+    <TouchableOpacity
+  style={hasPurchasedAdsRemoval ? styles.subscribeButtonDisabled3 : styles.subscribeButton3}
+  onPress={() => handlePurchase('remove_ads_one_time')}
+  disabled={hasPurchasedAdsRemoval}>
+  <Text style={styles.subscribeButtonText}>Purchase</Text>
+</TouchableOpacity>
   </View>
+  <View style={styles.rightPart}>
+    <Text style={styles.priceText}>$5.99 Once</Text>
+  </View>
+  <Text style={styles.subscriptionFeature}>• No Ads</Text>
+  <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
+  <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
+</View>
   <Text style={styles.dangerSection}>⚠️ Danger Section ⚠️</Text>
   <View style={styles.separatorBox}></View>
   <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
@@ -423,5 +560,32 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     height: 5,
     backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
     borderRadius: 3,
+  },
+  subscribeButtonDisabled1: {
+    backgroundColor: '#ffffff',
+    padding: '3.3%',
+    width: '40%',
+    borderRadius: 100,
+    marginTop: 0,
+    marginLeft: '6%',
+    marginRight: '11%',
+  },
+  subscribeButtonDisabled2: {
+    backgroundColor: '#ffffff',
+    padding: '3.3%',
+    width: '40%',
+    borderRadius: 100,
+    marginTop: 0,
+    marginLeft: '10%',
+    marginRight: '11%',
+  },
+  subscribeButtonDisabled3: {
+    backgroundColor: '#ffffff',
+    padding: '3.3%',
+    width: '40%',
+    borderRadius: 100,
+    marginTop: 0,
+    marginLeft: '11%',
+    marginRight: '11%',
   },
 });

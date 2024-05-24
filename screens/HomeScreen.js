@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, ScrollView, TextInput } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, ScrollView, TextInput, Alert } from 'react-native';
 import { Camera } from 'expo-camera';
 import { useNavigation } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -10,6 +10,7 @@ import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Progress } from 'react-native-progress';
 import Icon from 'react-native-vector-icons/Ionicons';
+import * as RNIap from 'react-native-iap';
 
 
 
@@ -30,6 +31,85 @@ const MacroScanHome = () => {
   const fadeInAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
   const [isInputModalVisible, setInputModalVisible] = useState(false);
   const [userInput, setUserInput] = useState('');
+  const [scanCount, setScanCount] = useState(0);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [timeLeftForScans, setTimeLeftForScans] = useState('');
+  const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
+
+useEffect(() => {
+  const initializeAppData = async () => {
+    const subscribed = await checkSubscription();
+    setIsSubscribed(subscribed);
+
+    const firstUseDate = await AsyncStorage.getItem('firstUseDate');
+    const today = new Date().toISOString().slice(0, 10);
+
+    if (!firstUseDate) {
+      await AsyncStorage.setItem('firstUseDate', today);
+      setIsFirstDayUnlimited(true); // Enable unlimited scans for the first day
+    } else {
+      setIsFirstDayUnlimited(firstUseDate === today);
+    }
+
+    const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+    if (dateLastUsed !== today) {
+      await AsyncStorage.setItem('dailyScanCount', '0');
+      await AsyncStorage.setItem('dateLastUsed', today);
+      setScanCount(0);
+    } else {
+      const count = await AsyncStorage.getItem('dailyScanCount');
+      setScanCount(parseInt(count, 10) || 0);
+    }
+  };
+
+  initializeAppData();
+}, []);
+
+useEffect(() => {
+    const intervalId = setInterval(() => {
+        if (!isSubscribed && scanCount >= 5) {
+            setTimeLeftForScans(getTimeUntilMidnight());
+        } else {
+            setTimeLeftForScans('');
+        }
+    }, 1000 * 60); // Update every minute
+
+    return () => clearInterval(intervalId);
+}, [scanCount, isSubscribed]);
+
+const checkSubscription = async () => {
+  try {
+    const purchases = await RNIap.getAvailablePurchases();
+    const hasActiveSubscription = purchases.some(purchase => {
+      return ['macroscan_plusplus_subscription', 'macroscan_plus_subscription'].includes(purchase.productId);
+    });
+    return hasActiveSubscription;
+  } catch (err) {
+    console.error('Failed to check subscriptions:', err);
+    return false;
+  }
+};
+
+useEffect(() => {
+  const initializeAppData = async () => {
+    const subscribed = await checkSubscription();
+    setIsSubscribed(subscribed);
+
+    const today = new Date().toISOString().slice(0, 10);
+    const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+    if (dateLastUsed !== today) {
+      // Reset scan count for the new day if not subscribed
+      await AsyncStorage.setItem('dailyScanCount', '0');
+      await AsyncStorage.setItem('dateLastUsed', today);
+      setScanCount(0);
+    } else {
+      const count = await AsyncStorage.getItem('dailyScanCount');
+      setScanCount(parseInt(count, 10) || 0);
+    }
+  };
+
+  initializeAppData();
+}, []);
 
   const handleCorrectPress = () => {
     console.log("User confirmed correctness")
@@ -192,9 +272,57 @@ useEffect(() => {
     return result.base64;
   };
 
-  const pickImage = async () => {
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+  const getTimeUntilMidnight = () => {
+    const now = new Date();
+    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
+    const millisTillMidnight = midnight.getTime() - now.getTime();
+    const hours = Math.floor(millisTillMidnight / (1000 * 60 * 60));
+    const minutes = Math.floor((millisTillMidnight % (1000 * 60 * 60)) / (1000 * 60));
+    return `${hours} hours and ${minutes} minutes`;
+};
+
+const pickImage = async () => {
+  if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
+    const timeLeft = getTimeUntilMidnight();
+    Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
+    return;
+  }
+
+  let result = await ImagePicker.launchImageLibraryAsync({
+    mediaTypes: ImagePicker.MediaTypeOptions.Images,
+    allowsEditing: true,
+    aspect: [4, 3],
+    quality: 1,
+  });
+
+  if (!result.canceled && result.assets) {
+    const base64Data = await resizeImage(result.assets[0].uri);
+    setModalImageUri(result.assets[0].uri);
+    setModalVisible(true);
+    sendImageToApi(base64Data);
+
+    if (!isSubscribed && !isFirstDayUnlimited) {
+      const newCount = scanCount + 1;
+      setScanCount(newCount);
+      await AsyncStorage.setItem('dailyScanCount', newCount.toString());
+    }
+  }
+};
+
+const takePhoto = async () => {
+  if (!hasPermission) {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
+  }
+
+  if (hasPermission) {
+    if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
+      const timeLeft = getTimeUntilMidnight();
+      Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
+      return;
+    }
+
+    let result = await ImagePicker.launchCameraAsync({
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -205,30 +333,15 @@ useEffect(() => {
       setModalImageUri(result.assets[0].uri);
       setModalVisible(true);
       sendImageToApi(base64Data);
-    }
-  };
 
-  const takePhoto = async () => {
-    if (!hasPermission) {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    }
-
-    if (hasPermission) {
-      let result = await ImagePicker.launchCameraAsync({
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets) {
-        const base64Data = await resizeImage(result.assets[0].uri);
-        setModalImageUri(result.assets[0].uri);
-        setModalVisible(true);
-        sendImageToApi(base64Data);
+      if (!isSubscribed && !isFirstDayUnlimited) {
+        const newCount = scanCount + 1;
+        setScanCount(newCount);
+        await AsyncStorage.setItem('dailyScanCount', newCount.toString());
       }
     }
-  };
+  }
+};
 
   const closeModal = () => {
     setModalVisible(false);
@@ -366,7 +479,7 @@ useEffect(() => {
         const parsedData = parseNutrientData(textResponse);
         setNutrientData(parsedData);
       }
-
+      console.log(msg)
       closeModal(); // Close modal after processing
       setApiSuccess(true); // Set apiSuccess to true after successful API request
     } catch (error) {

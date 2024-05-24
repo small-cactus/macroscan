@@ -17,6 +17,9 @@ import AccountScreen from './screens/AccountScreen';
 import GoodbyeScreen from './screens/GoodbyeScreen';
 import HistoryScreen from './screens/HistoryScreen';
 import PrivacyScreen from './screens/PrivacyScreen';
+import FeaturesScreen from './screens/FeaturesScreen';
+import DebuggingScreen from './screens/DebuggingScreen';
+import AboutScreen from './screens/AboutScreen';
 
 
 const Stack = createNativeStackNavigator();
@@ -104,6 +107,9 @@ function App() {
         <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
         <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
         <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="FeaturesScreen" component={FeaturesScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="DebuggingScreen" component={DebuggingScreen} options={{ headerShown: false }} />
+        <Stack.Screen name="AboutScreen" component={AboutScreen} options={{ headerShown: false }} />
         <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
       </Stack.Navigator>
       <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
