@@ -7,6 +7,9 @@ import { Appearance } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as RNIap from 'react-native-iap';
 import { useIAP } from '../IAPContext';
+import { firestore } from '../firebaseConfig';
+import { doc, deleteDoc } from 'firebase/firestore';
+import { useUser } from '../userContext';
 
 const itemSkus = Platform.select({
   ios: ['macroscan_plusplus_subscription', 'macroscan_plus_subscription', 'remove_ads_one_time'],
@@ -31,6 +34,7 @@ export default function AccountScreen() {
   const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
   const [hasPurchasedAdsRemoval, setHasPurchasedAdsRemoval] = useState(false);
   const { isIAPEnabled, toggleIAP } = useIAP();
+  const { user, setUser, deleteUser, updateUser } = useUser();
 
   useEffect(() => {
     if (!isIAPEnabled) return;
@@ -62,16 +66,25 @@ export default function AccountScreen() {
       if (productId === 'macroscan_plusplus_subscription') {
         await RNIap.requestSubscription(productId);
         setIsSubscribedPlusPlus(true);
+        await updateUserSubscription('macroscan_plusplus_subscription');
       } else if (productId === 'macroscan_plus_subscription') {
         await RNIap.requestSubscription(productId);
         setIsSubscribedPlus(true);
+        await updateUserSubscription('macroscan_plus_subscription');
       } else if (productId === 'remove_ads_one_time') {
         await RNIap.requestPurchase(productId);
         setHasPurchasedAdsRemoval(true);
+        await updateUserSubscription('remove_ads_one_time');
       }
     } catch (error) {
       console.error('Purchase failed', error);
     }
+  };
+
+  const updateUserSubscription = async (subscription) => {
+    if (!user) return;
+    const updates = { subscriptionStatus: subscription };
+    await updateUser(updates);
   };
 
   const checkSubscription = async () => {
@@ -187,9 +200,17 @@ export default function AccountScreen() {
           text: 'Delete',
           onPress: async () => {
             try {
+              // if (user && user.uid) {
+              //   await deleteUser();
+              // }
+
               await AsyncStorage.removeItem('@user');
               await AsyncStorage.removeItem('userImageUri');
               await AsyncStorage.removeItem('userName');
+              await AsyncStorage.removeItem('@user_logged_in');
+
+              setUser(null);
+
               Alert.alert('Account deleted', 'Your account has been deleted.');
               navigation.reset({
                 index: 0,
@@ -197,7 +218,7 @@ export default function AccountScreen() {
               });
             } catch (error) {
               Alert.alert('Error', 'Failed to delete account.');
-              console.error(error);
+              console.error('Failed to delete account:', error);
             }
           },
           style: 'destructive',
@@ -579,3 +600,4 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginRight: 10,
   },
 });
+

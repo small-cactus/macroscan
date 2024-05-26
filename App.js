@@ -2,11 +2,12 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar, StyleSheet, Appearance, useColorScheme } from 'react-native';
+import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View } from 'react-native';
 import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
-import { IAPProvider } from './IAPContext';  // Import the IAPProvider
+import { IAPProvider } from './IAPContext';
+import { UserProvider } from './userContext'; // Import the UserProvider
 
 // Screens
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -22,31 +23,68 @@ import PrivacyScreen from './screens/PrivacyScreen';
 import FeaturesScreen from './screens/FeaturesScreen';
 import DebuggingScreen from './screens/DebuggingScreen';
 import AboutScreen from './screens/AboutScreen';
+import LogScreen from './screens/LogScreen';
+import CompleteProfileScreen from './screens/CompleteProfileScreen';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+function HomeTabs() {
+  const colorScheme = useColorScheme();
+  const styles = getDynamicStyles(colorScheme);
+
+  return (
+    <Tab.Navigator
+      screenOptions={({ route }) => ({
+        headerShown: false,
+        tabBarStyle: styles.tabBarStyle,
+        tabBarLabelStyle: styles.tabBarLabelStyle,
+        tabBarIcon: ({ focused, color, size }) => {
+          let iconName;
+          switch (route.name) {
+            case 'Home': iconName = focused ? 'scan' : 'scan-outline'; break;
+            case 'History': iconName = focused ? 'list' : 'list-outline'; break;
+            case 'Settings': iconName = focused ? 'settings' : 'settings-outline'; break;
+            case 'Account': iconName = focused ? 'person' : 'person-outline'; break;
+            case 'Log': iconName = focused ? 'clipboard' : 'clipboard-outline'; break;
+          }
+          return <Icon name={iconName} size={size} color={color} />;
+        },
+        tabBarActiveTintColor: colorScheme === 'dark' ? 'white' : 'black',
+        tabBarInactiveTintColor: colorScheme === 'dark' ? '#a7a7a7' : 'gray',
+      })}
+    >
+      <Tab.Screen name="Home" component={HomeScreen} />
+      <Tab.Screen name="History" component={HistoryScreen} />
+      <Tab.Screen name="Settings" component={SettingsScreen} />
+      <Tab.Screen name="Account" component={AccountScreen} />
+      <Tab.Screen name="Log" component={LogScreen} />
+    </Tab.Navigator>
+  );
+}
+
 function App() {
   const navigationRef = useRef(null);
-  const systemScheme = useColorScheme(); // This hook automatically updates on theme change
-  const [theme, setTheme] = useState(systemScheme); // Initialize theme based on system settings
+  const systemScheme = useColorScheme();
+  const [theme, setTheme] = useState(systemScheme);
   const colorScheme = Appearance.getColorScheme();
+  const [initialRoute, setInitialRoute] = useState(null);
 
   useEffect(() => {
     const checkUser = async () => {
       try {
-        const user = await AsyncStorage.getItem('@user');
-        if (user && navigationRef.current) {
-          navigationRef.current.reset({
-            index: 0,
-            routes: [{ name: 'HomeTabs' }],
-          });
+        const userLoggedIn = await AsyncStorage.getItem('@user_logged_in');
+        if (userLoggedIn) {
+          setInitialRoute('HomeTabs');
+        } else {
+          setInitialRoute('Welcome');
         }
       } catch (e) {
         console.error('Failed to fetch the data from storage');
+        setInitialRoute('Welcome');
       }
     };
-  
+
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
       AsyncStorage.getItem('@theme').then(savedTheme => {
         if (!savedTheme || savedTheme === 'automatic') {
@@ -54,68 +92,51 @@ function App() {
         }
       });
     });
-  
+
     checkUser();
-  
+
     return () => subscription.remove();
   }, []);
 
-  const styles = getDynamicStyles(colorScheme);
-
-  function HomeTabs() {
+  if (initialRoute === null) {
     return (
-      <Tab.Navigator
-        screenOptions={({ route }) => ({
-          headerShown: false,
-          tabBarStyle: styles.tabBarStyle,
-          tabBarLabelStyle: styles.tabBarLabelStyle,
-          tabBarIcon: ({ focused, color, size }) => {
-            let iconName;
-            switch (route.name) {
-              case 'Home': iconName = focused ? 'scan' : 'scan-outline'; break;
-              case 'History': iconName = focused ? 'list' : 'list-outline'; break;
-              case 'Settings': iconName = focused ? 'settings' : 'settings-outline'; break;
-              case 'Account': iconName = focused ? 'person' : 'person-outline'; break;
-            }
-            return <Icon name={iconName} size={size} color={color} />;
-          },
-          tabBarActiveTintColor: colorScheme === 'dark' ? 'white' : 'black',
-          tabBarInactiveTintColor: colorScheme === 'dark' ? '#a7a7a7' : 'gray',
-        })}
-      >
-        <Tab.Screen name="Home" component={HomeScreen} />
-        <Tab.Screen name="History" component={HistoryScreen} />
-        <Tab.Screen name="Settings" component={SettingsScreen} />
-        <Tab.Screen name="Account" component={AccountScreen} />
-      </Tab.Navigator>
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <ActivityIndicator size="large" color="#0000ff" />
+      </View>
     );
   }
 
+  const styles = getDynamicStyles(colorScheme);
+
   return (
-    <IAPProvider>
-      <NavigationContainer ref={navigationRef}>
-        <Stack.Navigator
-          initialRouteName="Welcome"
-          screenOptions={{
-            headerStyle: styles.headerStyle,
-            headerTintColor: '#fff',
-            headerTitleStyle: styles.headerTitleStyle,
-            headerTitleAlign: 'center',
-          }}>
-          <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
-          <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="FeaturesScreen" component={FeaturesScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="DebuggingScreen" component={DebuggingScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="AboutScreen" component={AboutScreen} options={{ headerShown: false }} />
-          <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
-        </Stack.Navigator>
-        <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
-      </NavigationContainer>
-    </IAPProvider>
+    <NavigationContainer ref={navigationRef}>
+      <UserProvider navigation={navigationRef.current}>
+        <IAPProvider>
+          <Stack.Navigator
+            initialRouteName={initialRoute}
+            screenOptions={{
+              headerStyle: styles.headerStyle,
+              headerTintColor: '#fff',
+              headerTitleStyle: styles.headerTitleStyle,
+              headerTitleAlign: 'center',
+            }}>
+            <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
+            <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="FeaturesScreen" component={FeaturesScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="DebuggingScreen" component={DebuggingScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="AboutScreen" component={AboutScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="Log" component={LogScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} options={{ headerShown: false }} />
+          </Stack.Navigator>
+          <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
+        </IAPProvider>
+      </UserProvider>
+    </NavigationContainer>
   );
 }
 

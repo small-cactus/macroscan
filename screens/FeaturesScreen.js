@@ -12,6 +12,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 
 const FeaturesScreen = () => {
   const navigation = useNavigation();
@@ -33,7 +34,6 @@ const FeaturesScreen = () => {
   }, []);
 
   const checkSubscription = async () => {
-    // Fetch subscription status from AsyncStorage or server
     const status = await AsyncStorage.getItem('subscriptionStatus');
     setIsSubscribed(status === 'subscribed');
   };
@@ -44,6 +44,11 @@ const FeaturesScreen = () => {
   };
 
   const handleModelChange = async (model) => {
+    if (selectedModel === model) {
+      await Haptics.selectionAsync();
+      return;
+    }
+
     if (!isSubscribed) {
       Alert.alert("Upgrade Required", "You need to be a subscribed user to change this setting.");
       return;
@@ -66,7 +71,6 @@ const FeaturesScreen = () => {
               key={key}
               style={[styles.optionButton, selectedModel === key && styles.optionButtonSelected]}
               onPress={() => handleModelChange(key)}
-              disabled={!isSubscribed}
             >
               <Text style={styles.optionText}>{value}</Text>
             </TouchableOpacity>

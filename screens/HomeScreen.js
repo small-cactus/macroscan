@@ -8,10 +8,11 @@ import * as ImageManipulator from 'expo-image-manipulator';
 import * as Haptics from 'expo-haptics';
 import { Appearance } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Progress } from 'react-native-progress';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as RNIap from 'react-native-iap';
-import { useIAP } from '../IAPContext'; // Import the IAP Context
+import { useIAP } from '../IAPContext';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faInfinity } from '@fortawesome/free-solid-svg-icons';
 
 const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -34,38 +35,39 @@ const MacroScanHome = () => {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
-  const { isIAPEnabled } = useIAP(); // Access IAP toggle state
+  const { isIAPEnabled } = useIAP();
+  const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
 
   useEffect(() => {
     const initializeAppData = async () => {
-      if (isIAPEnabled) {
-        const subscribed = await checkSubscription();
-        setIsSubscribed(subscribed);
-      }
+        if (isIAPEnabled) {
+            const subscribed = await checkSubscription();
+            setIsSubscribed(subscribed);
+        }
 
-      const firstUseDate = await AsyncStorage.getItem('firstUseDate');
-      const today = new Date().toISOString().slice(0, 10);
+        const firstUseDate = await AsyncStorage.getItem('firstUseDate');
+        const today = new Date().toISOString().slice(0, 10);
 
-      if (!firstUseDate) {
-        await AsyncStorage.setItem('firstUseDate', today);
-        setIsFirstDayUnlimited(true);
-      } else {
-        setIsFirstDayUnlimited(firstUseDate === today);
-      }
+        if (!firstUseDate) {
+            await AsyncStorage.setItem('firstUseDate', today);
+            setIsFirstDayUnlimited(true);
+        } else {
+            setIsFirstDayUnlimited(firstUseDate === today);
+        }
 
-      const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
-      if (dateLastUsed !== today) {
-        await AsyncStorage.setItem('dailyScanCount', '0');
-        await AsyncStorage.setItem('dateLastUsed', today);
-        setScanCount(0);
-      } else {
-        const count = await AsyncStorage.getItem('dailyScanCount');
-        setScanCount(parseInt(count, 10) || 0);
-      }
+        const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+        if (dateLastUsed !== today) {
+            await AsyncStorage.setItem('dailyScanCount', '0');
+            await AsyncStorage.setItem('dateLastUsed', today);
+            setScanCount(0);
+        } else {
+            const count = await AsyncStorage.getItem('dailyScanCount');
+            setScanCount(parseInt(count, 10) || 0);
+        }
     };
 
     initializeAppData();
-  }, [isIAPEnabled]);
+}, [isIAPEnabled]);
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -74,13 +76,13 @@ const MacroScanHome = () => {
       } else {
         setTimeLeftForScans('');
       }
-    }, 1000 * 60); // Update every minute
+    }, 1000 * 60);
 
     return () => clearInterval(intervalId);
   }, [scanCount, isSubscribed]);
 
   const checkSubscription = async () => {
-    if (!isIAPEnabled) return false; // If IAP is disabled, return false
+    if (!isIAPEnabled) return false;
     try {
       const purchases = await RNIap.getAvailablePurchases();
       const hasActiveSubscription = purchases.some(purchase => {
@@ -102,7 +104,7 @@ const MacroScanHome = () => {
     console.log("User marked the response as incorrect.");
     setInputModalVisible(true);
     fadeOutFeedback();
-    removeLatestHistoryEntry(); // Function to remove the last entry from the history
+    removeLatestHistoryEntry();
   };
 
   const removeLatestHistoryEntry = async () => {
@@ -261,67 +263,69 @@ const MacroScanHome = () => {
     return `${hours} hours and ${minutes} minutes`;
   };
 
-  const pickImage = async () => {
-    if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5)) {
-      const timeLeft = getTimeUntilMidnight();
-      Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
-      return;
-    }
+  const incrementScanCount = async () => {
+    const newCount = scanCount + 1;
+    setScanCount(newCount);
+    await AsyncStorage.setItem('dailyScanCount', newCount.toString());
+};
 
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
-    });
-
-    if (!result.canceled && result.assets) {
-      const base64Data = await resizeImage(result.assets[0].uri);
-      setModalImageUri(result.assets[0].uri);
-      setModalVisible(true);
-      sendImageToApi(base64Data);
-
-      if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited)) {
-        const newCount = scanCount + 1;
-        setScanCount(newCount);
-        await AsyncStorage.setItem('dailyScanCount', newCount.toString());
-      }
-    }
-  };
-
-  const takePhoto = async () => {
-    if (!hasPermission) {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    }
-
-    if (hasPermission) {
-      if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5)) {
+const pickImage = async () => {
+    if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
         const timeLeft = getTimeUntilMidnight();
         Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
         return;
-      }
+    }
 
-      let result = await ImagePicker.launchCameraAsync({
+    let result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,
-      });
+    });
 
-      if (!result.canceled && result.assets) {
+    if (!result.canceled && result.assets) {
         const base64Data = await resizeImage(result.assets[0].uri);
         setModalImageUri(result.assets[0].uri);
         setModalVisible(true);
-        sendImageToApi(base64Data);
+        await sendImageToApi(base64Data);
 
-        if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited)) {
-          const newCount = scanCount + 1;
-          setScanCount(newCount);
-          await AsyncStorage.setItem('dailyScanCount', newCount.toString());
+        if (!isSubscribed && !isFirstDayUnlimited && apiSuccess) {
+            await incrementScanCount();
         }
-      }
     }
-  };
+};
+
+const takePhoto = async () => {
+    if (!hasPermission) {
+        const { status } = await Camera.requestCameraPermissionsAsync();
+        setHasPermission(status === 'granted');
+    }
+
+    if (hasPermission) {
+        if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
+            const timeLeft = getTimeUntilMidnight();
+            Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
+            return;
+        }
+
+        let result = await ImagePicker.launchCameraAsync({
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 1,
+        });
+
+        if (!result.canceled && result.assets) {
+            const base64Data = await resizeImage(result.assets[0].uri);
+            setModalImageUri(result.assets[0].uri);
+            setModalVisible(true);
+            await sendImageToApi(base64Data);
+
+            if (!isSubscribed && !isFirstDayUnlimited && apiSuccess) {
+                await incrementScanCount();
+            }
+        }
+    }
+};
 
   const closeModal = () => {
     setModalVisible(false);
@@ -331,13 +335,13 @@ const MacroScanHome = () => {
     setIsLoading(true);
     try {
       const anthropic = new Anthropic({
-        apiKey: "ANTHROPIC_API_KEY_REMOVED", // Make sure to manage this securely
+        apiKey: "ANTHROPIC_API_KEY_REMOVED",
       });
 
       const base64Image = await resizeImage(modalImageUri);
 
       const msg = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: selectedModel,
         max_tokens: 4096,
         temperature: 0,
         system: `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
@@ -391,6 +395,7 @@ const MacroScanHome = () => {
       setApiSuccess(true);
     } catch (error) {
       console.error("Error sending message to Anthropic API:", error);
+      Alert.alert("High Demand", `We're experiencing extremely high demand, try again in 1 minute.`);
       setIsLoading(false);
       closeModal();
     }
@@ -400,11 +405,11 @@ const MacroScanHome = () => {
     setIsLoading(true);
     try {
       const anthropic = new Anthropic({
-        apiKey: "ANTHROPIC_API_KEY_REMOVED", // Ensure this is securely managed
+        apiKey: "ANTHROPIC_API_KEY_REMOVED",
       });
 
       const msg = await anthropic.messages.create({
-        model: "claude-3-haiku-20240307",
+        model: selectedModel,
         max_tokens: 4096,
         temperature: 0,
         system: `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
@@ -465,6 +470,8 @@ const MacroScanHome = () => {
       setApiSuccess(true);
     } catch (error) {
       console.error("Error sending message to Anthropic API:", error);
+      Alert.alert("High Demand", `We're experiencing extremely high demand, try again in 1 minute.`);
+      
       setIsLoading(false);
       closeModal();
     }
@@ -493,16 +500,33 @@ const MacroScanHome = () => {
 
   return (
     <View style={styles.container}>
-      <Text 
-        style={styles.productName} 
-        numberOfLines={2} 
-        ellipsizeMode="tail"
-      >
-        {nutrientData ? nutrientData.productName : 'No image selected'}
-      </Text>
-      {homeScreenImageUri && (
-        <Image source={{ uri: homeScreenImageUri }} style={styles.productImage} />
-      )}
+      <View style={styles.headerContainer}>
+        <Text style={styles.productName}>
+          {nutrientData ? nutrientData.productName : 'No image selected'}
+        </Text>
+        <TouchableOpacity
+          style={styles.scanCounter}
+          onPress={() => {
+            let message = '';
+            if (isFirstDayUnlimited) {
+              message = "You have unlimited scans because it's your first day using the app. You'll have 5 scans daily starting tomorrow unless you upgrade.";
+            } else if (isSubscribed) {
+              message = "You have unlimited scans because you're subscribed.";
+            } else {
+              message = `You have used ${scanCount} of 5 scans today.`;
+            }
+            Alert.alert("Scan Limit", message);
+          }}
+        >
+          <Text style={styles.scanCounterText}>
+            {isFirstDayUnlimited || isSubscribed ? (
+              <FontAwesomeIcon icon={faInfinity} size={24} />
+            ) : (
+              5 - scanCount
+            )}
+          </Text>
+        </TouchableOpacity>
+      </View>
       <ScrollView style={styles.nutrientContainer} showsVerticalScrollIndicator={true}>
         {nutrientData ? Object.entries(nutrientData).map(([key, value], index) => {
           if (key !== 'productName') {
@@ -608,12 +632,7 @@ const MacroScanHome = () => {
             />
             <TouchableOpacity
               style={styles.inputModalButton}
-              onPress={() => {
-                console.log("User entered food type:", userInput);
-                setInputModalVisible(false);
-                submitUserInput();
-                setUserInput(''); // Optionally reset the input
-              }}
+              onPress={submitUserInput}
             >
               <Text style={styles.inputModalButtonText}>Submit</Text>
             </TouchableOpacity>
@@ -630,15 +649,41 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     justifyContent: 'flex-start',
     alignItems: 'center',
     paddingTop: 20,
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF', // Dark mode has dark background
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+  },
+  headerContainer: {
+    width: '100%',
+    position: 'relative',
+    alignItems: 'center',
   },
   productName: {
     fontSize: 22,
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#fff' : '#000',
-    marginTop: '12%',
+    marginTop: '11%',
     marginBottom: '3%',
-    textAlign: 'center'
+    textAlign: 'center',
+    marginLeft: 40,  // Adjust this margin to match the width of the scan counter
+    marginRight: 40, // Adjust this margin to match the width of the scan counter
+  },
+  scanCounter: {
+    position: 'absolute',
+    right: 20,
+    top: '10%', // Align with the product name
+    borderWidth: colorScheme === 'dark' ? '2' : '3.2',
+    borderColor: colorScheme === 'dark' ? '#fff' : '#000',
+    borderRadius: 50,
+    padding: 5,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: '6.5%',
+    height: 40,
+    width: 40,
+  },
+  scanCounterText: {
+    fontSize: 21,
+    fontWeight: '600',
+    color: colorScheme === 'dark' ? '#fff' : '#000',
   },
   nutrientContainer: {
     width: '95%',
@@ -648,16 +693,16 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: '3%',
   },
   nutrientItem: {
-    flexDirection: 'column',  // Ensures vertical stacking of content and separator
+    flexDirection: 'column',
     alignItems: 'stretch',
-    marginBottom: '2%',          // Space between items
+    marginBottom: '2%',
     width: '100%',
   },
-  nutrientContent: {          // New style for horizontal layout of label and value
+  nutrientContent: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    marginBottom: '1%',          // Margin before the separator
+    marginBottom: '1%',
   },
   nutrientLabel: {
     fontWeight: 'bold',
@@ -665,7 +710,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
   },
   nutrientValue: {
-    color: "#7a7a7a",
     textAlign: 'right',
     fontSize: 16,
     fontWeight: '600',
@@ -675,7 +719,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     height: 1,
     backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
     width: '100%',
-    marginTop: 5,             // Ensures separation from the text
+    marginTop: 5,
   },
   promptText: {
     color: '#AAAAAA',
@@ -700,12 +744,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: "600",
     textAlign: 'center'
-  },
-  detailButton: {
-    backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
-    borderRadius: 20,
-    padding: 12,
-    paddingHorizontal: 20,
   },
   modalView: {
     backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFF',
@@ -758,25 +796,25 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   feedbackContainer: {
     flexDirection: 'column',
-    justifyContent: 'center', // Ensures vertical alignment is centered
-    alignItems: 'center',     // Centers children horizontally
+    justifyContent: 'center',
+    alignItems: 'center',
     padding: '2.5%',
-    width: '100%',            // Makes sure the container takes full width of its parent
+    width: '100%',
   },
   feedbackText: {
     fontSize: 16,
-    color: colorScheme === 'dark' ? '#AAAAAA' : '#AAAAAA', // Ensure visibility in both themes
+    color: colorScheme === 'dark' ? '#AAAAAA' : '#AAAAAA',
     marginBottom: 10,
   },
   iconButtonContainer: {
     flexDirection: 'row',
-    justifyContent: 'center', // Horizontally centers the icons
-    alignItems: 'center',     // Vertically align items in this container
-    width: '100%',            // Takes full width to allow centering inside a larger parent
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
   },
   iconButton: {
     padding: 3,
-    marginHorizontal: 30, // This sets space between the buttons
+    marginHorizontal: 30,
     backgroundColor: colorScheme === 'dark' ? '#e9e9e9' : '#000',
     borderRadius: 100,
   },
