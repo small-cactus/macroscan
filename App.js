@@ -3,8 +3,10 @@ import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar, StyleSheet, Appearance, useColorScheme } from 'react-native';
+import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
+import { IAPProvider } from './IAPContext';  // Import the IAPProvider
 
 // Screens
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -20,7 +22,6 @@ import PrivacyScreen from './screens/PrivacyScreen';
 import FeaturesScreen from './screens/FeaturesScreen';
 import DebuggingScreen from './screens/DebuggingScreen';
 import AboutScreen from './screens/AboutScreen';
-
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -58,7 +59,6 @@ function App() {
   
     return () => subscription.remove();
   }, []);
-  
 
   const styles = getDynamicStyles(colorScheme);
 
@@ -92,28 +92,30 @@ function App() {
   }
 
   return (
-    <NavigationContainer ref={navigationRef}>
-      <Stack.Navigator
-        initialRouteName="Welcome"
-        screenOptions={{
-          headerStyle: styles.headerStyle,
-          headerTintColor: '#fff',
-          headerTitleStyle: styles.headerTitleStyle,
-          headerTitleAlign: 'center',
-        }}>
-        <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
-        <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="FeaturesScreen" component={FeaturesScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="DebuggingScreen" component={DebuggingScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="AboutScreen" component={AboutScreen} options={{ headerShown: false }} />
-        <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
-      </Stack.Navigator>
-      <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
-    </NavigationContainer>
+    <IAPProvider>
+      <NavigationContainer ref={navigationRef}>
+        <Stack.Navigator
+          initialRouteName="Welcome"
+          screenOptions={{
+            headerStyle: styles.headerStyle,
+            headerTintColor: '#fff',
+            headerTitleStyle: styles.headerTitleStyle,
+            headerTitleAlign: 'center',
+          }}>
+          <Stack.Screen name="Welcome" component={WelcomeScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
+          <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="FeaturesScreen" component={FeaturesScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="DebuggingScreen" component={DebuggingScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="AboutScreen" component={AboutScreen} options={{ headerShown: false }} />
+          <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
+        </Stack.Navigator>
+        <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
+      </NavigationContainer>
+    </IAPProvider>
   );
 }
 
@@ -132,7 +134,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   tabBarLabelStyle: {
     fontSize: 12,
-    fontWeight: 'bold',
+    fontWeight: '600',
   },
 });
 

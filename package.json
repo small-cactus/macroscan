@@ -10,14 +10,18 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.20.3",
+    "@expo/config-plugins": "^8.0.0",
+    "@expo/metro-config": "^0.18.4",
+    "@expo/prebuild-config": "~7.0.0",
     "@react-native-async-storage/async-storage": "1.23.1",
     "@react-native-community/geolocation": "^3.2.1",
     "@react-native-community/masked-view": "^0.1.11",
     "@react-native-community/slider": "4.5.2",
-    "@react-native-picker/picker": "^2.7.5",
+    "@react-native-picker/picker": "2.7.5",
     "@react-navigation/bottom-tabs": "^6.5.20",
+    "@react-navigation/core": "^6.4.16",
     "@react-navigation/native": "^6.1.17",
-    "@react-navigation/native-stack": "^6.9.25",
+    "@react-navigation/native-stack": "^6.9.26",
     "axios": "^1.6.8",
     "expo": "^51.0.8",
     "expo-apple-authentication": "~6.4.1",
@@ -35,13 +39,15 @@
     "expo-status-bar": "~1.12.1",
     "expo-updates": "~0.25.14",
     "expo-web-browser": "~13.0.3",
+    "nanoid": "^5.0.7",
     "react": "18.2.0",
     "react-native": "0.74.1",
     "react-native-appearance": "^0.3.4",
     "react-native-collapsible": "^1.6.1",
     "react-native-dropdown-picker": "^5.4.6",
     "react-native-gesture-handler": "~2.16.1",
-    "react-native-iap": "^12.13.1",
+    "react-native-get-random-values": "^1.11.0",
+    "react-native-iap": "^12.13.2",
     "react-native-maps": "1.14.0",
     "react-native-modal": "^13.0.1",
     "react-native-picker-select": "^9.1.3",
@@ -52,8 +58,10 @@
     "react-native-vector-icons": "^10.0.3"
   },
   "devDependencies": {
-    "@babel/core": "^7.20.0",
-    "expo-cli": "^6.3.10"
+    "@babel/core": "^7.20.0"
+  },
+  "overrides": {
+    "@expo/config-plugins": "^8.0.0"
   },
   "private": true
 }

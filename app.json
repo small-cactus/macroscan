@@ -5,20 +5,20 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": "MacroScan",
+    "scheme": ["macroscan"],
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
       "resizeMode": "contain",
-      "backgroundColor": "transparent"
+      "backgroundColor": "#ffffff"
     },
     "ios": {
-      "bundleIdentifier": "com.smallcactus.MacroScan"
-    },
-    "infoPlist": {
-      "NSCameraUsageDescription": "This app uses the camera to scan food items.",
-      "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",
-      "NSLocationWhenInUseUsageDescription": "This app needs access to your location to provide localized pricing based on your geographic location."
+      "bundleIdentifier": "com.smallcactus.MacroScan",
+      "infoPlist": {
+        "NSCameraUsageDescription": "This app uses the camera to scan food items.",
+        "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",
+        "NSLocationWhenInUseUsageDescription": "This app needs access to your location to provide localized pricing based on your geographic location."
+      }
     },
     "android": {
       "adaptiveIcon": {

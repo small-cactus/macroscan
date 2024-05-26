@@ -11,8 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Progress } from 'react-native-progress';
 import Icon from 'react-native-vector-icons/Ionicons';
 import * as RNIap from 'react-native-iap';
-
-
+import { useIAP } from '../IAPContext'; // Import the IAP Context
 
 const MacroScanHome = () => {
   const [hasPermission, setHasPermission] = useState(null);
@@ -28,95 +27,77 @@ const MacroScanHome = () => {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const fadeAnims = useRef([]);
-  const fadeInAnim = useRef(new Animated.Value(0)).current; // Initial value for opacity: 0
+  const fadeInAnim = useRef(new Animated.Value(0)).current;
   const [isInputModalVisible, setInputModalVisible] = useState(false);
   const [userInput, setUserInput] = useState('');
   const [scanCount, setScanCount] = useState(0);
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
+  const { isIAPEnabled } = useIAP(); // Access IAP toggle state
 
-useEffect(() => {
-  const initializeAppData = async () => {
-    const subscribed = await checkSubscription();
-    setIsSubscribed(subscribed);
+  useEffect(() => {
+    const initializeAppData = async () => {
+      if (isIAPEnabled) {
+        const subscribed = await checkSubscription();
+        setIsSubscribed(subscribed);
+      }
 
-    const firstUseDate = await AsyncStorage.getItem('firstUseDate');
-    const today = new Date().toISOString().slice(0, 10);
+      const firstUseDate = await AsyncStorage.getItem('firstUseDate');
+      const today = new Date().toISOString().slice(0, 10);
 
-    if (!firstUseDate) {
-      await AsyncStorage.setItem('firstUseDate', today);
-      setIsFirstDayUnlimited(true); // Enable unlimited scans for the first day
-    } else {
-      setIsFirstDayUnlimited(firstUseDate === today);
-    }
+      if (!firstUseDate) {
+        await AsyncStorage.setItem('firstUseDate', today);
+        setIsFirstDayUnlimited(true);
+      } else {
+        setIsFirstDayUnlimited(firstUseDate === today);
+      }
 
-    const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
-    if (dateLastUsed !== today) {
-      await AsyncStorage.setItem('dailyScanCount', '0');
-      await AsyncStorage.setItem('dateLastUsed', today);
-      setScanCount(0);
-    } else {
-      const count = await AsyncStorage.getItem('dailyScanCount');
-      setScanCount(parseInt(count, 10) || 0);
-    }
-  };
+      const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+      if (dateLastUsed !== today) {
+        await AsyncStorage.setItem('dailyScanCount', '0');
+        await AsyncStorage.setItem('dateLastUsed', today);
+        setScanCount(0);
+      } else {
+        const count = await AsyncStorage.getItem('dailyScanCount');
+        setScanCount(parseInt(count, 10) || 0);
+      }
+    };
 
-  initializeAppData();
-}, []);
+    initializeAppData();
+  }, [isIAPEnabled]);
 
-useEffect(() => {
+  useEffect(() => {
     const intervalId = setInterval(() => {
-        if (!isSubscribed && scanCount >= 5) {
-            setTimeLeftForScans(getTimeUntilMidnight());
-        } else {
-            setTimeLeftForScans('');
-        }
+      if (!isSubscribed && scanCount >= 5) {
+        setTimeLeftForScans(getTimeUntilMidnight());
+      } else {
+        setTimeLeftForScans('');
+      }
     }, 1000 * 60); // Update every minute
 
     return () => clearInterval(intervalId);
-}, [scanCount, isSubscribed]);
+  }, [scanCount, isSubscribed]);
 
-const checkSubscription = async () => {
-  try {
-    const purchases = await RNIap.getAvailablePurchases();
-    const hasActiveSubscription = purchases.some(purchase => {
-      return ['macroscan_plusplus_subscription', 'macroscan_plus_subscription'].includes(purchase.productId);
-    });
-    return hasActiveSubscription;
-  } catch (err) {
-    console.error('Failed to check subscriptions:', err);
-    return false;
-  }
-};
-
-useEffect(() => {
-  const initializeAppData = async () => {
-    const subscribed = await checkSubscription();
-    setIsSubscribed(subscribed);
-
-    const today = new Date().toISOString().slice(0, 10);
-    const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
-    if (dateLastUsed !== today) {
-      // Reset scan count for the new day if not subscribed
-      await AsyncStorage.setItem('dailyScanCount', '0');
-      await AsyncStorage.setItem('dateLastUsed', today);
-      setScanCount(0);
-    } else {
-      const count = await AsyncStorage.getItem('dailyScanCount');
-      setScanCount(parseInt(count, 10) || 0);
+  const checkSubscription = async () => {
+    if (!isIAPEnabled) return false; // If IAP is disabled, return false
+    try {
+      const purchases = await RNIap.getAvailablePurchases();
+      const hasActiveSubscription = purchases.some(purchase => {
+        return ['macroscan_plusplus_subscription', 'macroscan_plus_subscription'].includes(purchase.productId);
+      });
+      return hasActiveSubscription;
+    } catch (err) {
+      console.error('Failed to check subscriptions:', err);
+      return false;
     }
   };
-
-  initializeAppData();
-}, []);
 
   const handleCorrectPress = () => {
     console.log("User confirmed correctness")
     fadeOutFeedback();
   };
 
-  // Function to handle when user marks the nutrient data as incorrect
   const handleIncorrectPress = () => {
     console.log("User marked the response as incorrect.");
     setInputModalVisible(true);
@@ -124,13 +105,12 @@ useEffect(() => {
     removeLatestHistoryEntry(); // Function to remove the last entry from the history
   };
 
-  // Function to remove the latest entry from the product history in AsyncStorage
   const removeLatestHistoryEntry = async () => {
     try {
       const existingHistoryJson = await AsyncStorage.getItem('@product_history');
       let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
       if (existingHistory.length > 0) {
-        existingHistory.pop(); // Remove the last item from the array
+        existingHistory.pop();
         await AsyncStorage.setItem('@product_history', JSON.stringify(existingHistory));
         console.log("Latest history entry removed.");
       } else {
@@ -143,25 +123,25 @@ useEffect(() => {
 
   const submitUserInput = async () => {
     console.log("User entered food type:", userInput);
-    setInputModalVisible(false); // Close the modal
-    if (userInput.trim()) { // Check if input is not just empty spaces
+    setInputModalVisible(false);
+    if (userInput.trim()) {
       await sendImageToApiWithHint(userInput.trim());
     }
-    setUserInput(''); // Optionally reset the input
+    setUserInput('');
   };
 
   const fadeOutFeedback = () => {
     Animated.timing(fadeInAnim, {
-      toValue: 0, // Fade in to full opacity
-      duration: 1000, // Duration in milliseconds
+      toValue: 0,
+      duration: 1000,
       useNativeDriver: true,
     }).start();
   };
 
   const fadeInFeedback = () => {
     Animated.timing(fadeInAnim, {
-      toValue: 1, // Fade in to full opacity
-      duration: 1000, // Duration in milliseconds
+      toValue: 1,
+      duration: 1000,
       useNativeDriver: true,
     }).start();
   };
@@ -180,6 +160,7 @@ useEffect(() => {
       useNativeDriver: true,
     }).start();
   };
+
   useEffect(() => {
     (async () => {
       const { status } = await Camera.requestCameraPermissionsAsync();
@@ -189,36 +170,35 @@ useEffect(() => {
 
   useEffect(() => {
     if (apiSuccess && modalImageUri && nutrientData && !nutrientData.productName.toLowerCase().includes("again")) {
-        storeProductDetails({
-            productName: nutrientData.productName,
-            imageUri: modalImageUri,
-            nutrients: nutrientData
-        });
-        // Ensure we reset API success status only after all conditions are met
-        setApiSuccess(false);
+      storeProductDetails({
+        productName: nutrientData.productName,
+        imageUri: modalImageUri,
+        nutrients: nutrientData
+      });
+      setApiSuccess(false);
     }
-}, [apiSuccess, modalImageUri, nutrientData]); // Watching all dependencies
+  }, [apiSuccess, modalImageUri, nutrientData]);
 
-useEffect(() => {
-  if (apiSuccess && nutrientData.productName.toLowerCase().includes("again")) {
-    setTimeout(() => {
-      fadeInFeedback(); // Trigger the fade in animation
-    }, 750); // This can still be delayed as per your existing logic
-  }
-}, [apiSuccess, modalImageUri, nutrientData]);
+  useEffect(() => {
+    if (apiSuccess && nutrientData.productName.toLowerCase().includes("again")) {
+      setTimeout(() => {
+        fadeInFeedback();
+      }, 750);
+    }
+  }, [apiSuccess, modalImageUri, nutrientData]);
 
-useEffect(() => {
-  if (apiSuccess) {
-    setTimeout(() => {
-      fadeInFeedback(); // Trigger the fade in animation
-    }, 1650); // This can still be delayed as per your existing logic
-  }
-}, [apiSuccess, modalImageUri, nutrientData]);
+  useEffect(() => {
+    if (apiSuccess) {
+      setTimeout(() => {
+        fadeInFeedback();
+      }, 1650);
+    }
+  }, [apiSuccess, modalImageUri, nutrientData]);
 
   useEffect(() => {
     if (!modalVisible && apiSuccess && modalImageUri) {
       setHomeScreenImageUri(modalImageUri);
-      setApiSuccess(false); // Reset apiSuccess to false for the next API request
+      setApiSuccess(false);
     }
   }, [modalVisible, apiSuccess, modalImageUri]);
 
@@ -235,7 +215,7 @@ useEffect(() => {
         toValue: 1,
         duration: 200,
         useNativeDriver: true,
-        delay: index * 2 // Delays subsequent animations
+        delay: index * 2
       });
     });
     Animated.sequence(animations).start();
@@ -243,25 +223,25 @@ useEffect(() => {
 
   const storeProductDetails = async (productDetails) => {
     try {
-        const existingHistoryJson = await AsyncStorage.getItem('@product_history');
-        let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
-        if (!Array.isArray(existingHistory)) {
-            existingHistory = [];  // Reset if corrupted
-        }
+      const existingHistoryJson = await AsyncStorage.getItem('@product_history');
+      let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
+      if (!Array.isArray(existingHistory)) {
+        existingHistory = [];
+      }
 
-        const productDetailsWithDate = {
-            ...productDetails,
-            date: new Date().toISOString() // Ensuring date is always fresh
-        };
+      const productDetailsWithDate = {
+        ...productDetails,
+        date: new Date().toISOString()
+      };
 
-        existingHistory.push(productDetailsWithDate);
-        const newHistoryJson = JSON.stringify(existingHistory);
-        await AsyncStorage.setItem('@product_history', newHistoryJson);
-        console.log("Updated History: ", existingHistory);
+      existingHistory.push(productDetailsWithDate);
+      const newHistoryJson = JSON.stringify(existingHistory);
+      await AsyncStorage.setItem('@product_history', newHistoryJson);
+      console.log("Updated History: ", existingHistory);
     } catch (e) {
-        console.error("Error storing product details: ", e);
+      console.error("Error storing product details: ", e);
     }
-};
+  };
 
   const resizeImage = async (uri) => {
     const result = await ImageManipulator.manipulateAsync(
@@ -279,50 +259,17 @@ useEffect(() => {
     const hours = Math.floor(millisTillMidnight / (1000 * 60 * 60));
     const minutes = Math.floor((millisTillMidnight % (1000 * 60 * 60)) / (1000 * 60));
     return `${hours} hours and ${minutes} minutes`;
-};
+  };
 
-const pickImage = async () => {
-  if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
-    const timeLeft = getTimeUntilMidnight();
-    Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
-    return;
-  }
-
-  let result = await ImagePicker.launchImageLibraryAsync({
-    mediaTypes: ImagePicker.MediaTypeOptions.Images,
-    allowsEditing: true,
-    aspect: [4, 3],
-    quality: 1,
-  });
-
-  if (!result.canceled && result.assets) {
-    const base64Data = await resizeImage(result.assets[0].uri);
-    setModalImageUri(result.assets[0].uri);
-    setModalVisible(true);
-    sendImageToApi(base64Data);
-
-    if (!isSubscribed && !isFirstDayUnlimited) {
-      const newCount = scanCount + 1;
-      setScanCount(newCount);
-      await AsyncStorage.setItem('dailyScanCount', newCount.toString());
-    }
-  }
-};
-
-const takePhoto = async () => {
-  if (!hasPermission) {
-    const { status } = await Camera.requestCameraPermissionsAsync();
-    setHasPermission(status === 'granted');
-  }
-
-  if (hasPermission) {
-    if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
+  const pickImage = async () => {
+    if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5)) {
       const timeLeft = getTimeUntilMidnight();
       Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
       return;
     }
 
-    let result = await ImagePicker.launchCameraAsync({
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: true,
       aspect: [4, 3],
       quality: 1,
@@ -334,28 +281,61 @@ const takePhoto = async () => {
       setModalVisible(true);
       sendImageToApi(base64Data);
 
-      if (!isSubscribed && !isFirstDayUnlimited) {
+      if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited)) {
         const newCount = scanCount + 1;
         setScanCount(newCount);
         await AsyncStorage.setItem('dailyScanCount', newCount.toString());
       }
     }
-  }
-};
+  };
+
+  const takePhoto = async () => {
+    if (!hasPermission) {
+      const { status } = await Camera.requestCameraPermissionsAsync();
+      setHasPermission(status === 'granted');
+    }
+
+    if (hasPermission) {
+      if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5)) {
+        const timeLeft = getTimeUntilMidnight();
+        Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
+        return;
+      }
+
+      let result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets) {
+        const base64Data = await resizeImage(result.assets[0].uri);
+        setModalImageUri(result.assets[0].uri);
+        setModalVisible(true);
+        sendImageToApi(base64Data);
+
+        if (!isIAPEnabled || (!isSubscribed && !isFirstDayUnlimited)) {
+          const newCount = scanCount + 1;
+          setScanCount(newCount);
+          await AsyncStorage.setItem('dailyScanCount', newCount.toString());
+        }
+      }
+    }
+  };
 
   const closeModal = () => {
     setModalVisible(false);
   };
 
   async function sendImageToApiWithHint(userHint) {
-    setIsLoading(true); // Start loading indicator
+    setIsLoading(true);
     try {
       const anthropic = new Anthropic({
         apiKey: "ANTHROPIC_API_KEY_REMOVED", // Make sure to manage this securely
       });
-  
+
       const base64Image = await resizeImage(modalImageUri);
-  
+
       const msg = await anthropic.messages.create({
         model: "claude-3-haiku-20240307",
         max_tokens: 4096,
@@ -370,7 +350,7 @@ const takePhoto = async () => {
           Sugars (g) per item
           Saturated Fats (g) per item
           Sodium (mg) per item
-  
+
           NOTE: Only include calculations based on the quantity depicted. Exclude additional categories. Name meals by their collective identity, e.g., McDonalds Meal (number of items). Always include the unit next to the measurement.
 
     Focus on precise amounts, detailing visible food items for an accurate nutrient breakdown, e.g., separate 'Proteins' for chicken.
@@ -397,32 +377,32 @@ const takePhoto = async () => {
           }]
         }]
       });
-  
+
       const textResponse = msg.content && msg.content.length > 0 && msg.content[0].text ? msg.content[0].text : "No text data available in the response.";
-      setIsLoading(false); // Stop loading indicator
+      setIsLoading(false);
       setExtractedText(textResponse);
-  
+
       if (textResponse !== "No text data available in the response.") {
         const parsedData = parseNutrientData(textResponse);
         setNutrientData(parsedData);
       }
-  
-      closeModal(); // Close modal after processing
-      setApiSuccess(true); // Set apiSuccess to true after successful API request
+
+      closeModal();
+      setApiSuccess(true);
     } catch (error) {
       console.error("Error sending message to Anthropic API:", error);
-      setIsLoading(false); // Stop loading indicator if there's an error
-      closeModal(); // Close modal after processing
+      setIsLoading(false);
+      closeModal();
     }
   }
 
   async function sendImageToApi(base64Image) {
-    setIsLoading(true); // Start loading
+    setIsLoading(true);
     try {
       const anthropic = new Anthropic({
         apiKey: "ANTHROPIC_API_KEY_REMOVED", // Ensure this is securely managed
       });
-  
+
       const msg = await anthropic.messages.create({
         model: "claude-3-haiku-20240307",
         max_tokens: 4096,
@@ -441,7 +421,8 @@ const takePhoto = async () => {
         IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
 
       Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
-      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`,        messages: [{
+      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`,
+        messages: [{
           "role": "user",
           "content": [{
             "type": "text",
@@ -455,9 +436,9 @@ const takePhoto = async () => {
             Sugars (g) per item
             Saturated Fats (g) per item
             Sodium (mg) per item
-    
+
             IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
-    
+
           Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
           Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`
     }, {
@@ -480,19 +461,19 @@ const takePhoto = async () => {
         setNutrientData(parsedData);
       }
       console.log(msg)
-      closeModal(); // Close modal after processing
-      setApiSuccess(true); // Set apiSuccess to true after successful API request
+      closeModal();
+      setApiSuccess(true);
     } catch (error) {
       console.error("Error sending message to Anthropic API:", error);
       setIsLoading(false);
-      closeModal(); // Close modal after processing
+      closeModal();
     }
   }
 
   function parseNutrientData(text) {
     const lines = text.split('\n');
     const productName = lines[0] || '';
-  
+
     const nutrients = lines
       .slice(1)
       .map((line) => {
@@ -506,15 +487,16 @@ const takePhoto = async () => {
         acc[nutrient.label] = nutrient.value;
         return acc;
       }, {});
-  
+
     return { productName, ...nutrients };
   }
+
   return (
     <View style={styles.container}>
       <Text 
         style={styles.productName} 
         numberOfLines={2} 
-        ellipsizeMode="tail" // Adds an ellipsis at the end of the text if it's too long
+        ellipsizeMode="tail"
       >
         {nutrientData ? nutrientData.productName : 'No image selected'}
       </Text>
@@ -525,7 +507,7 @@ const takePhoto = async () => {
         {nutrientData ? Object.entries(nutrientData).map(([key, value], index) => {
           if (key !== 'productName') {
             return (
-              <Animated.View key={key} style={[styles.nutrientItem, {opacity: fadeAnims[index]}]}>
+              <Animated.View key={key} style={[styles.nutrientItem, {opacity: fadeAnims.current[index]}]}>
                 <View style={styles.nutrientContent}>
                   <Text style={styles.nutrientLabel}>{key}:</Text>
                   <Text style={styles.nutrientValue}>{value}</Text>
@@ -544,9 +526,9 @@ const takePhoto = async () => {
             onPressIn={animateButtonPressIn}
             onPressOut={animateButtonPressOut}
             onPress={async () => {
-      await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      takePhoto();
-    }}
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              takePhoto();
+            }}
             style={styles.button}
           >
             <Text style={styles.buttonText}>Take Photo Now</Text>
@@ -569,24 +551,24 @@ const takePhoto = async () => {
       <View> 
       </View>
       <Animated.View style={[styles.feedbackContainer, {opacity: fadeInAnim}]}>
-  <Text style={styles.feedbackText}>Did we get this right?</Text>
-  <View style={styles.iconButtonContainer}>
-    <TouchableOpacity onPress={handleCorrectPress} style={[styles.iconButton, {backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000'}]}>
-      <Icon 
-        name="checkmark-outline" // Using just the checkmark without the circle
-        size={25} 
-        color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
-      />
-    </TouchableOpacity>
-    <TouchableOpacity onPress={handleIncorrectPress} style={[styles.iconButton, {backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000'}]}>
-      <Icon 
-        name="close-outline" // Using just the close without the circle
-        size={25} 
-        color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
-      />
-    </TouchableOpacity>
-  </View>
-</Animated.View>
+        <Text style={styles.feedbackText}>Did we get this right?</Text>
+        <View style={styles.iconButtonContainer}>
+          <TouchableOpacity onPress={handleCorrectPress} style={[styles.iconButton, {backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000'}]}>
+            <Icon 
+              name="checkmark-outline"
+              size={25} 
+              color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
+            />
+          </TouchableOpacity>
+          <TouchableOpacity onPress={handleIncorrectPress} style={[styles.iconButton, {backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000'}]}>
+            <Icon 
+              name="close-outline"
+              size={25} 
+              color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
+            />
+          </TouchableOpacity>
+        </View>
+      </Animated.View>
       <Modal
         animationType="slide"
         transparent={true}
@@ -609,38 +591,39 @@ const takePhoto = async () => {
         </View>
       </Modal>
       <Modal
-  animationType="slide"
-  transparent={true}
-  visible={isInputModalVisible}
-  onRequestClose={() => setInputModalVisible(false)}
->
-  <View style={styles.centeredView}>
-    <View style={styles.inputModalView}>
-      <Text style={styles.inputModalText}>Please enter the name or type of the food you entered:</Text>
-      <TextInput
-        style={styles.input}
-        onChangeText={setUserInput}
-        value={userInput}
-        placeholder="Name or type of food"
-        keyboardType="default"
-      />
-      <TouchableOpacity
-        style={styles.inputModalButton}
-        onPress={() => {
-          console.log("User entered food type:", userInput);
-          setInputModalVisible(false);
-          submitUserInput();
-          setUserInput(''); // Optionally reset the input
-        }}
+        animationType="slide"
+        transparent={true}
+        visible={isInputModalVisible}
+        onRequestClose={() => setInputModalVisible(false)}
       >
-        <Text style={styles.inputModalButtonText}>Submit</Text>
-      </TouchableOpacity>
-    </View>
-  </View>
-</Modal>
+        <View style={styles.centeredView}>
+          <View style={styles.inputModalView}>
+            <Text style={styles.inputModalText}>Please enter the name or type of the food you entered:</Text>
+            <TextInput
+              style={styles.input}
+              onChangeText={setUserInput}
+              value={userInput}
+              placeholder="Name or type of food"
+              keyboardType="default"
+            />
+            <TouchableOpacity
+              style={styles.inputModalButton}
+              onPress={() => {
+                console.log("User entered food type:", userInput);
+                setInputModalVisible(false);
+                submitUserInput();
+                setUserInput(''); // Optionally reset the input
+              }}
+            >
+              <Text style={styles.inputModalButtonText}>Submit</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 };
+
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
   container: {
     flex: 1,
@@ -650,10 +633,10 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF', // Dark mode has dark background
   },
   productName: {
-    fontSize: 30,
+    fontSize: 22,
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#fff' : '#000',
-    marginTop: '10%',
+    marginTop: '12%',
     marginBottom: '3%',
     textAlign: 'center'
   },
@@ -715,7 +698,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   buttonText: {
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
-    fontWeight: 'bold',
+    fontWeight: "600",
     textAlign: 'center'
   },
   detailButton: {
@@ -817,7 +800,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     margin: 12,
     borderWidth: 1,
     padding: 10,
-    width: 300, // Adjust width as needed
+    width: 300,
     borderColor: '#ccc',
     color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
     borderRadius: 100,
@@ -842,7 +825,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: "600",
     color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
   },
-  
 });
 
 export default MacroScanHome;

@@ -1,32 +1,23 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions, Platform } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions, Platform, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Ensure FontAwesome is installed
+import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { Appearance } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as RNIap from 'react-native-iap';
+import { useIAP } from '../IAPContext';
 
 const itemSkus = Platform.select({
-  ios: [
-    'macroscan_plusplus_subscription',
-    'macroscan_plus_subscription',
-    'remove_ads_one_time'
-  ],
-  android: [
-    'macroscan_plusplus_subscription',
-    'macroscan_plus_subscription',
-    'remove_ads_one_time'
-  ]
+  ios: ['macroscan_plusplus_subscription', 'macroscan_plus_subscription', 'remove_ads_one_time'],
+  android: ['macroscan_plusplus_subscription', 'macroscan_plus_subscription', 'remove_ads_one_time']
 });
 
-
 const { width, height } = Dimensions.get('window');
-const fontSize = width * 0.045; // 5% of screen width
-const logoSize = width * 0.1; // 5% of screen width
-const subcriptionFeatureSize = width * 0.037; // 5% of screen width
-const priceTextSize = width * 0.037; // 5% of screen width
-
+const fontSize = width * 0.045;
+const logoSize = width * 0.1;
+const subcriptionFeatureSize = width * 0.037;
+const priceTextSize = width * 0.037;
 
 export default function AccountScreen() {
   const [imageUri, setImageUri] = useState(null);
@@ -34,62 +25,64 @@ export default function AccountScreen() {
   const [loadError, setLoadError] = useState(false);
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
-  const navigation = useNavigation();  // Correctly use the navigation hook here
+  const navigation = useNavigation();
   const [products, setProducts] = useState([]);
   const [isSubscribedPlusPlus, setIsSubscribedPlusPlus] = useState(false);
   const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
   const [hasPurchasedAdsRemoval, setHasPurchasedAdsRemoval] = useState(false);
-  
-
+  const { isIAPEnabled, toggleIAP } = useIAP();
 
   useEffect(() => {
+    if (!isIAPEnabled) return;
+
     const initIAP = async () => {
       try {
-        console.log('IAP Connection initialized, fetching products...');
         await RNIap.initConnection();
-        const prods = await RNIap.getProducts({ skus: itemSkus });
-        console.log('Products fetched:', prods);
+        const prods = await RNIap.getProducts(itemSkus);
         setProducts(prods);
       } catch (error) {
         console.error('Failed to initialize IAP:', error);
       }
 
-      // Cleanup function to end the IAP connection
       return () => {
-        console.log('Ending IAP connection...');
         RNIap.endConnection();
       };
     };
 
     initIAP();
-  }, []);
+  }, [isIAPEnabled]);
 
   const handlePurchase = async (productId) => {
-    console.log('Attempting to purchase SKU:', productId);
+    if (!isIAPEnabled) {
+      Alert.alert('Purchases are Disabled', 'In-App Purchases are currently disabled because the app is in testing mode.');
+      return;
+    }
+
     try {
       if (productId === 'macroscan_plusplus_subscription') {
-        await RNIap.requestSubscription({ sku: productId });
+        await RNIap.requestSubscription(productId);
         setIsSubscribedPlusPlus(true);
       } else if (productId === 'macroscan_plus_subscription') {
-        await RNIap.requestSubscription({ sku: productId });
+        await RNIap.requestSubscription(productId);
         setIsSubscribedPlus(true);
       } else if (productId === 'remove_ads_one_time') {
-        await RNIap.requestPurchase({ sku: productId });
+        await RNIap.requestPurchase(productId);
         setHasPurchasedAdsRemoval(true);
       }
-      console.log('Purchase successful for:', productId);
     } catch (error) {
       console.error('Purchase failed', error);
     }
   };
 
   const checkSubscription = async () => {
+    if (!isIAPEnabled) return;
+
     try {
       const purchases = await RNIap.getAvailablePurchases();
       const subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
       const subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
       const purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
-  
+
       setIsSubscribedPlusPlus(subscribedPlusPlus);
       setIsSubscribedPlus(subscribedPlus);
       setHasPurchasedAdsRemoval(purchasedAdsRemoval);
@@ -97,22 +90,24 @@ export default function AccountScreen() {
       console.error('Failed to restore purchases:', error);
     }
   };
-  
-  useEffect(() => {
-    checkSubscription();
-  }, []);
 
   useEffect(() => {
+    if (isIAPEnabled) {
+      checkSubscription();
+    }
+  }, [isIAPEnabled]);
+
+  useEffect(() => {
+    if (!isIAPEnabled) return;
+
     const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
-      console.log('Purchase updated:', purchase);
+      if (!isIAPEnabled) return;
+
       const receipt = purchase.transactionReceipt ? purchase.transactionReceipt : purchase.originalJson;
       if (receipt) {
         try {
-          // Confirm receipt with your server and unlock content
           const ackResult = await RNIap.finishTransaction(purchase, true);
-          console.log('Transaction finished:', ackResult);
-  
-          // Check product ID and update state accordingly
+
           if (purchase.productId === 'macroscan_plusplus_subscription') {
             setIsSubscribedPlusPlus(true);
           } else if (purchase.productId === 'macroscan_plus_subscription') {
@@ -120,32 +115,30 @@ export default function AccountScreen() {
           } else if (purchase.productId === 'remove_ads_one_time') {
             setHasPurchasedAdsRemoval(true);
           }
-  
-          // Additional app-specific logic here
+
           unlockFeatures(purchase.productId);
         } catch (error) {
           console.warn('Finish transaction error:', error);
         }
       }
     });
-  
+
     return () => {
-      purchaseUpdateSubscription.remove();
+      if (purchaseUpdateSubscription) {
+        purchaseUpdateSubscription.remove();
+      }
     };
-  }, []);
+  }, [isIAPEnabled]);
 
   const unlockFeatures = (productId) => {
     switch (productId) {
       case 'macroscan_plusplus_subscription':
-        // Unlock features specific to MacroScan++
         console.log("Features for MacroScan++ Unlocked!");
         break;
       case 'macroscan_plus_subscription':
-        // Unlock features specific to MacroScan+
         console.log("Features for MacroScan+ Unlocked!");
         break;
       case 'remove_ads_one_time':
-        // Remove ads
         console.log("Ads Removed!");
         break;
       default:
@@ -156,228 +149,215 @@ export default function AccountScreen() {
 
   useEffect(() => {
     async function loadProfile() {
-        try {
-            const savedName = await AsyncStorage.getItem('userName');
-            const savedImageUri = await AsyncStorage.getItem('userImageUri');
-            console.log('Loaded URI:', savedImageUri); // Confirm what URI is loaded
-            setName(savedName || '');
-            setImageUri(savedImageUri || 'https://via.placeholder.com/150');
-        } catch (error) {
-            Alert.alert('Error', 'Failed to load user data.');
-            console.error(error);
-        }
+      try {
+        const savedName = await AsyncStorage.getItem('userName');
+        const savedImageUri = await AsyncStorage.getItem('userImageUri');
+        setName(savedName || '');
+        setImageUri(savedImageUri || 'https://via.placeholder.com/150');
+      } catch (error) {
+        Alert.alert('Error', 'Failed to load user data.');
+        console.error(error);
+      }
     }
     loadProfile();
-}, []);
+  }, []);
 
-const resetImageUri = async () => {
-  try {
-      // Remove the userImageUri key from AsyncStorage
+  const resetImageUri = async () => {
+    try {
       await AsyncStorage.removeItem('userImageUri');
-      // Reset the imageUri state to null or directly to the placeholder URI
       setImageUri('https://via.placeholder.com/150');
       Alert.alert('Reset Done', 'The profile image has been reset.');
-  } catch (error) {
+    } catch (error) {
       Alert.alert('Error', 'Failed to reset the profile image.');
       console.error(error);
-  }
-};
+    }
+  };
 
-const deleteAccount = async () => {
-  // Ask user for confirmation before deleting the account
-  Alert.alert(
-    'Delete Account', // Title of the alert
-    'Are you sure you want to delete your account? This action cannot be undone.', // Message of the alert
-    [
-      // Array of buttons
-      {
-        text: 'Cancel',
-        onPress: () => console.log('Account deletion cancelled'), // Log message or handle cancellation
-        style: 'cancel', // Style of the cancel button
-      },
-      {
-        text: 'Delete',
-        onPress: async () => {
-          // Proceed with account deletion
-          try {
-            // Remove the userImageUri key from AsyncStorage
-            await AsyncStorage.removeItem('@user');
-            await AsyncStorage.removeItem('userImageUri');
-            await AsyncStorage.removeItem('userName');
-            // Reset the imageUri state to null or directly to the placeholder URI
-            Alert.alert('Account deleted', 'Your account has been deleted.');
-            navigation.reset({
-              index: 0,
-              routes: [{ name: 'Goodbye' }],
-            });
-          } catch (error) {
-            Alert.alert('Error', 'Failed to delete account.');
-            console.error(error);
-          }
+  const deleteAccount = async () => {
+    Alert.alert(
+      'Delete Account',
+      'Are you sure you want to delete your account? This action cannot be undone.',
+      [
+        {
+          text: 'Cancel',
+          onPress: () => console.log('Account deletion cancelled'),
+          style: 'cancel',
         },
-        style: 'destructive', // Style to indicate this is a destructive action
-      }
-    ],
-    { cancelable: false } // Makes it so the alert is not dismissible outside of clicking buttons
-  );
-};
+        {
+          text: 'Delete',
+          onPress: async () => {
+            try {
+              await AsyncStorage.removeItem('@user');
+              await AsyncStorage.removeItem('userImageUri');
+              await AsyncStorage.removeItem('userName');
+              Alert.alert('Account deleted', 'Your account has been deleted.');
+              navigation.reset({
+                index: 0,
+                routes: [{ name: 'Goodbye' }],
+              });
+            } catch (error) {
+              Alert.alert('Error', 'Failed to delete account.');
+              console.error(error);
+            }
+          },
+          style: 'destructive',
+        }
+      ],
+      { cancelable: false }
+    );
+  };
 
-const saveData = async (uri) => {
-  try {
+  const saveData = async (uri) => {
+    try {
       await AsyncStorage.setItem('userName', name);
       if (uri) {
-          console.log('Attempting to save URI:', uri);
-          await AsyncStorage.setItem('userImageUri', uri);
-          console.log('URI saved to storage:', uri);
+        await AsyncStorage.setItem('userImageUri', uri);
       }
-  } catch (error) {
+    } catch (error) {
       Alert.alert('Error', 'Failed to save the data.');
       console.error(error);
-  }
-};
+    }
+  };
 
   const pickImage = async () => {
     const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!permissionResult.granted) {
-        Alert.alert('Permission Required', 'Permission to access camera roll is required!');
-        return;
+      Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+      return;
     }
 
     try {
-        const result = await ImagePicker.launchImageLibraryAsync({
-            mediaTypes: ImagePicker.MediaTypeOptions.Images,
-            allowsEditing: true,
-            aspect: [1, 1],
-            quality: 1,
-        });
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
 
-        console.log('Picker Result:', result); // Log the full result object
-
-        if (!result.cancelled && result.assets && result.assets.length > 0) {
-          const newImageUri = result.assets[0].uri;
-          console.log('Picked URI:', newImageUri);
-          setImageUri(newImageUri);
-          await saveData(newImageUri); // Pass URI directly to the save function
-        } else {
-            console.log('Image picker was cancelled or no assets');
-        }
+      if (!result.cancelled && result.assets && result.assets.length > 0) {
+        const newImageUri = result.assets[0].uri;
+        setImageUri(newImageUri);
+        await saveData(newImageUri);
+      }
     } catch (error) {
-        Alert.alert('Error', 'An error occurred while picking the image.');
-        console.error(error);
+      Alert.alert('Error', 'An error occurred while picking the image.');
+      console.error(error);
     }
-};
+  };
 
   return (
     <ScrollView style={styles.container}>
       <View style={styles.imageContainer}>
         <TouchableOpacity onPress={pickImage}>
-        <Image
-          source={{ uri: loadError ? 'https://via.placeholder.com/150' : imageUri }}
-          style={styles.image}
-          onError={() => {
-            console.log('Failed to load image:', imageUri); // Debug: Log on image load failure
-            setLoadError(true); // Indicate an error without changing the original URI
-          }}
-        />
+          <Image
+            source={{ uri: loadError ? 'https://via.placeholder.com/150' : imageUri }}
+            style={styles.image}
+            onError={() => {
+              setLoadError(true);
+            }}
+          />
           <View style={styles.iconOverlay}>
-          <MaterialCommunityIcons
-                name="pencil"
-                size={24}
-                color={colorScheme === 'dark' ? 'black' : 'white'}  // Dynamic color based on mode
+            <MaterialCommunityIcons
+              name="pencil"
+              size={24}
+              color={colorScheme === 'dark' ? 'black' : 'white'}
             />
           </View>
         </TouchableOpacity>
       </View>
       <View style={styles.content}>
-      <Text style={styles.title}>
-        {name && name.split(" ")[0] ? `Hi, ${name.split(" ")[0]}! 👋` : "Your Account"}
-      </Text>
-      <TextInput
-        style={styles.input}
-        value={name}
-        onChangeText={setName}
-        placeholder="Enter your full name"
-        onBlur={() => {
-          // Split the name by spaces to check for multiple parts
-          const parts = name.trim().split(/\s+/);
-          if (parts.length < 2) {
-            // Not a full name, clear the input and show an alert
-            Alert.alert("Both Names Please!", "Please enter your full name (first and last name).");
-            setName(''); // Clear the text input
-          } else {
-            // If valid, save the name
-            saveData();
-          }
-        }}
-      />
+        <Text style={styles.title}>
+          {name && name.split(" ")[0] ? `Hi, ${name.split(" ")[0]}! 👋` : "Your Account"}
+        </Text>
+        <TextInput
+          style={styles.input}
+          value={name}
+          onChangeText={setName}
+          placeholder="Enter your full name"
+          onBlur={() => {
+            const parts = name.trim().split(/\s+/);
+            if (parts.length < 2) {
+              Alert.alert("Both Names Please!", "Please enter your full name (first and last name).");
+              setName('');
+            } else {
+              saveData();
+            }
+          }}
+        />
         <Text style={styles.description}>
-          {name && name.split(" ")[0] 
-          ? `Hello, ${name.split(" ")[0]}! You can manage your account, and subscribe to MacroScan+ here.` 
-          : "Welcome to MacroScan! You can manage your account settings here."}        
+          {name && name.split(" ")[0]
+            ? `Hello, ${name.split(" ")[0]}! You can manage your account, and subscribe to MacroScan+ here.`
+            : "Welcome to MacroScan! You can manage your account settings here."}
         </Text>
       </View>
       <View style={styles.subscriptionContainer}>
-      <View style={styles.subscriptionOption1}>
-  <View style={styles.titleWithLogo}>
-    <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-    <Text style={styles.subscriptionTitle}>MacroScan++</Text>
-    <TouchableOpacity
-  style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled1 : styles.subscribeButton1}
-  onPress={() => handlePurchase('macroscan_plusplus_subscription')}
-  disabled={isSubscribedPlusPlus}>
-  <Text style={styles.subscribeButtonText}>Subscribe</Text>
-</TouchableOpacity>
-  </View>
-  <View style={styles.rightPart}>
-    <Text style={styles.priceText}>$8.99/Month</Text>
-  </View>
-  <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
-  <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
-  <Text style={styles.subscriptionFeature}>• No Ads</Text>
-</View>
-<View style={styles.subscriptionOption2}>
-  <View style={styles.titleWithLogo}>
-      <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-      <Text style={styles.subscriptionTitle}>MacroScan+</Text>
-      <TouchableOpacity
-  style={isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
-  onPress={() => handlePurchase('macroscan_plus_subscription')}
-  disabled={isSubscribedPlus}>
-  <Text style={styles.subscribeButtonText}>Subscribe</Text>
-</TouchableOpacity>
-    </View>
-    <View style={styles.rightPart}>
-
-      <Text style={styles.priceText}>$3.99/Month</Text>
-    </View>
-    <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
-    <Text style={styles.subscriptionFeature}>• Access to more accurate recognition</Text>
-    <Text style={styles.subscriptionFeature}>• No Ads</Text>
-  </View>
-<View style={styles.subscriptionOption3}>
-  <View style={styles.titleWithLogo}>
-    <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-    <Text style={styles.subscriptionTitle}>Remove Ads</Text>
-    <TouchableOpacity
-  style={hasPurchasedAdsRemoval ? styles.subscribeButtonDisabled3 : styles.subscribeButton3}
-  onPress={() => handlePurchase('remove_ads_one_time')}
-  disabled={hasPurchasedAdsRemoval}>
-  <Text style={styles.subscribeButtonText}>Purchase</Text>
-</TouchableOpacity>
-  </View>
-  <View style={styles.rightPart}>
-    <Text style={styles.priceText}>$5.99 Once</Text>
-  </View>
-  <Text style={styles.subscriptionFeature}>• No Ads</Text>
-  <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
-  <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
-</View>
-  <Text style={styles.dangerSection}>⚠️ Danger Section ⚠️</Text>
-  <View style={styles.separatorBox}></View>
-  <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
+        <View style={styles.subscriptionOption1}>
+          <View style={styles.titleWithLogo}>
+            <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+            <Text style={styles.subscriptionTitle}>MacroScan++</Text>
+            <TouchableOpacity
+              style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled1 : styles.subscribeButton1}
+              onPress={() => handlePurchase('macroscan_plusplus_subscription')}
+              disabled={isSubscribedPlusPlus}>
+              <Text style={styles.subscribeButtonText}>Subscribe</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.rightPart}>
+            <Text style={styles.priceText}>$8.99/Month</Text>
+          </View>
+          <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+          <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
+          <Text style={styles.subscriptionFeature}>• No Ads</Text>
+        </View>
+        <View style={styles.subscriptionOption2}>
+          <View style={styles.titleWithLogo}>
+            <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+            <Text style={styles.subscriptionTitle}>MacroScan+</Text>
+            <TouchableOpacity
+              style={isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
+              onPress={() => handlePurchase('macroscan_plus_subscription')}
+              disabled={isSubscribedPlus}>
+              <Text style={styles.subscribeButtonText}>Subscribe</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.rightPart}>
+            <Text style={styles.priceText}>$3.99/Month</Text>
+          </View>
+          <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+          <Text style={styles.subscriptionFeature}>• Access to more accurate recognition</Text>
+          <Text style={styles.subscriptionFeature}>• No Ads</Text>
+        </View>
+        <View style={styles.subscriptionOption3}>
+          <View style={styles.titleWithLogo}>
+            <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
+            <Text style={styles.subscriptionTitle}>Remove Ads</Text>
+            <TouchableOpacity
+              style={hasPurchasedAdsRemoval ? styles.subscribeButtonDisabled3 : styles.subscribeButton3}
+              onPress={() => handlePurchase('remove_ads_one_time')}
+              disabled={hasPurchasedAdsRemoval}>
+              <Text style={styles.subscribeButtonText}>Purchase</Text>
+            </TouchableOpacity>
+          </View>
+          <View style={styles.rightPart}>
+            <Text style={styles.priceText}>$5.99 Once</Text>
+          </View>
+          <Text style={styles.subscriptionFeature}>• No Ads</Text>
+          <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
+          <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
+        </View>
+        <Text style={styles.dangerSection}>⚠️ Danger Section ⚠️</Text>
+        <View style={styles.separatorBox}></View>
+        <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
           <Text style={styles.deleteButtonText}>Delete Account</Text>
         </TouchableOpacity>
-</View>
+      </View>
+      <View style={styles.toggleContainer}>
+        <Text style={styles.toggleLabel}>IAP Enabled</Text>
+        <Switch
+          value={isIAPEnabled}
+          onValueChange={toggleIAP}
+        />
+      </View>
     </ScrollView>
   );
 }
@@ -468,21 +448,21 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold',
   },
   titleWithLogo: {
-    flexDirection: 'row', // Align children in a row
-    alignItems: 'center', // Align children vertically in the center
+    flexDirection: 'row',
+    alignItems: 'center',
     marginBottom: '2%',
   },
   logo: {
-    width: logoSize, // Adjust width as needed
-    height: logoSize, // Adjust height as needed
-    marginRight: '4%', // Space between logo and title
-    resizeMode: 'contain', // So the logo does not get stretched
+    width: logoSize,
+    height: logoSize,
+    marginRight: '4%',
+    resizeMode: 'contain',
   },
   priceText: {
     color: 'white',
     fontSize: priceTextSize,
     fontWeight: '700',
-    marginTop: 4, // Adjust the space between the button and the price text as needed
+    marginTop: 4,
     textAlign: 'right',
     marginRight: '7%',
   },
@@ -536,7 +516,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   deleteButton: {
     marginTop: '6%',
-    backgroundColor: '#FF4136', // Red color for a delete action
+    backgroundColor: '#FF4136',
     padding: 15,
     borderRadius: 100,
     width: '45%',
@@ -587,5 +567,15 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginTop: 0,
     marginLeft: '11%',
     marginRight: '11%',
+  },
+  toggleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 20,
+  },
+  toggleLabel: {
+    fontSize: 16,
+    marginRight: 10,
   },
 });
