@@ -1,4 +1,5 @@
 import React from 'react';
+import { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
@@ -13,8 +14,20 @@ import { Ionicons } from '@expo/vector-icons';
 
 const SettingsScreen = () => {
   const navigation = useNavigation();
-  const colorScheme = Appearance.getColorScheme();
+  const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
+
+  useEffect(() => {
+    const colorSchemeListener = (preferences) => {
+      setColorScheme(preferences.colorScheme);
+    };
+    
+    Appearance.addChangeListener(colorSchemeListener);
+    
+    return () => {
+      Appearance.removeChangeListener(colorSchemeListener);
+    };
+  }, []);
 
   const settingsOptions = [
     {
@@ -77,7 +90,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: '5%',
   },
   title: {
-    fontSize: 28,
+    fontSize: 26,
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#FFF' : '#000',
     textAlign: 'center',

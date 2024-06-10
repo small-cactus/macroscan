@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions, Platform, Switch } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
@@ -7,8 +7,6 @@ import { Appearance } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as RNIap from 'react-native-iap';
 import { useIAP } from '../IAPContext';
-import { firestore } from '../firebaseConfig';
-import { doc, deleteDoc } from 'firebase/firestore';
 import { useUser } from '../userContext';
 
 const itemSkus = Platform.select({
@@ -26,6 +24,7 @@ export default function AccountScreen() {
   const [imageUri, setImageUri] = useState(null);
   const [name, setName] = useState('');
   const [loadError, setLoadError] = useState(false);
+  const [showLogs, setShowLogs] = useState(false);
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const navigation = useNavigation();
@@ -35,20 +34,45 @@ export default function AccountScreen() {
   const [hasPurchasedAdsRemoval, setHasPurchasedAdsRemoval] = useState(false);
   const { isIAPEnabled, toggleIAP } = useIAP();
   const { user, setUser, deleteUser, updateUser } = useUser();
+  const intervalRef = useRef(null);
+  const lastFetchTimeRef = useRef(Date.now());
+
+  const log = (message) => {
+    if (showLogs) {
+      Alert.alert('Log', message);
+    }
+    console.log(message);
+  };
+
+  const logError = (message, error) => {
+    if (showLogs) {
+      Alert.alert('Error', `${message}: ${error}`);
+    }
+    console.error(message, error);
+  };
 
   useEffect(() => {
     if (!isIAPEnabled) return;
 
     const initIAP = async () => {
       try {
+        log('Initializing IAP connection...');
         await RNIap.initConnection();
-        const prods = await RNIap.getProducts(itemSkus);
-        setProducts(prods);
+        log('IAP Connection initialized');
+
+        if (itemSkus && itemSkus.length > 0) {
+          const prods = await RNIap.getProducts({ skus: itemSkus });
+          log(`Products fetched: ${JSON.stringify(prods)}`);
+          setProducts(prods);
+        } else {
+          logError('SKUs not found');
+        }
       } catch (error) {
-        console.error('Failed to initialize IAP:', error);
+        logError('Failed to initialize IAP', error);
       }
 
       return () => {
+        log('Ending IAP connection...');
         RNIap.endConnection();
       };
     };
@@ -57,27 +81,43 @@ export default function AccountScreen() {
   }, [isIAPEnabled]);
 
   const handlePurchase = async (productId) => {
-    if (!isIAPEnabled) {
-      Alert.alert('Purchases are Disabled', 'In-App Purchases are currently disabled because the app is in testing mode.');
-      return;
-    }
-
+    log(`Attempting to purchase SKU: ${productId}`);
     try {
+      const purchase = await RNIap.requestPurchase({ sku: productId });
+      log(`Purchase completed for: ${productId}, ${JSON.stringify(purchase)}`);
+  
       if (productId === 'macroscan_plusplus_subscription') {
-        await RNIap.requestSubscription(productId);
         setIsSubscribedPlusPlus(true);
         await updateUserSubscription('macroscan_plusplus_subscription');
+        log('Updated user subscription to MacroScan++');
       } else if (productId === 'macroscan_plus_subscription') {
-        await RNIap.requestSubscription(productId);
         setIsSubscribedPlus(true);
         await updateUserSubscription('macroscan_plus_subscription');
+        log('Updated user subscription to MacroScan+');
       } else if (productId === 'remove_ads_one_time') {
-        await RNIap.requestPurchase(productId);
         setHasPurchasedAdsRemoval(true);
         await updateUserSubscription('remove_ads_one_time');
+        log('Updated user subscription to remove ads');
       }
+  
+      unlockFeatures(productId);
     } catch (error) {
-      console.error('Purchase failed', error);
+      logError(`Purchase failed for: ${productId}`, error);
+      if (error.code === 'E_USER_CANCELLED') {
+        Alert.alert('Purchase Cancelled', 'You cancelled the purchase.');
+      } else if (error.code === 'E_ALREADY_OWNED') {
+        Alert.alert('Already Purchased', 'You have already purchased this item.');
+      } else if (error.code === 'E_ITEM_UNAVAILABLE') {
+        Alert.alert('Item Unavailable', 'The requested item is unavailable.');
+      } else if (error.code === 'E_REMOTE_ERROR') {
+        Alert.alert('Server Error', 'An error occurred on the server. Please try again later.');
+      } else if (error.code === 'E_NETWORK_ERROR') {
+        Alert.alert('Network Error', 'A network error occurred. Please check your internet connection and try again.');
+      } else if (error.code === 'E_SERVICE_ERROR') {
+        Alert.alert('Service Error', 'An error occurred with the payment service. Please try again later.');
+      } else {
+        Alert.alert('Purchase Error', 'An unknown error occurred while processing the purchase. Please try again later.');
+      }
     }
   };
 
@@ -88,50 +128,84 @@ export default function AccountScreen() {
   };
 
   const checkSubscription = async () => {
-    if (!isIAPEnabled) return;
-
     try {
       const purchases = await RNIap.getAvailablePurchases();
-      const subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
-      const subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
-      const purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
+      log(`Available purchases: ${JSON.stringify(purchases)}`);
+  
+      if (purchases && purchases.length > 0) {
+        const subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
+        const subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
+        const purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
+  
+        setIsSubscribedPlusPlus(subscribedPlusPlus);
+        setIsSubscribedPlus(subscribedPlus);
+        setHasPurchasedAdsRemoval(purchasedAdsRemoval);
 
-      setIsSubscribedPlusPlus(subscribedPlusPlus);
-      setIsSubscribedPlus(subscribedPlus);
-      setHasPurchasedAdsRemoval(purchasedAdsRemoval);
+        await updateUserSubscription(subscribedPlusPlus ? 'macroscan_plusplus_subscription' : subscribedPlus ? 'macroscan_plus_subscription' : purchasedAdsRemoval ? 'remove_ads_one_time' : 'free');
+      } else {
+        log('No available purchases found, setting to free plan');
+        setIsSubscribedPlusPlus(false);
+        setIsSubscribedPlus(false);
+        setHasPurchasedAdsRemoval(false);
+        await updateUserSubscription('free');
+      }
     } catch (error) {
-      console.error('Failed to restore purchases:', error);
+      logError('Failed to restore purchases', error);
+      Alert.alert('Restore Error', 'Failed to restore purchases. Please try again later.');
     }
   };
 
   useEffect(() => {
     if (isIAPEnabled) {
       checkSubscription();
+
+      intervalRef.current = setInterval(() => {
+        checkSubscription();
+      }, 30 * 60 * 1000); // 30 minutes in milliseconds
+
+      return () => {
+        clearInterval(intervalRef.current);
+      };
     }
   }, [isIAPEnabled]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      const now = Date.now();
+      if (isIAPEnabled && now - lastFetchTimeRef.current >= 30 * 60 * 1000) {
+        checkSubscription();
+        lastFetchTimeRef.current = now;
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, isIAPEnabled]);
 
   useEffect(() => {
     if (!isIAPEnabled) return;
 
     const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
-      if (!isIAPEnabled) return;
-
+      log(`Purchase updated: ${JSON.stringify(purchase)}`);
       const receipt = purchase.transactionReceipt ? purchase.transactionReceipt : purchase.originalJson;
       if (receipt) {
         try {
-          const ackResult = await RNIap.finishTransaction(purchase, true);
-
+          await RNIap.finishTransaction(purchase, true);
+          log(`Transaction finished: ${JSON.stringify(purchase)}`);
+    
           if (purchase.productId === 'macroscan_plusplus_subscription') {
             setIsSubscribedPlusPlus(true);
+            await updateUserSubscription('macroscan_plusplus_subscription');
           } else if (purchase.productId === 'macroscan_plus_subscription') {
             setIsSubscribedPlus(true);
+            await updateUserSubscription('macroscan_plus_subscription');
           } else if (purchase.productId === 'remove_ads_one_time') {
             setHasPurchasedAdsRemoval(true);
+            await updateUserSubscription('remove_ads_one_time');
           }
-
+    
           unlockFeatures(purchase.productId);
         } catch (error) {
-          console.warn('Finish transaction error:', error);
+          logError('Finish transaction error', error);
         }
       }
     });
@@ -146,16 +220,16 @@ export default function AccountScreen() {
   const unlockFeatures = (productId) => {
     switch (productId) {
       case 'macroscan_plusplus_subscription':
-        console.log("Features for MacroScan++ Unlocked!");
+        log("Features for MacroScan++ Unlocked!");
         break;
       case 'macroscan_plus_subscription':
-        console.log("Features for MacroScan+ Unlocked!");
+        log("Features for MacroScan+ Unlocked!");
         break;
       case 'remove_ads_one_time':
-        console.log("Ads Removed!");
+        log("Ads Removed!");
         break;
       default:
-        console.log("Unknown product ID");
+        log("Unknown product ID");
         break;
     }
   };
@@ -169,7 +243,7 @@ export default function AccountScreen() {
         setImageUri(savedImageUri || 'https://via.placeholder.com/150');
       } catch (error) {
         Alert.alert('Error', 'Failed to load user data.');
-        console.error(error);
+        logError('Failed to load user data', error);
       }
     }
     loadProfile();
@@ -182,7 +256,7 @@ export default function AccountScreen() {
       Alert.alert('Reset Done', 'The profile image has been reset.');
     } catch (error) {
       Alert.alert('Error', 'Failed to reset the profile image.');
-      console.error(error);
+      logError('Failed to reset the profile image', error);
     }
   };
 
@@ -193,21 +267,22 @@ export default function AccountScreen() {
       [
         {
           text: 'Cancel',
-          onPress: () => console.log('Account deletion cancelled'),
+          onPress: () => log('Account deletion cancelled'),
           style: 'cancel',
         },
         {
           text: 'Delete',
           onPress: async () => {
             try {
-              // if (user && user.uid) {
-              //   await deleteUser();
-              // }
-
               await AsyncStorage.removeItem('@user');
               await AsyncStorage.removeItem('userImageUri');
               await AsyncStorage.removeItem('userName');
               await AsyncStorage.removeItem('@user_logged_in');
+              await AsyncStorage.removeItem('@product_history');
+              await AsyncStorage.removeItem('selectedModel');
+              await AsyncStorage.removeItem('dailyScanCount');
+              await AsyncStorage.removeItem('firstUseDate');
+              await AsyncStorage.removeItem('dateLastUsed');
 
               setUser(null);
 
@@ -218,7 +293,7 @@ export default function AccountScreen() {
               });
             } catch (error) {
               Alert.alert('Error', 'Failed to delete account.');
-              console.error('Failed to delete account:', error);
+              logError('Failed to delete account', error);
             }
           },
           style: 'destructive',
@@ -236,7 +311,7 @@ export default function AccountScreen() {
       }
     } catch (error) {
       Alert.alert('Error', 'Failed to save the data.');
-      console.error(error);
+      logError('Failed to save the data', error);
     }
   };
 
@@ -262,12 +337,16 @@ export default function AccountScreen() {
       }
     } catch (error) {
       Alert.alert('Error', 'An error occurred while picking the image.');
-      console.error(error);
+      logError('An error occurred while picking the image', error);
     }
   };
 
   return (
     <ScrollView style={styles.container}>
+      <View style={styles.toggleContainer}>
+        <Text style={styles.toggleLabel}>Show Logs</Text>
+        <Switch value={showLogs} onValueChange={setShowLogs} />
+      </View>
       <View style={styles.imageContainer}>
         <TouchableOpacity onPress={pickImage}>
           <Image
@@ -319,8 +398,10 @@ export default function AccountScreen() {
             <TouchableOpacity
               style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled1 : styles.subscribeButton1}
               onPress={() => handlePurchase('macroscan_plusplus_subscription')}
-              disabled={isSubscribedPlusPlus}>
-              <Text style={styles.subscribeButtonText}>Subscribe</Text>
+              disabled={isSubscribedPlusPlus || isSubscribedPlus || hasPurchasedAdsRemoval}>
+              <Text style={styles.subscribeButtonText}>
+                {isSubscribedPlusPlus ? 'Subscribed' : 'Subscribe'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rightPart}>
@@ -337,8 +418,10 @@ export default function AccountScreen() {
             <TouchableOpacity
               style={isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
               onPress={() => handlePurchase('macroscan_plus_subscription')}
-              disabled={isSubscribedPlus}>
-              <Text style={styles.subscribeButtonText}>Subscribe</Text>
+              disabled={isSubscribedPlus || isSubscribedPlusPlus}>
+              <Text style={styles.subscribeButtonText}>
+                {isSubscribedPlus ? 'Subscribed' : 'Subscribe'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rightPart}>
@@ -355,8 +438,10 @@ export default function AccountScreen() {
             <TouchableOpacity
               style={hasPurchasedAdsRemoval ? styles.subscribeButtonDisabled3 : styles.subscribeButton3}
               onPress={() => handlePurchase('remove_ads_one_time')}
-              disabled={hasPurchasedAdsRemoval}>
-              <Text style={styles.subscribeButtonText}>Purchase</Text>
+              disabled={hasPurchasedAdsRemoval || isSubscribedPlusPlus}>
+              <Text style={styles.subscribeButtonText}>
+                {hasPurchasedAdsRemoval ? 'Purchased' : 'Purchase'}
+              </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rightPart}>
@@ -371,13 +456,6 @@ export default function AccountScreen() {
         <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
           <Text style={styles.deleteButtonText}>Delete Account</Text>
         </TouchableOpacity>
-      </View>
-      <View style={styles.toggleContainer}>
-        <Text style={styles.toggleLabel}>IAP Enabled</Text>
-        <Switch
-          value={isIAPEnabled}
-          onValueChange={toggleIAP}
-        />
       </View>
     </ScrollView>
   );
@@ -563,7 +641,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 3,
   },
   subscribeButtonDisabled1: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#a3a3a3',  // Light gray color for disabled state
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
@@ -572,7 +650,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginRight: '11%',
   },
   subscribeButtonDisabled2: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#a3a3a3',  // Light gray color for disabled state
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
@@ -581,7 +659,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginRight: '11%',
   },
   subscribeButtonDisabled3: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#a3a3a3',  // Light gray color for disabled state
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
@@ -600,4 +678,3 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginRight: 10,
   },
 });
-

@@ -52,37 +52,46 @@ const SupportScreen = () => {
   const faqQuestions = [
     {
       question: "What is MacroScan?",
-      answer: "MacroScan is a mobile application that allows you to scan images of food items to quickly and easily determine their macronutrient content, including fats, proteins, and carbohydrates."
+      answer: "MacroScan is a mobile app that helps you determine the macronutrient content (fats, proteins, and carbohydrates) of your food by simply taking a photo."
     },
     {
       question: "How does MacroScan work?",
-      answer: "Simply take a photo of your meal using MacroScan, and it will analyze the image to estimate the macronutrient values of the food. The app uses advanced image recognition and machine learning technology to identify food items and calculate their nutrients."
+      answer: "Just snap a picture of your meal with MacroScan, and it will estimate the macronutrient values using advanced image recognition and machine learning."
     },
     {
       question: "Do I need to photograph the nutrition label for accurate results?",
-      answer: "No, you do not need to photograph the nutrition label for MacroScan to work. However, if you do include the nutrition label in your photo, MacroScan can provide more precise nutrient information."
+      answer: "No, photographing the nutrition label is not necessary. However, including it can improve the accuracy of the nutrient information."
     },
     {
       question: "How accurate is MacroScan?",
-      answer: "MacroScan is always within 80% of the real macronutrient content of your food. The accuracy may vary based on the quality of the image and the visibility of the food items."
+      answer: "MacroScan is typically within 80% accuracy of the actual macronutrient content. The precision can vary based on image quality and clarity of the food items."
     },
     {
       question: "Can MacroScan identify all types of food?",
-      answer: "MacroScan can identify a wide range of common foods and dishes. However, its ability to recognize highly unusual or complex dishes may be limited."
+      answer: "Yes, MacroScan can identify a wide variety of foods. For best results, try to scan one food item at a time."
     },
     {
       question: "Is there a limit to how many foods I can scan in a day?",
-      answer: "Yes, there is a 5 scan a day limit to how many times you can use MacroScan in a day on the free plan. MacroScan+ and MacroScan++ remove the daily limit."
+      answer: "Yes, on the free plan you can scan up to 5 times a day. Upgrading to MacroScan+ or MacroScan++ removes this limit. All users get unlimited scans on their first day."
     },
     {
       question: "What should I do if MacroScan does not recognize a food item?",
-      answer: "If MacroScan struggles to recognize a food item, try taking a clearer picture with better lighting."
+      answer: "Try taking a clearer picture with better lighting. Including the packaging, writing the food name on paper, or using the 'Did we get this right?' button can also help."
     },
     {
       question: "Can I save my meal history in MacroScan?",
-      answer: "Yes, MacroScan automatically saves and tracks the nutrient content of every meal you scan. This feature helps you keep track of your daily intake and nutritional goals. You can delete the history at any time."
+      answer: "Yes, MacroScan saves the nutrient data from each scan, which you can access later in the history tab. You can delete this history at any time."
+    },
+    {
+      question: "Can MacroScan estimate all types of macronutrients?",
+      answer: "Yes, MacroScan can estimate various macronutrients. We focus on the most important ones to keep the app user-friendly. You can request additional macros via support."
+    },
+    {
+      question: "What if the quantity of items shown is wrong?",
+      answer: "Sometimes the quantity might be incorrect, but the nutrient data will still be right. Use the 'Did we get this right?' button to update it without using a scan."
     }
   ];
+  
 
   return (
     <SafeAreaView style={styles.safeArea}>

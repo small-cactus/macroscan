@@ -51,22 +51,26 @@ const PrivacyScreen = () => {
 
   const faqQuestions = [
     {
-      question: "What personal data does MacroScan collect?",
-      answer: "MacroScan collects no personal data. All app functionalities except image processing are processed on-device, even your account login, history, and settings are all saved locally, that means nothing is available for us or anyone else to see."
+        question: "What personal data does MacroScan collect?",
+        answer: "MacroScan collects your name, email, and subscription status. Each user has a unique ID, which is a long, random code that can't be guessed and isn't linked to your personal details. This ID is stored only on your device and in our secure cloud storage. It's used to manage your account and data."
     },
     {
-      question: "How does MacroScan handle my photos?",
-      answer: "Photos taken in MacroScan are sent to our partner, Anthropic, for macronutrient analysis via their vision models. These photos are used solely for this purpose and are not stored or used after processing for any other purposes."
+        question: "How does MacroScan handle my photos?",
+        answer: "Photos taken in MacroScan are sent to our partner, Anthropic, for macronutrient analysis. These photos are stored on your device for your history feature. When you delete your history or uninstall the app, all photos of food taken or imported into MacroScan are permanently deleted from the app. Any other photos on your device remain unaffected."
     },
     {
-      question: "Can I delete data stored by MacroScan?",
-      answer: "Since all data is stored locally on your device, you can delete it at any time by uninstalling the app, deleting scan history, or deleting your account from the corresponding screens."
+        question: "Can I delete data stored by MacroScan?",
+        answer: "Yes, you can delete your data anytime. Just uninstall the app, delete your scan history, or delete your account from the settings. All your data will be permanently removed from the app."
     },
     {
-      question: "How can I ensure my data remains private?",
-      answer: "Since we don't store any data in the cloud, the only way for someone to steal your data, would be to physically steal your device and open MacroScan."
+        question: "How can I ensure my data remains private?",
+        answer: "Your data is safe because it is stored securely. The only way someone could access your data would be to steal your device or try every possible combination of user IDs, which is practically impossible and would take millions of years."
+    },
+    {
+        question: "Who can see my information?",
+        answer: "Only MacroScan staff can see the information we store, and we make sure no sensitive details are kept. For anyone else to see your information, they would need every user's unique ID, which is securely stored on your device and in our system, making unauthorized access virtually impossible."
     }
-  ];
+];
 
   return (
     <SafeAreaView style={styles.safeArea}>

@@ -1,26 +1,29 @@
 import React, { createContext, useState, useContext, useEffect } from 'react';
-import { firestore } from './firebaseConfig';
-import { v4 as uuidv4 } from 'uuid';
-import { collection, doc, setDoc, getDocs, query, where, deleteDoc } from 'firebase/firestore';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import jwtDecode from 'jwt-decode';
+import axios from 'axios'; // Ensure axios is installed
 
 const UserContext = createContext();
+const apiBaseUrl = 'https://us-central1-weighty-works-420523.cloudfunctions.net/distributeApiKey';
 
 export const UserProvider = ({ children }) => {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [apiKey, setApiKey] = useState('');
 
   useEffect(() => {
     const loadUserFromStorage = async () => {
       try {
         const storedUser = await AsyncStorage.getItem('@user');
+        const storedApiKey = await AsyncStorage.getItem('@apikey');
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           setUser(parsedUser);
         }
+        if (storedApiKey) {
+          setApiKey(storedApiKey);
+        }
       } catch (error) {
-        console.error('Failed to load user from storage:', error);
+        console.error('Failed to load user or API key from storage:', error);
       } finally {
         setLoading(false);
       }
@@ -29,115 +32,96 @@ export const UserProvider = ({ children }) => {
     loadUserFromStorage();
   }, []);
 
-  const checkIfUserExists = async (identifier, key = 'email') => {
-    console.log(`Checking if user exists with ${key}:`, identifier);
-    const q = query(collection(firestore, 'users'), where(key, '==', identifier));
-    const querySnapshot = await getDocs(q);
-    if (!querySnapshot.empty) {
-      const existingUserDoc = querySnapshot.docs[0];
-      const existingUser = existingUserDoc.data();
-      console.log('User exists:', existingUser);
-      return { exists: true, user: existingUser };
-    }
-    return { exists: false, user: null };
+  const handleApiResponse = async (data) => {
+    await AsyncStorage.setItem('@user', JSON.stringify(data));
+    await AsyncStorage.setItem('@apikey', data.apiKey);
+    setUser(data);
+    setApiKey(data.apiKey);
   };
 
   const createUserWithGoogle = async (idToken) => {
-    console.log('Creating user with Google');
-
     const decodedToken = jwtDecode(idToken);
     const email = decodedToken.email;
-    const name = decodedToken.name;
+    const name = decodedToken.name || null;
 
-    const { exists, user: existingUser } = await checkIfUserExists(email);
-    if (exists) {
-      await AsyncStorage.setItem('@user', JSON.stringify(existingUser));
-      await AsyncStorage.setItem('userName', existingUser.name); // Save userName
-      setUser(existingUser);
-      return existingUser;
+    try {
+      const response = await axios.post(apiBaseUrl, {
+        email: email,
+        name: name,
+        action: 'create'
+      });
+      await handleApiResponse({ ...response.data, name, email });
+    } catch (error) {
+      console.error('Error creating user with Google:', error);
     }
-
-    const userId = uuidv4();
-    const userDocRef = doc(firestore, 'users', userId);
-    const newUser = {
-      uid: userId,
-      name: name || 'No Name',
-      email: email || null,
-      subscriptionStatus: 'free',
-    };
-    await setDoc(userDocRef, newUser);
-
-    await AsyncStorage.setItem('@user', JSON.stringify(newUser));
-    await AsyncStorage.setItem('userName', newUser.name); // Save userName
-    setUser(newUser);
-    console.log('New user created with Google:', newUser);
-    return newUser;
   };
 
   const createUserWithApple = async (credential) => {
-    const { identityToken, user: appleId } = credential;
-    console.log('Creating user with Apple');
-
-    const { exists, user: existingUser } = await checkIfUserExists(appleId, 'appleId');
-    if (exists) {
-      await AsyncStorage.setItem('@user', JSON.stringify(existingUser));
-      await AsyncStorage.setItem('userName', existingUser.name); // Save userName
-      setUser(existingUser);
-      return existingUser;
+    console.log(credential)
+    const email = credential.email || '';
+    let fullName = '';
+    if (credential.fullName) {
+        fullName = `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim();
     }
 
-    const email = credential.email || null;
-    const fullName = credential.fullName || {};
-    const userId = uuidv4();
-    const userDocRef = doc(firestore, 'users', userId);
-    const newUser = {
-      uid: userId,
-      appleId: appleId,
-      name: fullName.givenName || 'No Name',
-      email: email,
-      subscriptionStatus: 'free',
+    try {
+        const response = await axios.post(apiBaseUrl, {
+            email: email,
+            name: fullName || null,  // Send null if no name is provided
+            action: 'create'
+        });
+        const newUser = { ...response.data, email: email, name: fullName };  // Keep name as is, no default 'No Name' needed here
+
+        await handleApiResponse(newUser);  // Handle API response by updating context and storage
+        return newUser;
+    } catch (error) {
+        console.error('Error creating user with Apple:', error);
+        throw error;  // Rethrow error to be handled by the caller
+    }
+};
+
+
+const updateUser = async (updates) => {
+      if (!user) return;
+
+      const sanitizeUpdates = (updates) => {
+        return Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      };
+
+      const sanitizedUpdates = sanitizeUpdates(updates);
+      console.log('Sanitized updates:', sanitizedUpdates);
+
+      try {
+        const response = await axios.post(apiBaseUrl, { email: user.email, updates: sanitizedUpdates, action: 'update' });
+        const newUserDetails = { ...user, ...sanitizedUpdates, apiKey: response.data.apiKey }; // Ensure the response contains the latest user data along with the API key
+        await AsyncStorage.setItem('@user', JSON.stringify(newUserDetails));
+        await AsyncStorage.setItem('@apikey', response.data.apiKey);
+        setUser(newUserDetails);
+        console.log('User updated:', newUserDetails);
+      } catch (error) {
+        console.error('Error updating user:', error);
+        console.error('Error details:', error.response ? error.response.data : error.message);
+      }
     };
-    await setDoc(userDocRef, newUser);
 
-    await AsyncStorage.setItem('@user', JSON.stringify(newUser));
-    await AsyncStorage.setItem('userName', newUser.name); // Save userName
-    setUser(newUser);
-    console.log('New user created with Apple:', newUser);
-    return newUser;
-  };
 
-  const updateUser = async (updates) => {
-    if (!user) return;
-
-    const userDocRef = doc(firestore, 'users', user.uid);
-    await setDoc(userDocRef, updates, { merge: true });
-
-    const updatedUser = { ...user, ...updates };
-    await AsyncStorage.setItem('@user', JSON.stringify(updatedUser));
-    if (updates.name) {
-      await AsyncStorage.setItem('userName', updates.name); // Save userName
-    }
-    setUser(updatedUser);
-    console.log('User updated:', updates);
-  };
 
   const deleteUser = async () => {
     if (!user) return;
 
     try {
-      const userDocRef = doc(firestore, 'users', user.uid);
-      await deleteDoc(userDocRef);
+      await axios.post(apiBaseUrl, { email: user.email, action: 'delete' });
       await AsyncStorage.removeItem('@user');
-      await AsyncStorage.removeItem('userName'); // Remove userName
-      console.log('User deleted from Firestore');
+      await AsyncStorage.removeItem('@apikey');
       setUser(null);
+      setApiKey('');
     } catch (error) {
-      console.error('Error deleting user document:', error);
+      console.error('Error deleting user:', error);
     }
   };
 
   return (
-    <UserContext.Provider value={{ user, setUser, createUserWithGoogle, createUserWithApple, updateUser, deleteUser, loading }}>
+    <UserContext.Provider value={{ user, setUser, createUserWithGoogle, createUserWithApple, updateUser, deleteUser, loading, apiKey, setApiKey }}>
       {children}
     </UserContext.Provider>
   );

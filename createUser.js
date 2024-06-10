@@ -1,9 +1,18 @@
-// createUser.js
-import { v4 as uuidv4 } from 'uuid';
-import { createUserDocument } from './FirestoreContext';
+import axios from 'axios';
+
+const apiBaseUrl = 'https://us-central1-weighty-works-420523.cloudfunctions.net/distributeApiKey';
 
 export const createUser = async (name, email) => {
-  const userId = uuidv4(); // Generate a unique user ID
-  await createUserDocument(userId, name, email);
-  return userId;
+  try {
+    const response = await axios.post(apiBaseUrl, {
+      name,
+      email
+    });
+    const { uid } = response.data;
+    console.log('User created with UID:', uid);
+    return uid;  // Return UID for client-side logic that may depend on it
+  } catch (error) {
+    console.error('Error creating user:', error);
+    throw error;  // Rethrow to handle it in the UI if necessary
+  }
 };

@@ -9,8 +9,20 @@ import { Ionicons } from '@expo/vector-icons';  // Import the icon component
 const HistoryScreen = () => {
     const [history, setHistory] = useState([]);
     const [selectedItem, setSelectedItem] = useState(null);
-    const colorScheme = Appearance.getColorScheme();
+    const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
     const styles = getDynamicStyles(colorScheme);
+  
+    useEffect(() => {
+      const colorSchemeListener = (preferences) => {
+        setColorScheme(preferences.colorScheme);
+      };
+      
+      Appearance.addChangeListener(colorSchemeListener);
+      
+      return () => {
+        Appearance.removeChangeListener(colorSchemeListener);
+      };
+    }, []);
     const [refreshing, setRefreshing] = useState(false);
 
     useEffect(() => {
@@ -81,10 +93,10 @@ const HistoryScreen = () => {
         <View style={styles.container}>
             <Text style={styles.historyTitle}>History</Text>
             <TouchableOpacity style={styles.iconButton} onPress={clearHistory}>
-                <Ionicons name="trash-bin" size={24} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+                <Ionicons name="trash-bin" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
             </TouchableOpacity>
             <TouchableOpacity style={styles.iconButton} onPress={clearHistory}>
-                <Ionicons name="trash-bin" size={24} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+                <Ionicons name="trash-bin" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
             </TouchableOpacity>
             {history.length > 0 ? (
                 <ScrollView
@@ -104,7 +116,7 @@ const HistoryScreen = () => {
                 ))}
             </ScrollView>
             ) : (
-                <Text style={styles.emptyText}>History is empty</Text>
+                <Text style={styles.emptyText}>Your history is currently empty. Items you scan will appear here.</Text>
             )}
             {selectedItem && (
             <Modal
@@ -115,10 +127,10 @@ const HistoryScreen = () => {
             >
                 <View style={styles.modalView}>
                     <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedItem(null)}>
-                        <Ionicons name="close" size={24} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+                        <Ionicons name="close" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
                     </TouchableOpacity>
                     <Text style={styles.productNameModal} numberOfLines={1}>
-                        {truncateString(selectedItem.productName,16)}
+                        {truncateString(selectedItem.productName,20)}
                     </Text>
                     <Image source={{ uri: selectedItem.imageUri }} style={styles.imagePreview} />
                     <ScrollView style={styles.nutrientContainer}>
@@ -158,15 +170,15 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     card: {
         flexDirection: 'row',
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
         padding: 13,
         marginVertical: 6,
         borderRadius: 25,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3,
-        elevation: 5,
+        // shadowColor: '#000',
+        // shadowOffset: { width: 0, height: 2 },
+        // shadowOpacity: 0.25,
+        // shadowRadius: 3,
+        // elevation: 5,
     },
     productImage: {
         width: 100,
@@ -189,28 +201,30 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     emptyText: {
         marginTop: '70%',
-        fontSize: 18,
+        fontSize: 16,
         color: colorScheme === 'dark' ? '#AAAAAA' : '#AAAAAA',
         textAlign: 'center',
+        marginHorizontal: '13%'
     },
     modalView: {
         flex: 1,
         marginTop: '14%',
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFF',
+        backgroundColor: colorScheme === 'dark' ? '#1d1d1f' : '#FFF',
         borderRadius: 48,
         padding: 20,
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 4,
+        shadowOpacity: 0.75,
+        shadowRadius: 50,
         elevation: 5,
     },
     productNameModal: {
-        fontSize: 30,
+        fontSize: 24,
         alignSelf: 'center',
-        marginBottom: '5%',
+        marginBottom: '7%',
         fontWeight: 'bold',
+        top: '0.3%',
         color: colorScheme === 'dark' ? '#fff' : '#000',
     },
     imagePreview: {
@@ -228,7 +242,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         marginBottom: 5,
     },
     nutrientLabel: {
-        fontWeight: 'bold',
+        fontWeight: '500',
         fontSize: 17,
         color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
     },
@@ -236,17 +250,17 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         color: "#7a7a7a",
         textAlign: 'right',
         fontSize: 16,
-        fontWeight: '600',
+        fontWeight: '400',
         color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
     },
     closeButton: {
-        backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#FFFFFF',
+        backgroundColor: colorScheme === 'dark' ? '#3a3a3F' : '#000',
         borderRadius: 100,
         padding: 8,
         elevation: 2,
         position: 'absolute', // Corrected to 'absolute' for exact placement
-        right: '6%',  // 5% from the right edge of the screen
-        top: '2.5%',  // 20% from the top of the screen
+        right: '5%',  // 5% from the right edge of the screen
+        top: '2%',  // 20% from the top of the screen
         zIndex: 1,  // Ensure it stays on top of other components if needed
         shadowColor: '#000',
         shadowOffset: { width: 0, height: 2 },
@@ -260,13 +274,13 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         top: '8%',  // 20% from the top of the screen
         padding: 10,
         zIndex: 1,  // Ensure it stays on top of other components if needed
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
         borderRadius: 14,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3,
-        elevation: 5,
+        // shadowColor: '#000',
+        // shadowOffset: { width: 0, height: 2 },
+        // shadowOpacity: 0.25,
+        // shadowRadius: 3,
+        // elevation: 5,
     },
     historyTitle: {
         marginTop: '12%',
@@ -276,9 +290,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         textAlign: 'center',
     },
     separator: {
-        height: 2,
-        borderRadius: 20,
-        backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
+        height: 3.4,
+        borderRadius: 60,
+        backgroundColor: colorScheme === 'dark' ? '#3a3a3d' : '#CCCCCC',
         width: '100%', // Make sure this stretches across the nutrient item
         marginVertical: 5,
     },

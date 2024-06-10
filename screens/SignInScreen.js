@@ -80,6 +80,7 @@ export default function SignInScreen({ navigation }) {
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
+      console.log(credential)
       createUserWithApple(credential)
         .then((newUser) => {
           storeUserFlag();

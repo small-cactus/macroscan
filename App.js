@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View } from 'react-native';
+import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View, AppRegistry } from 'react-native';
+import NetInfo from '@react-native-community/netinfo';
 import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Icon from 'react-native-vector-icons/Ionicons';
@@ -25,6 +26,7 @@ import DebuggingScreen from './screens/DebuggingScreen';
 import AboutScreen from './screens/AboutScreen';
 import LogScreen from './screens/LogScreen';
 import CompleteProfileScreen from './screens/CompleteProfileScreen';
+import NoInternetScreen from './screens/NoInternetScreen'; // Import NoInternetScreen
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -69,6 +71,7 @@ function App() {
   const [theme, setTheme] = useState(systemScheme);
   const colorScheme = Appearance.getColorScheme();
   const [initialRoute, setInitialRoute] = useState(null);
+  const [isConnected, setIsConnected] = useState(true);
 
   useEffect(() => {
     const checkUser = async () => {
@@ -95,8 +98,24 @@ function App() {
 
     checkUser();
 
-    return () => subscription.remove();
+    const netInfoUnsubscribe = NetInfo.addEventListener(state => {
+      setIsConnected(state.isConnected);
+    });
+
+    return () => {
+      subscription.remove();
+      netInfoUnsubscribe();
+    };
   }, []);
+
+  useEffect(() => {
+    if (!isConnected) {
+      navigationRef.current?.reset({
+        index: 0,
+        routes: [{ name: 'NoInternet' }],
+      });
+    }
+  }, [isConnected]);
 
   if (initialRoute === null) {
     return (
@@ -132,6 +151,7 @@ function App() {
             <Stack.Screen name="Goodbye" component={GoodbyeScreen} options={{ headerShown: false }} />
             <Stack.Screen name="Log" component={LogScreen} options={{ headerShown: false }} />
             <Stack.Screen name="CompleteProfile" component={CompleteProfileScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="NoInternet" component={NoInternetScreen} options={{ headerShown: false }} />
           </Stack.Navigator>
           <StatusBar style={theme === 'dark' ? 'light-content' : 'dark-content'} />
         </IAPProvider>
@@ -158,5 +178,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: '600',
   },
 });
+
+AppRegistry.registerComponent('main', () => App);
 
 export default App;
