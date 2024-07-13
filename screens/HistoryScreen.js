@@ -5,6 +5,7 @@ import { Appearance } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';  // Import the icon component
+import { SymbolView } from 'expo-symbols';
 
 const HistoryScreen = () => {
     const [history, setHistory] = useState([]);
@@ -39,8 +40,10 @@ const HistoryScreen = () => {
     const loadHistory = async () => {
         try {
             const historyData = await AsyncStorage.getItem('@product_history');
+            console.log(historyData)
             let history = historyData ? JSON.parse(historyData) : [];
             history = history.reverse(); // Reverse the array to show new entries first
+            console.log(history)
             setHistory(history);
         } catch (e) {
             console.error("Error loading history: ", e);
@@ -93,10 +96,13 @@ const HistoryScreen = () => {
         <View style={styles.container}>
             <Text style={styles.historyTitle}>History</Text>
             <TouchableOpacity style={styles.iconButton} onPress={clearHistory}>
-                <Ionicons name="trash-bin" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
-            </TouchableOpacity>
-            <TouchableOpacity style={styles.iconButton} onPress={clearHistory}>
-                <Ionicons name="trash-bin" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
+            <SymbolView 
+        name="trash.slash.fill" // SF Symbol name for 'close'
+        size={26} 
+        tintColor={colorScheme === 'dark' ? '#fff' : '#fff'} 
+        type="hierarchical" // or other types like 'monochrome', 'palette', etc.
+        style={styles.symbol}
+      />
             </TouchableOpacity>
             {history.length > 0 ? (
                 <ScrollView
@@ -170,7 +176,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     card: {
         flexDirection: 'row',
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f3f3f3',
         padding: 13,
         marginVertical: 6,
         borderRadius: 25,
@@ -274,8 +280,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         top: '8%',  // 20% from the top of the screen
         padding: 10,
         zIndex: 1,  // Ensure it stays on top of other components if needed
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
-        borderRadius: 14,
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
+        borderRadius: 15,
         // shadowColor: '#000',
         // shadowOffset: { width: 0, height: 2 },
         // shadowOpacity: 0.25,

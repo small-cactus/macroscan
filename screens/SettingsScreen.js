@@ -11,6 +11,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import { Appearance } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const SettingsScreen = () => {
   const navigation = useNavigation();
@@ -57,6 +58,7 @@ const SettingsScreen = () => {
   ];
 
   const handleSettingPress = (navigateTo) => {
+    AsyncStorage.removeItem('@user_goals');
     navigation.navigate(navigateTo);
   };
 
@@ -105,7 +107,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: '3%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#eee',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f3f3f3',
     padding: 10,
     borderRadius: 10,
   },

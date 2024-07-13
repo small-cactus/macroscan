@@ -100,7 +100,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 20, // Maintain rounded corners for consistency
     alignItems: 'center',
     marginTop: 10,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   buttonText: {
     color: '#FFFFFF',
@@ -128,7 +128,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: "#000000",
     borderRadius: 200,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
 
   },
   SignUpText: {

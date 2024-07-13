@@ -270,7 +270,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 10,
   },
   submitButton: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     padding: 10,
     borderRadius: 10,
     alignItems: 'center',
@@ -285,12 +285,12 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     left: '5%',
     top: '5%',
     zIndex: 10,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,
     padding: 10,
   },
   button: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     padding: 10,
     borderRadius: 10,
   },

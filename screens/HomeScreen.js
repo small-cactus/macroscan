@@ -13,6 +13,7 @@ import * as RNIap from 'react-native-iap';
 import { useIAP } from '../IAPContext';
 import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { faInfinity } from '@fortawesome/free-solid-svg-icons';
+import { SymbolView, SymbolViewProps, SFSymbol } from 'expo-symbols';
 import { useUser } from '../userContext';
 
 const MacroScanHome = () => {
@@ -35,6 +36,7 @@ const MacroScanHome = () => {
   const [userInput, setUserInput] = useState('');
   const [scanCount, setScanCount] = useState(0);
   const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
   const { isIAPEnabled } = useIAP();
@@ -87,13 +89,15 @@ const MacroScanHome = () => {
           console.error('Failed to check subscriptions:', err);
         }
       } else {
-        setIsSubscribed(user?.subscriptionStatus === 'plus' || user?.subscriptionStatus === 'plusplus');
+        setIsSubscribed(user?.subscriptionStatus === 'plusplus');
+        setIsSubscribedPlus(user?.subscriptionStatus === 'plus');
       }
     };
 
     checkSubscription();
   }, [isIAPEnabled, user]);
-
+  
+//PLUSPLUS AND FREE
   useEffect(() => {
     const intervalId = setInterval(() => {
       if (!isSubscribed && scanCount >= 5) {
@@ -105,6 +109,19 @@ const MacroScanHome = () => {
 
     return () => clearInterval(intervalId);
   }, [scanCount, isSubscribed]);
+
+// PLUS
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (isSubscribedPlus && scanCount >= 20) {
+        setTimeLeftForScans(getTimeUntilMidnight());
+      } else {
+        setTimeLeftForScans('');
+      }
+    }, 1000 * 60);
+
+    return () => clearInterval(intervalId);
+  }, [scanCount, isSubscribedPlus]);
 
   const handleCorrectPress = () => {
     console.log("User confirmed correctness")
@@ -283,9 +300,27 @@ const MacroScanHome = () => {
   };
 
   const pickImage = async () => {
-    if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
+    let maxScansAllowed;
+  
+    if (isSubscribedPlus) {
+      maxScansAllowed = 20;
+    } else if (!isSubscribed || !isFirstDayUnlimited) {
+      maxScansAllowed = 5;
+    } else {
       const timeLeft = getTimeUntilMidnight();
-      Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
+      Alert.alert(
+        "No more Scans left",
+        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
+      );
+      return;
+    }
+  
+    if (scanCount >= maxScansAllowed) {
+      const timeLeft = getTimeUntilMidnight();
+      Alert.alert(
+        "No more Scans left",
+        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
+      );
       return;
     }
   
@@ -302,7 +337,7 @@ const MacroScanHome = () => {
       setModalVisible(true);
       await sendImageToApi(base64Data);
   
-      if (!isSubscribed && !isFirstDayUnlimited && apiSuccess) {
+      if (!(isSubscribed) && !isFirstDayUnlimited && apiSuccess) {
         await incrementScanCount();
       }
     }
@@ -315,11 +350,29 @@ const MacroScanHome = () => {
     }
   
     if (hasPermission) {
-      if (!isSubscribed && !isFirstDayUnlimited && scanCount >= 5) {
-        const timeLeft = getTimeUntilMidnight();
-        Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
-        return;
-      }
+      let maxScansAllowed;
+  
+    if (isSubscribedPlus) {
+      maxScansAllowed = 20;
+    } else if (!isSubscribed || !isFirstDayUnlimited) {
+      maxScansAllowed = 5;
+    } else {
+      const timeLeft = getTimeUntilMidnight();
+      Alert.alert(
+        "No more Scans left",
+        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
+      );
+      return;
+    }
+  
+    if (scanCount >= maxScansAllowed) {
+      const timeLeft = getTimeUntilMidnight();
+      Alert.alert(
+        "No more Scans left",
+        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
+      );
+      return;
+    }
   
       let result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
@@ -365,7 +418,7 @@ const MacroScanHome = () => {
       const msg = await anthropic.messages.create({
         model: selectedModel,
         max_tokens: 4096,
-        temperature: 0,
+        temperature: 0.7,
         system: `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
           Name of food(s) (number of food items, eg. bags, plates, pieces, example: 2 burgers. 2 bags. 2 pieces. 2 plates. 2 bowls. If 1 item, do not specify the item number)
           Carbohydrates (g) per item
@@ -442,7 +495,7 @@ const MacroScanHome = () => {
       const msg = await anthropic.messages.create({
         model: selectedModel,
         max_tokens: 4096,
-        temperature: 0,
+        temperature: 0.7,
         system: `If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
         Name of food(s) (number of food items, eg. bags, plates, pieces, example: 2 burgers. 2 bags. 2 pieces. 2 plates. 2 bowls. If 1 item, do not specify the item number)
         Carbohydrates (g) per item
@@ -457,7 +510,9 @@ const MacroScanHome = () => {
         IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
 
       Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
-      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`,
+      Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.
+      
+      We DO NOT allow multiple food items, ONLY IF there are multiple food items, include them all together like (examlple: Burger and fries) and make sure the nutrient values line up with the full meal content.`,
         messages: [{
           "role": "user",
           "content": [{
@@ -476,7 +531,9 @@ const MacroScanHome = () => {
             IMPORTANT: take into account the amount of the item presented for nutrient data. Don't add extra categories. Label meals by their collective status, eg McDonalds Meal (number of items). Always include the measurement label next to the measurement.
 
           Be specific with amounts, using all relevant details from the image for precision. For instance, if it's a chicken salad, break it down into 'Proteins' for chicken, with estimated amounts for each listed nutrient.
-          Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.`
+          Avoid providing data not requested, like per serving info or micronutrients. If no food or beverage is shown, respond with 'No food found. Try again.' without further comments.
+          
+      We DO NOT allow multiple food items, ONLY IF there are multiple food items, include them all together like (examlple: Burger and fries) and make sure the nutrient values line up with the full meal content.`,
     }, {
             "type": "image",
             "source": {
@@ -541,26 +598,24 @@ const MacroScanHome = () => {
   style={styles.scanCounter}
   onPress={() => {
     let message = '';
-    if (isFirstDayUnlimited) {
-      message = "You have unlimited scans today. Starting tomorrow, you'll have 5 daily scans unless you upgrade.";
-    } else if (isSubscribed) {
+    if (isSubscribed) {
       message = "You have unlimited scans because you're subscribed.";
+    } else if (isSubscribedPlus) {
+      message = `You have used ${scanCount} of 20 scans today.`;
     } else {
       message = `You have used ${scanCount} of 5 scans today.`;
     }
     Alert.alert("Scan Limit", message);
   }}
 >
-  <Text style={isFirstDayUnlimited || isSubscribed ? styles.infinityIcon : styles.scanCounterText}>
-    {isFirstDayUnlimited || isSubscribed ? (
+  <Text style={isSubscribed ? styles.infinityIcon : styles.scanCounterText}>
+    {isSubscribed ? (
       <FontAwesomeIcon
         icon={faInfinity}
         size={24}
         color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
       />
-    ) : (
-      5 - scanCount
-    )}
+    ) : isSubscribedPlus ? (20 - scanCount) : (5 - scanCount)}
   </Text>
 </TouchableOpacity>
         </View>
@@ -620,14 +675,14 @@ const MacroScanHome = () => {
       <Animated.View style={[styles.feedbackContainer, { opacity: fadeInAnim }]}>
         <Text style={styles.feedbackText}>Did we get this right?</Text>
         <View style={styles.iconButtonContainer}>
-          <TouchableOpacity onPress={handleCorrectPress} style={[styles.iconButton, { backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000' }]}>
+          <TouchableOpacity onPress={handleCorrectPress} style={[styles.iconButton, { backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000' }]}>
             <Icon
               name="checkmark-outline"
               size={25}
               color={colorScheme === 'dark' ? '#e9e9e9' : '#FFF'}
             />
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleIncorrectPress} style={[styles.iconButton, { backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000' }]}>
+          <TouchableOpacity onPress={handleIncorrectPress} style={[styles.iconButton, { backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000' }]}>
             <Icon
               name="close-outline"
               size={25}
@@ -787,7 +842,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginTop: '5%',
   },
   button: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 20,
     padding: 12,
     marginHorizontal: '3%',
@@ -800,7 +855,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     textAlign: 'center'
   },
   modalView: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFF',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFF',
     borderRadius: 20,
     padding: 20,
     alignItems: 'center',
@@ -858,7 +913,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     padding: '2.5%',
     width: '100%',
-    marginTop: '3%',
+    marginTop: '0%',
   },
   feedbackText: {
     fontSize: 15.5,

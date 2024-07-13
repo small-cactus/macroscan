@@ -187,7 +187,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: '20%',
   },
   optionButton: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#DDD',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#DDD',
     padding: '2.5%',
     borderRadius: 17,
     marginBottom: '3%',
@@ -226,7 +226,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     left: '5%',
     top: '9%',
     zIndex: 10,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

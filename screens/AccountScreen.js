@@ -8,6 +8,7 @@ import { useNavigation } from '@react-navigation/native';
 import * as RNIap from 'react-native-iap';
 import { useIAP } from '../IAPContext';
 import { useUser } from '../userContext';
+import { LinearGradient } from 'expo-linear-gradient';
 
 const itemSkus = Platform.select({
   ios: ['macroscan_plusplus_subscription', 'macroscan_plus_subscription', 'remove_ads_one_time'],
@@ -85,19 +86,18 @@ export default function AccountScreen() {
     try {
       const purchase = await RNIap.requestPurchase({ sku: productId });
       log(`Purchase completed for: ${productId}, ${JSON.stringify(purchase)}`);
-  
+      
+      // New logic to update subscription states
       if (productId === 'macroscan_plusplus_subscription') {
         setIsSubscribedPlusPlus(true);
+        setIsSubscribedPlus(false); // Cancel lower subscription
         await updateUserSubscription('macroscan_plusplus_subscription');
         log('Updated user subscription to MacroScan++');
       } else if (productId === 'macroscan_plus_subscription') {
         setIsSubscribedPlus(true);
+        setIsSubscribedPlusPlus(false); // Cancel higher subscription
         await updateUserSubscription('macroscan_plus_subscription');
         log('Updated user subscription to MacroScan+');
-      } else if (productId === 'remove_ads_one_time') {
-        setHasPurchasedAdsRemoval(true);
-        await updateUserSubscription('remove_ads_one_time');
-        log('Updated user subscription to remove ads');
       }
   
       unlockFeatures(productId);
@@ -129,29 +129,58 @@ export default function AccountScreen() {
 
   const checkSubscription = async () => {
     try {
-      const purchases = await RNIap.getAvailablePurchases();
-      log(`Available purchases: ${JSON.stringify(purchases)}`);
+      let subscribedPlusPlus = false;
+      let subscribedPlus = false;
+      let purchasedAdsRemoval = false;
   
-      if (purchases && purchases.length > 0) {
-        const subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
-        const subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
-        const purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
+      if (isIAPEnabled) {
+        // Check App Store purchases if IAP is enabled
+        const purchases = await RNIap.getAvailablePurchases();
+        console.log(`Available purchases: ${JSON.stringify(purchases)}`);
   
-        setIsSubscribedPlusPlus(subscribedPlusPlus);
-        setIsSubscribedPlus(subscribedPlus);
-        setHasPurchasedAdsRemoval(purchasedAdsRemoval);
-
-        await updateUserSubscription(subscribedPlusPlus ? 'macroscan_plusplus_subscription' : subscribedPlus ? 'macroscan_plus_subscription' : purchasedAdsRemoval ? 'remove_ads_one_time' : 'free');
+        if (purchases && purchases.length > 0) {
+          subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
+          subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
+          purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
+        }
       } else {
-        log('No available purchases found, setting to free plan');
-        setIsSubscribedPlusPlus(false);
-        setIsSubscribedPlus(false);
-        setHasPurchasedAdsRemoval(false);
-        await updateUserSubscription('free');
+        // Check storage if IAP is disabled
+        const storedUser = await AsyncStorage.getItem('@user');
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser.subscriptionStatus) {
+            switch (parsedUser.subscriptionStatus) {
+              case 'plusplus':
+                subscribedPlusPlus = true;
+                break;
+              case 'plus':
+                subscribedPlus = true;
+                break;
+              case 'remove_ads_one_time':
+                purchasedAdsRemoval = true;
+                break;
+            }
+          }
+        }
       }
+  
+      // Update state based on results
+      setIsSubscribedPlusPlus(subscribedPlusPlus);
+      setIsSubscribedPlus(subscribedPlus);
+      setHasPurchasedAdsRemoval(purchasedAdsRemoval);
+  
+      // Update user subscription status in storage and context
+      const newStatus = subscribedPlusPlus ? 'plusplus' : 
+                        subscribedPlus ? 'plus' : 
+                        purchasedAdsRemoval ? 'remove_ads_one_time' : 'free';
+      
+      await updateUserSubscription(newStatus);
+  
+      console.log('Updated subscription status:', newStatus);
+  
     } catch (error) {
-      logError('Failed to restore purchases', error);
-      Alert.alert('Restore Error', 'Failed to restore purchases. Please try again later.');
+      console.error('Failed to check subscription status:', error);
+      Alert.alert('Subscription Check Error', 'Failed to verify subscription status. Please try again later.');
     }
   };
 
@@ -168,6 +197,16 @@ export default function AccountScreen() {
       };
     }
   }, [isIAPEnabled]);
+
+  useEffect(() => {
+    const unsubscribe = navigation.addListener('focus', () => {
+      if (!isIAPEnabled) {
+        checkSubscription();
+      }
+    });
+
+    return unsubscribe;
+  }, [navigation, isIAPEnabled]);
 
   useEffect(() => {
     const unsubscribe = navigation.addListener('focus', () => {
@@ -233,6 +272,9 @@ export default function AccountScreen() {
         break;
     }
   };
+const sendAlert = (Title, messageToShow) => {
+  Alert.alert(Title, messageToShow);
+}
 
   useEffect(() => {
     async function loadProfile() {
@@ -240,7 +282,7 @@ export default function AccountScreen() {
         const savedName = await AsyncStorage.getItem('userName');
         const savedImageUri = await AsyncStorage.getItem('userImageUri');
         setName(savedName || '');
-        setImageUri(savedImageUri || 'https://via.placeholder.com/150');
+        setImageUri(savedImageUri || '../assets/profile.png');
       } catch (error) {
         Alert.alert('Error', 'Failed to load user data.');
         logError('Failed to load user data', error);
@@ -252,7 +294,7 @@ export default function AccountScreen() {
   const resetImageUri = async () => {
     try {
       await AsyncStorage.removeItem('userImageUri');
-      setImageUri('https://via.placeholder.com/150');
+      setImageUri('../assets/profile.png');
       Alert.alert('Reset Done', 'The profile image has been reset.');
     } catch (error) {
       Alert.alert('Error', 'Failed to reset the profile image.');
@@ -343,14 +385,10 @@ export default function AccountScreen() {
 
   return (
     <ScrollView style={styles.container}>
-      <View style={styles.toggleContainer}>
-        <Text style={styles.toggleLabel}>Show Logs</Text>
-        <Switch value={showLogs} onValueChange={setShowLogs} />
-      </View>
       <View style={styles.imageContainer}>
         <TouchableOpacity onPress={pickImage}>
           <Image
-            source={{ uri: loadError ? 'https://via.placeholder.com/150' : imageUri }}
+            source={require('../assets/profile.png')}
             style={styles.image}
             onError={() => {
               setLoadError(true);
@@ -391,65 +429,96 @@ export default function AccountScreen() {
         </Text>
       </View>
       <View style={styles.subscriptionContainer}>
-        <View style={styles.subscriptionOption1}>
+      <View style={styles.subscriptionOption1}>
+  <LinearGradient
+    colors={['#000000', '#414141']} // Define your gradient colors here
+    start={{ x: 0, y: 1.6 }} // Start position (0, 0) is top-left
+  end={{ x: 1.6, y: 0 }} // End position (1, 1) is bottom-right
+  style={[styles.gradientBackground, { overflow: 'hidden' }]}
+  >
           <View style={styles.titleWithLogo}>
             <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-            <Text style={styles.subscriptionTitle}>MacroScan++</Text>
+            <Text style={styles.subscriptionTitlePlusPlus}>MacroScan++</Text>
+            <Text style={styles.subscriptionTitlePremium}>Premium</Text>
             <TouchableOpacity
               style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled1 : styles.subscribeButton1}
-              onPress={() => handlePurchase('macroscan_plusplus_subscription')}
-              disabled={isSubscribedPlusPlus || isSubscribedPlus || hasPurchasedAdsRemoval}>
-              <Text style={styles.subscribeButtonText}>
-                {isSubscribedPlusPlus ? 'Subscribed' : 'Subscribe'}
+              onPress={() => {
+                if (isSubscribedPlusPlus) {
+                  sendAlert('Plan Already Active', 'You already have the MacroScan++ plan. No action needed.')
+                } else {
+                  handlePurchase('macroscan_plusplus_subscription');
+                }
+              }}>
+              <Text style={isSubscribedPlusPlus ? styles.subscribeButtonTextDisabledPlusPlus : styles.subscribeButtonText}>
+              {isSubscribedPlus ? 'Upgrade' : isSubscribedPlusPlus ? 'Your plan' : 'Subscribe'}
               </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rightPart}>
-            <Text style={styles.priceText}>$8.99/Month</Text>
+            <Text style={styles.priceText}>$7.99/Month</Text>
           </View>
-          <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+          <Text style={styles.subscriptionFeatureScans}>• Unlimited daily scans</Text>
           <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
-          <Text style={styles.subscriptionFeature}>• No Ads</Text>
-        </View>
+          <Text style={styles.subscriptionFeature}>• Insights and tracking page</Text>
+          </LinearGradient>
+          </View>
         <View style={styles.subscriptionOption2}>
+        <LinearGradient
+    colors={['#121212', '#636363']} // Define your gradient colors here
+    start={{ x: 0, y: 1.6 }} // Start position (0, 0) is top-left
+  end={{ x: 1.6, y: 0 }} // End position (1, 1) is bottom-right
+    style={styles.gradientBackground}
+  >
           <View style={styles.titleWithLogo}>
-            <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-            <Text style={styles.subscriptionTitle}>MacroScan+</Text>
+            <Image source={require('../assets/logo-plus.png')} style={styles.logo} />
+            <Text style={styles.subscriptionTitlePlus}>MacroScan+</Text>
+            <Text style={styles.subscriptionTitleValue}>Best value</Text>
             <TouchableOpacity
-              style={isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
-              onPress={() => handlePurchase('macroscan_plus_subscription')}
-              disabled={isSubscribedPlus || isSubscribedPlusPlus}>
-              <Text style={styles.subscribeButtonText}>
-                {isSubscribedPlus ? 'Subscribed' : 'Subscribe'}
+              style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled2 : isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
+              onPress={() => {
+                if (isSubscribedPlus) {
+                  sendAlert('Plan Already Active', 'You already have the MacroScan+ plan. No action needed.')
+                } else {
+                  handlePurchase('macroscan_plus_subscription');
+                }
+              }}>
+              <Text style={isSubscribedPlusPlus ? styles.subscribeButtonTextDisabled : isSubscribedPlus ? styles.subscribeButtonTextDisabled : styles.subscribeButtonText}>
+                {isSubscribedPlusPlus ? 'Switch' : isSubscribedPlus ? 'Your plan' : 'Subscribe'}
               </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rightPart}>
-            <Text style={styles.priceText}>$3.99/Month</Text>
+            <Text style={styles.priceText}>$4.99/Month</Text>
           </View>
-          <Text style={styles.subscriptionFeature}>• Unlimited scans</Text>
+          <Text style={styles.subscriptionFeatureScans}>• 20 daily scans</Text>
           <Text style={styles.subscriptionFeature}>• Access to more accurate recognition</Text>
-          <Text style={styles.subscriptionFeature}>• No Ads</Text>
+          <Text style={styles.subscriptionFeature}>• Insights and tracking page</Text>
+          </LinearGradient>
         </View>
         <View style={styles.subscriptionOption3}>
           <View style={styles.titleWithLogo}>
-            <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-            <Text style={styles.subscriptionTitle}>Remove Ads</Text>
+            <Image source={require('../assets/logo-free.png')} style={styles.logo} />
+            <Text style={styles.subscriptionTitle}>Forever Free</Text>
             <TouchableOpacity
               style={hasPurchasedAdsRemoval ? styles.subscribeButtonDisabled3 : styles.subscribeButton3}
-              onPress={() => handlePurchase('remove_ads_one_time')}
-              disabled={hasPurchasedAdsRemoval || isSubscribedPlusPlus}>
-              <Text style={styles.subscribeButtonText}>
-                {hasPurchasedAdsRemoval ? 'Purchased' : 'Purchase'}
+              onPress={() => {
+                if (!isSubscribedPlus && !isSubscribedPlusPlus) {
+                  sendAlert('Plan Already Active', 'You already have the free plan. No action needed.')
+                } else {
+                  navigation.navigate('CancelScreen');
+                }
+              }}>
+              <Text style={styles.subscribeButtonTextFree}>
+                {isSubscribedPlus || isSubscribedPlusPlus ? 'Switch' : 'Your plan'}
               </Text>
             </TouchableOpacity>
           </View>
           <View style={styles.rightPart}>
-            <Text style={styles.priceText}>$5.99 Once</Text>
+            <Text style={styles.priceTextFree}>Free</Text>
           </View>
-          <Text style={styles.subscriptionFeature}>• No Ads</Text>
-          <Text style={styles.subscriptionFeature}>• Everything on free plan</Text>
-          <Text style={styles.subscriptionFeature}>• Can upgrade any time</Text>
+          <Text style={styles.subscriptionFeatureScans}>• 5 daily scans</Text>
+          <Text style={styles.subscriptionFeature}>• Basic scan accuracy</Text>
+          <Text style={styles.subscriptionFeature}>• Ad-free experience</Text>
         </View>
         <Text style={styles.dangerSection}>⚠️ Danger Section ⚠️</Text>
         <View style={styles.separatorBox}></View>
@@ -497,13 +566,13 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     backgroundColor: '#ddd',
   },
   input: {
-    borderWidth: 1,
-    borderColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
+    borderWidth: 3,
+    borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#ddd',
     color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
     padding: 10,
     fontSize: 18,
-    borderRadius: 6,
-    width: '100%',
+    borderRadius: 15,
+    width: '98%',
   },
   iconOverlay: {
     position: 'absolute',
@@ -529,19 +598,81 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginTop: '10%',
     alignItems: 'center',
     paddingBottom: 60,
+    overflow: 'visible',
   },
   subscriptionTitle: {
     color: 'white',
     fontSize: fontSize,
     fontWeight: 'bold',
+    overflow: 'visible',
+  },
+  subscriptionTitlePlusPlus: {
+    position: 'absolute',
+    top: 0,
+    right: 170,
+    color: 'white',
+    fontSize: fontSize,
+    fontWeight: 'bold',
+    overflow: 'visible',
+  },
+  subscriptionTitlePlus: {
+    position: 'absolute',
+    top: 0,
+    right: 180,
+    color: 'white',
+    fontSize: fontSize,
+    fontWeight: 'bold',
+    overflow: 'visible',
+  },
+  subscriptionTitlePremium: {
+    padding: 25,
+    position: 'absolute',
+    top: 2,
+    right: 175,
+    color: 'gold',
+    fontSize: fontSize,
+    fontWeight: 'bold',
+    textShadowColor: 'gold', // Adjust the color and opacity of the glow
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 30, // Adjust the radius for the glow effect
+    zIndex: 2,
+    overflow: 'visible',
+  },
+  subscriptionTitleValue: {
+    padding: 25,
+    position: 'absolute',
+    top: 2,
+    right: 170,
+    color: 'silver',
+    fontSize: fontSize,
+    fontWeight: 'bold',
+    textShadowColor: 'silver', // Adjust the color and opacity of the glow
+    textShadowOffset: { width: 0, height: 0 },
+    textShadowRadius: 30, // Adjust the radius for the glow effect
+    zIndex: 2,
+    overflow: 'visible',
   },
   subscriptionFeature: {
     color: 'white',
     fontSize: subcriptionFeatureSize,
     marginBottom: '2%',
+    overflow: 'visible',
+  },
+  subscriptionFeatureScans: {
+    color: 'white',
+    fontWeight: '700',
+    fontSize: subcriptionFeatureSize,
+    marginBottom: '2%',
+    overflow: 'visible',
   },
   subscribeButtonText: {
     color: 'black',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  subscribeButtonTextFree: {
+    color: '#b0b0b0',
     fontSize: 16,
     textAlign: 'center',
     fontWeight: 'bold',
@@ -558,12 +689,32 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     resizeMode: 'contain',
   },
   priceText: {
-    color: 'white',
+    color: '#d3d3d3',
     fontSize: priceTextSize,
     fontWeight: '700',
     marginTop: 4,
     textAlign: 'right',
     marginRight: '7%',
+  },
+  priceTextFree: {
+    color: '#c5c5c5',
+    fontSize: priceTextSize,
+    fontWeight: '700',
+    marginTop: 4,
+    textAlign: 'right',
+    marginRight: '15%',
+  },
+  subscribeButtonTextDisabled: {
+    color: '#c5c5c5',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
+  },
+  subscribeButtonTextDisabledPlusPlus: {
+    color: 'white',
+    fontSize: 16,
+    textAlign: 'center',
+    fontWeight: 'bold',
   },
   subscribeButton1: {
     backgroundColor: '#ffffff',
@@ -571,7 +722,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: '6%',
+    marginLeft: '42%',
     marginRight: '11%',
   },
   subscribeButton2: {
@@ -580,11 +731,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: '10%',
+    marginLeft: '43%',
     marginRight: '11%',
   },
   subscribeButton3: {
-    backgroundColor: '#ffffff',
+    backgroundColor: '#5f5f5f',
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
@@ -593,15 +744,15 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginRight: '11%',
   },
   subscriptionOption1: {
-    backgroundColor: 'black',
-    padding: '4.5%',
     borderRadius: 30,
+    borderWidth: 1,
+    borderColor: '#755e00',
     width: '100%',
     marginBottom: '3%',
+    overflow: 'visible',
+    zindex: 1,
   },
   subscriptionOption2: {
-    backgroundColor: '#232323',
-    padding: '4.5%',
     borderRadius: 30,
     width: '100%',
     marginBottom: '3%',
@@ -641,25 +792,27 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 3,
   },
   subscribeButtonDisabled1: {
-    backgroundColor: '#a3a3a3',  // Light gray color for disabled state
+    backgroundColor: '#5f5f5f',  // Light gray color for disabled state
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: '6%',
+    marginLeft: '42.5%',
     marginRight: '11%',
+    borderWidth: 2,
+    borderColor: 'gray',
   },
   subscribeButtonDisabled2: {
-    backgroundColor: '#a3a3a3',  // Light gray color for disabled state
+    backgroundColor: '#5f5f5f',  // Light gray color for disabled state
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
     marginTop: 0,
-    marginLeft: '10%',
+    marginLeft: '42%',
     marginRight: '11%',
   },
   subscribeButtonDisabled3: {
-    backgroundColor: '#a3a3a3',  // Light gray color for disabled state
+    backgroundColor: '#5f5f5f',  // Light gray color for disabled state
     padding: '3.3%',
     width: '40%',
     borderRadius: 100,
@@ -676,5 +829,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   toggleLabel: {
     fontSize: 16,
     marginRight: 10,
+  },
+  gradientBackground: {
+    flex: 1,
+    borderRadius: 30, // Match the borderRadius of the subscription options
+    padding: '4.5%', // Adjust padding if necessary
+    zIndex: 0,
   },
 });

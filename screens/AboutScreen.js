@@ -103,7 +103,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   contactButton: {
     marginTop: 10,
     marginBottom: 20,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 90,
     padding: 10,
     alignItems: 'center',
@@ -119,7 +119,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     left: '5%',
     top: '9%',
     zIndex: 10,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

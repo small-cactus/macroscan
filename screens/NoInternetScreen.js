@@ -147,7 +147,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     paddingHorizontal: '5%',
   },
   retryButton: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 90,
     paddingVertical: 10,
     paddingHorizontal: 20,
@@ -161,7 +161,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold',
   },
   settingsButton: {
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 90,
     paddingVertical: 10,
     paddingHorizontal: 20,

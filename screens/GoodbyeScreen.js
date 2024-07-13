@@ -72,7 +72,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   button: {
     width: '60%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     padding: 15,
     borderRadius: 30,
     alignItems: 'center',
@@ -85,7 +85,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   emailButton: {
     width: '60%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     padding: 15,
     borderRadius: 30,
     alignItems: 'center',

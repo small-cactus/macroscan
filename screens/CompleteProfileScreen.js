@@ -11,6 +11,14 @@ const CompleteProfileScreen = ({ navigation }) => {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
 
+  const generateChecksum = (data) => {
+    let checksum = 0;
+    for (let i = 0; i < data.length; i++) {
+      checksum += data.charCodeAt(i);
+    }
+    return checksum.toString();
+  };
+
   const handleSave = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (!name || name.trim().split(' ').length < 2) {
@@ -26,7 +34,10 @@ const CompleteProfileScreen = ({ navigation }) => {
 
     try {
       await updateUser({ name, email });
+      const userProfile = `${name}${email}`;
+      const checksum = generateChecksum(userProfile);
       await AsyncStorage.setItem('userName', name);
+      await AsyncStorage.setItem('userChecksum', checksum);
       navigation.reset({
         index: 0,
         routes: [{ name: 'HomeTabs' }],
@@ -93,7 +104,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: 10,
     borderWidth: 1,
     borderColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#fff',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#fff',
     borderRadius: 10,
     marginBottom: 20,
     color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
@@ -101,7 +112,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   button: {
     width: '80%',
     padding: 15,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 10,
     alignItems: 'center',
   },

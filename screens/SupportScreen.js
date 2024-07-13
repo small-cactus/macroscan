@@ -161,7 +161,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   faqItemContainer: {
     marginBottom: '3%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#eee',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
     borderRadius: 10,
     overflow: 'hidden',
   },
@@ -181,7 +181,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   answer: {
     fontSize: 16,
-    color: colorScheme === 'dark' ? '#e1e1e1' : '#2a2a2a',
+    color: colorScheme === 'dark' ? '#e1e1e1' : '#2a2a2d',
     paddingLeft: '7%',
     paddingRight: '5%',
     paddingTop: '1%',
@@ -191,7 +191,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   contactButton: {
     marginTop: 10,
     marginBottom: 20,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 90,
     padding: 10,
     alignItems: 'center', // Center text horizontally
@@ -207,7 +207,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     left: '5%',  // 5% from the right edge of the screen
     top: '9%',  // 20% from the top of the screen
     zIndex: 10, // Ensures the button is clickable over other elements
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#FFFFFF',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },

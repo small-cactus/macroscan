@@ -80,7 +80,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: 15,
     borderBottomWidth: 1,
     borderBottomColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#fff',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#fff',
     borderRadius: 10,
     width: '100%',
     alignItems: 'flex-start',

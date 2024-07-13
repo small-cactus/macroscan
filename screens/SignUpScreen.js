@@ -19,6 +19,7 @@ import { useUser } from '../userContext';
 WebBrowser.maybeCompleteAuthSession();
 
 export default function SignUpScreen({ navigation }) {
+  const [loading, setLoading] = useState(false);
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
   const { createUserWithGoogle, createUserWithApple } = useUser();
@@ -31,20 +32,11 @@ export default function SignUpScreen({ navigation }) {
   useEffect(() => {
     if (response?.type === 'success') {
       const { id_token } = response.params;
-      createUserWithGoogle(id_token)
-        .then((newUser) => {
-          storeUserFlag();
-          if (!newUser.name || newUser.name === 'No Name' || !newUser.email) {
-            navigation.navigate('CompleteProfile');
-          } else {
-            navigateHome();
-          }
-        })
-        .catch((error) => Alert.alert('Sign Up Error', error.message));
+      handleUserVerification(() => createUserWithGoogle(id_token));
     } else if (response?.type === 'cancel') {
       console.log('Google Sign-in cancelled');
     } else if (response?.type === 'error') {
-      Alert.alert('Google Sign-In Error', response.error);
+      Alert.alert("Google Sign-Up Error", response.error);
     }
   }, [response]);
 
@@ -71,6 +63,31 @@ export default function SignUpScreen({ navigation }) {
     });
   };
 
+  const handleUserVerification = async (createUserFn) => {
+    setLoading(true);
+    navigation.navigate('LoadingScreen');  // Navigate to the Loading screen immediately
+    navigation.reset({
+      index: 0,
+      routes: [{ name: 'LoadingScreen' }],
+    });
+    try {
+      const newUser = await createUserFn();
+      storeUserFlag();
+      if (!newUser.name || newUser.name === 'No Name' || !newUser.email) {
+        navigation.navigate('CompleteProfile');
+        navigation.reset({
+          index: 0,
+          routes: [{ name: 'CompleteProfile' }],
+        });
+      } else {
+        navigateHome();
+      }
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Sign Up Error', error.message);
+    }
+  };
+
   const signInWithApple = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -80,16 +97,7 @@ export default function SignUpScreen({ navigation }) {
           AppleAuthentication.AppleAuthenticationScope.EMAIL,
         ],
       });
-      createUserWithApple(credential)
-        .then((newUser) => {
-          storeUserFlag();
-          if (!newUser.name || newUser.name === 'No Name' || !newUser.email) {
-            navigation.navigate('CompleteProfile');
-          } else {
-            navigateHome();
-          }
-        })
-        .catch((error) => Alert.alert('Sign Up Error', error.message));
+      handleUserVerification(() => createUserWithApple(credential));
     } catch (e) {
       if (e.code === 'ERR_CANCELED') {
         console.log('Sign in with Apple was cancelled!');
@@ -170,7 +178,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderRadius: 20,
     alignItems: 'center',
     marginTop: 10,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   buttonText: {
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
@@ -205,7 +213,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     backgroundColor: "#000000",
     borderRadius: 100,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   AppleContinueText: {
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
@@ -223,7 +231,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     borderRadius: 100,
     marginTop: 2,
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2a' : '#000',
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   GoogleContinueText: {
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
