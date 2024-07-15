@@ -230,7 +230,9 @@ PODS:
     - ExpoModulesCore
   - ExpoAsset (10.0.8):
     - ExpoModulesCore
-  - ExpoCamera (15.0.10):
+  - ExpoBlur (13.0.2):
+    - ExpoModulesCore
+  - ExpoCamera (15.0.13):
     - ExpoModulesCore
     - ZXingObjC/OneD
     - ZXingObjC/PDF417
@@ -248,7 +250,12 @@ PODS:
     - SDWebImageWebPCoder
   - ExpoImagePicker (15.0.5):
     - ExpoModulesCore
+  - ExpoInsights (0.7.0):
+    - EASClient
+    - ExpoModulesCore
   - ExpoKeepAwake (13.0.2):
+    - ExpoModulesCore
+  - ExpoLinearGradient (13.0.2):
     - ExpoModulesCore
   - ExpoModulesCore (1.12.14):
     - DoubleConversion
@@ -276,6 +283,8 @@ PODS:
   - ExpoRandom (14.0.1):
     - ExpoModulesCore
   - ExpoSecureStore (13.0.1):
+    - ExpoModulesCore
+  - ExpoSymbols (0.1.4):
     - ExpoModulesCore
   - ExpoWebBrowser (13.0.3):
     - ExpoModulesCore
@@ -1643,6 +1652,12 @@ PODS:
   - "sqlite3 (3.45.3+1)":
     - "sqlite3/common (= 3.45.3+1)"
   - "sqlite3/common (3.45.3+1)"
+  - VisionCamera (4.5.0):
+    - VisionCamera/Core (= 4.5.0)
+    - VisionCamera/React (= 4.5.0)
+  - VisionCamera/Core (4.5.0)
+  - VisionCamera/React (4.5.0):
+    - React-Core
   - Yoga (0.0.0)
   - ZXingObjC/Core (3.6.9)
   - ZXingObjC/OneD (3.6.9):
@@ -1668,6 +1683,7 @@ DEPENDENCIES:
   - expo-dev-menu-interface (from `../node_modules/expo-dev-menu-interface/ios`)
   - ExpoAppleAuthentication (from `../node_modules/expo-apple-authentication/ios`)
   - ExpoAsset (from `../node_modules/expo-asset/ios`)
+  - ExpoBlur (from `../node_modules/expo-blur/ios`)
   - ExpoCamera (from `../node_modules/expo-camera/ios`)
   - ExpoCrypto (from `../node_modules/expo-crypto/ios`)
   - ExpoFileSystem (from `../node_modules/expo-file-system/ios`)
@@ -1675,10 +1691,13 @@ DEPENDENCIES:
   - ExpoHaptics (from `../node_modules/expo-haptics/ios`)
   - ExpoImageManipulator (from `../node_modules/expo-image-manipulator/ios`)
   - ExpoImagePicker (from `../node_modules/expo-image-picker/ios`)
+  - ExpoInsights (from `../node_modules/expo-insights/ios`)
   - ExpoKeepAwake (from `../node_modules/expo-keep-awake/ios`)
+  - ExpoLinearGradient (from `../node_modules/expo-linear-gradient/ios`)
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
   - ExpoRandom (from `../node_modules/expo-random/ios`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSymbols (from `../node_modules/expo-symbols/ios`)
   - ExpoWebBrowser (from `../node_modules/expo-web-browser/ios`)
   - EXStructuredHeaders (from `../node_modules/expo-structured-headers/ios`)
   - EXUpdates (from `../node_modules/expo-updates/ios`)
@@ -1753,6 +1772,7 @@ DEPENDENCIES:
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - RNVectorIcons (from `../node_modules/react-native-vector-icons`)
+  - VisionCamera (from `../node_modules/react-native-vision-camera`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
 SPEC REPOS:
@@ -1800,6 +1820,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-apple-authentication/ios"
   ExpoAsset:
     :path: "../node_modules/expo-asset/ios"
+  ExpoBlur:
+    :path: "../node_modules/expo-blur/ios"
   ExpoCamera:
     :path: "../node_modules/expo-camera/ios"
   ExpoCrypto:
@@ -1814,14 +1836,20 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-image-manipulator/ios"
   ExpoImagePicker:
     :path: "../node_modules/expo-image-picker/ios"
+  ExpoInsights:
+    :path: "../node_modules/expo-insights/ios"
   ExpoKeepAwake:
     :path: "../node_modules/expo-keep-awake/ios"
+  ExpoLinearGradient:
+    :path: "../node_modules/expo-linear-gradient/ios"
   ExpoModulesCore:
     :path: "../node_modules/expo-modules-core"
   ExpoRandom:
     :path: "../node_modules/expo-random/ios"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
+  ExpoSymbols:
+    :path: "../node_modules/expo-symbols/ios"
   ExpoWebBrowser:
     :path: "../node_modules/expo-web-browser/ios"
   EXStructuredHeaders:
@@ -1967,6 +1995,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-svg"
   RNVectorIcons:
     :path: "../node_modules/react-native-vector-icons"
+  VisionCamera:
+    :path: "../node_modules/react-native-vision-camera"
   Yoga:
     :path: "../node_modules/react-native/ReactCommon/yoga"
 
@@ -1988,17 +2018,21 @@ SPEC CHECKSUMS:
   expo-dev-menu-interface: be32c09f1e03833050f0ee290dcc86b3ad0e73e4
   ExpoAppleAuthentication: 7af0b493e820dc0b22150cb9531fc1c31dc4fbfd
   ExpoAsset: 100b840e5dc1e1619df2d7c76441d33fb84a3202
-  ExpoCamera: 11129a52e17fea1701ce923db49b08de8494145a
+  ExpoBlur: fa53f874e7b208bc3756d1bf07903c12e790beb1
+  ExpoCamera: c5be8a28a769c4dee3a02e017e5b55415d9beb2c
   ExpoCrypto: 156078f266bf28f80ecf5e2a9c3a0d6ffce07a1c
   ExpoFileSystem: 80bfe850b1f9922c16905822ecbf97acd711dc51
   ExpoFont: 43b69559cef3d773db57c7ae7edd3cb0aa0dc610
   ExpoHaptics: 5a3a88971af384255baf2504f38b41189cec6984
   ExpoImageManipulator: aea99205c66043a00a0af90e345395637b9902fa
   ExpoImagePicker: dc3e6f221ce5717e6e0a771780e6e7d50a790189
+  ExpoInsights: e88a27cb4ba1b644f8f6bbb2473a5a8204767948
   ExpoKeepAwake: 3b8815d9dd1d419ee474df004021c69fdd316d08
+  ExpoLinearGradient: 8cec4a09426d8934c433e83cb36262d72c667fce
   ExpoModulesCore: d7b31b6d68b2ba815c46660d86018c789178fdb9
   ExpoRandom: 099ddce39b39ffb984b45118d031e8713e962a50
   ExpoSecureStore: 5f6b712785986b54d95a92bd365aabb82a52088e
+  ExpoSymbols: 5adb1166f2929fc8d2497b98d5c48c4b94effe33
   ExpoWebBrowser: 7595ccac6938eb65b076385fd23d035db9ecdc8e
   EXStructuredHeaders: cb8d1f698e144f4c5547b4c4963e1552f5d2b457
   EXUpdates: 07352d170973460389e26e6847da4badd23aa9d6
@@ -2077,6 +2111,7 @@ SPEC CHECKSUMS:
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: abac6f5de4d4d62d24e11868d7a2f427e0ef940d
   sqlite3: 02d1f07eaaa01f80a1c16b4b31dfcbb3345ee01a
+  VisionCamera: 412fec057156eb5fe84a44351e8ed71a072c1228
   Yoga: ae3c32c514802d30f687a04a6a35b348506d411f
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 

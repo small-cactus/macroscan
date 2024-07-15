@@ -2,7 +2,7 @@
   "expo": {
     "name": "MacroScan",
     "slug": "MacroScan",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": ["macroscan"],
@@ -14,6 +14,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.smallcactus.MacroScan",
+      "buildNumber": "2",
       "infoPlist": {
         "NSCameraUsageDescription": "This app uses the camera to scan food items.",
         "NSPhotoLibraryUsageDescription": "This app needs access to your photo library to select food images.",

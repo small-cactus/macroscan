@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View, AppRegistry } from 'react-native';
+import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View, AppRegistry, Dimensions, Platform } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -31,6 +31,27 @@ import NoInternetScreen from './screens/NoInternetScreen';
 import InsightsScreen from './screens/InsightsScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import CancelScreen from './screens/CancelScreen';
+import OnBoardingScreen from './screens/OnBoardingScreen';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -173,6 +194,7 @@ function App() {
             <Stack.Screen name="SignUp" component={SignUpScreen} options={{ headerShown: false }} />
             <Stack.Screen name="SignIn" component={SignInScreen} options={{ headerShown: false }} />
             <Stack.Screen name="LoadingScreen" component={LoadingScreen} options={{ headerShown: false }} />
+            <Stack.Screen name="OnBoardingScreen" component={OnBoardingScreen} options={{ headerShown: false }} />
             <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
             <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
             <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
@@ -203,8 +225,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   tabBarStyle: {
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#fff',
     borderTopColor: colorScheme === 'dark' ? '#5a5a5a' : '#e0e0e0',
-    paddingBottom: 30,
-    paddingTop: 10,
+    paddingBottom: isIphoneSE() ? 8 : 30,  // 20% from the top of the screen
+    paddingTop: isIphoneSE() ? 3 : 10,  // 20% from the top of the screen
   },
   tabBarLabelStyle: {
     fontSize: 12,

@@ -35,10 +35,10 @@ const SettingsScreen = () => {
       title: "Features",
       navigateTo: "FeaturesScreen"
     },
-    {
-      title: "Notification Preferences",
-      navigateTo: "NotificationSettingsScreen"
-    },
+    // {
+    //   title: "Notification Preferences",
+    //   navigateTo: "NotificationSettingsScreen"
+    // },
     {
       title: "Privacy and Security",
       navigateTo: "PrivacyScreen"
@@ -47,14 +47,18 @@ const SettingsScreen = () => {
       title: "About MacroScan",
       navigateTo: "AboutScreen"
     },
-    {
-      title: "Developer",
-      navigateTo: "DebuggingScreen"
-    },
+    // {
+    //   title: "Developer",
+    //   navigateTo: "DebuggingScreen"
+    // },
     {
       title: "Help and Support",
       navigateTo: "SupportScreen"
     },
+    // {
+    //   title: "On Boarding Test",
+    //   navigateTo: "OnBoardingScreen"
+    // },
   ];
 
   const handleSettingPress = (navigateTo) => {

@@ -6,6 +6,8 @@ import {
   StyleSheet,
   Alert,
   Image,
+  Dimensions,
+  Platform
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -15,6 +17,26 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
 import { Appearance } from 'react-native';
 import { useUser } from '../userContext';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -65,14 +87,15 @@ export default function SignInScreen({ navigation }) {
 
   const handleUserVerification = async (createUserFn) => {
     setLoading(true);
-    navigation.navigate('LoadingScreen');  // Navigate to the Loading screen immediately
+    navigation.navigate('LoadingScreen');
     navigation.reset({
       index: 0,
       routes: [{ name: 'LoadingScreen' }],
     });
     try {
       const newUser = await createUserFn();
-      storeUserFlag();
+      console.log('handleUserVerification response:', newUser);
+      await AsyncStorage.setItem('@user_logged_in', 'true');
       if (!newUser.name || newUser.name === 'No Name' || !newUser.email) {
         navigation.navigate('CompleteProfile');
         navigation.reset({
@@ -80,11 +103,13 @@ export default function SignInScreen({ navigation }) {
           routes: [{ name: 'CompleteProfile' }],
         });
       } else {
+        await AsyncStorage.setItem('userName', newUser.name);
+        await AsyncStorage.setItem('userEmail', newUser.email);
         navigateHome();
       }
     } catch (error) {
       setLoading(false);
-      Alert.alert('Sign In Error', error.message);
+      Alert.alert('Sign Up Error', error.message);
     }
   };
 
@@ -102,7 +127,7 @@ export default function SignInScreen({ navigation }) {
       if (e.code === 'ERR_CANCELED') {
         console.log('Sign in with Apple was cancelled!');
       } else {
-        Alert.alert('Sign In Error', e.message);
+        Alert.alert('Sign Up Error', e.message);
       }
     }
   };
@@ -124,7 +149,7 @@ export default function SignInScreen({ navigation }) {
             <FontAwesome name="apple" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
           </View>
         </TouchableOpacity>
-        <TouchableOpacity
+        {/* <TouchableOpacity
           style={styles.GoogleContinueButton}
           onPress={() => {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -137,7 +162,7 @@ export default function SignInScreen({ navigation }) {
             </Text>
             <FontAwesome name="google" size={20} color="#ffffff" style={{ marginLeft: 10 }} />
           </View>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
         <TouchableOpacity style={styles.SignUpRedirect} onPress={() => {
           navigation.navigate('SignUp');
         }}>
@@ -166,7 +191,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#fff' : '#000',
     textAlign: 'center',
-    marginTop: 100,
+    marginTop: isIphoneSE() ? 50 : 100,
     marginBottom: 40,
     zIndex: 1,
   },
@@ -188,7 +213,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: 120,
     height: 120,
     alignSelf: 'center',
-    marginBottom: '-80%',
+    marginBottom: '-140%',
     marginTop: '-2%',
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     zIndex: 1,
@@ -206,8 +231,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginTop: 20,
     marginBottom: 20,
     borderWidth: 0,
-    width: '88%',
-    height: '7%',
+    width: '85%',
+    height: isIphoneSE() ? '8%' : '6%',
     justifyContent: 'center',
     alignItems: 'center',
     backgroundColor: "#000000",

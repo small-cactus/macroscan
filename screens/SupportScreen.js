@@ -8,10 +8,32 @@ import {
   SafeAreaView,
   Linking,
   Appearance,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const SupportScreen = () => {
   const navigation = useNavigation();
@@ -72,7 +94,7 @@ const SupportScreen = () => {
     },
     {
       question: "Is there a limit to how many foods I can scan in a day?",
-      answer: "Yes, on the free plan you can scan up to 5 times a day. Upgrading to MacroScan+ or MacroScan++ removes this limit. All users get unlimited scans on their first day."
+      answer: "Yes, on the free plan you can scan up to 5 times a day. Upgrading to MacroScan++ removes this limit and gives you unlimited scans. All users get unlimited scans on their first day."
     },
     {
       question: "What should I do if MacroScan does not recognize a food item?",
@@ -205,7 +227,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   backButton: {
     position: 'absolute', // Corrected to 'absolute' for exact placement
     left: '5%',  // 5% from the right edge of the screen
-    top: '9%',  // 20% from the top of the screen
+    top: isIphoneSE() ? '5%' : '9%',  // 20% from the top of the screen
     zIndex: 10, // Ensures the button is clickable over other elements
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,

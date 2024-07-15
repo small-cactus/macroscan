@@ -8,9 +8,31 @@ import {
   SafeAreaView,
   Image,
   Appearance,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const AboutScreen = () => {
   const navigation = useNavigation();
@@ -38,11 +60,14 @@ const AboutScreen = () => {
             </View>
           </View>
           <Text style={styles.description}>
-            MacroScan v0.1 Alpha
+            MacroScan v1.0.0 (19)
           </Text>
-          <TouchableOpacity style={styles.contactButton} onPress={handleContactPress}>
+          <Text style={styles.description}>
+            If you have questions, feedback, or concerns, email us from the help and support page in settings.
+          </Text>
+          {/* <TouchableOpacity style={styles.contactButton} onPress={handleContactPress}>
             <Text style={styles.contactButtonText}>Contact Us</Text>
-          </TouchableOpacity>
+          </TouchableOpacity> */}
         </View>
       </ScrollView>
     </SafeAreaView>
@@ -74,6 +99,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: '5%',
   },
   logoBackground: {
+    marginTop: '0%',
     backgroundColor: '#FFF',
     borderRadius: 27,
     padding: 0,
@@ -117,7 +143,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   backButton: {
     position: 'absolute',
     left: '5%',
-    top: '9%',
+    top: isIphoneSE() ? '5%' : '9%',  // 20% from the top of the screen
     zIndex: 10,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,

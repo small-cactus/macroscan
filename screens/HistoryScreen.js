@@ -1,11 +1,31 @@
 import React, { useState, useEffect } from 'react';
-import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, Modal, Alert } from 'react-native';
+import { StyleSheet, View, Text, ScrollView, TouchableOpacity, Image, Modal, Alert, Dimensions, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Appearance } from 'react-native';
 import { useFocusEffect } from '@react-navigation/native';
 import { RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';  // Import the icon component
 import { SymbolView } from 'expo-symbols';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+    const smallIphoneDimensions = [
+      { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+      { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+      { width: 414, height: 736 }, // iPhone 8 Plus
+      { width: 360, height: 640 }, // iPhone SE (2020)
+      { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+      { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+    ];
+  
+    return (
+      Platform.OS === 'ios' &&
+      smallIphoneDimensions.some(
+        dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+      )
+    );
+  };
 
 const HistoryScreen = () => {
     const [history, setHistory] = useState([]);
@@ -216,7 +236,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         flex: 1,
         marginTop: '14%',
         backgroundColor: colorScheme === 'dark' ? '#1d1d1f' : '#FFF',
-        borderRadius: 48,
+        borderRadius: isIphoneSE() ? 15 : 48,
         padding: 20,
         alignItems: 'center',
         shadowColor: '#000',
@@ -235,7 +255,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     imagePreview: {
         width: '100%',
-        height: 300,
+        height: isIphoneSE() ? 200 : 300,
         borderRadius: 25,
         marginBottom: 15,
     },
@@ -277,7 +297,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     iconButton: {
         position: 'absolute', // Corrected to 'absolute' for exact placement
         right: '5%',  // 5% from the right edge of the screen
-        top: '8%',  // 20% from the top of the screen
+        top: isIphoneSE() ? '5%' : '8%',
         padding: 10,
         zIndex: 1,  // Ensure it stays on top of other components if needed
         backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
@@ -289,7 +309,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         // elevation: 5,
     },
     historyTitle: {
-        marginTop: '12%',
+        marginTop: isIphoneSE() ? '5%' : '12%',
         fontSize: 28,
         fontWeight: 'bold',
         color: colorScheme === 'dark' ? '#fff' : '#000',

@@ -28,6 +28,7 @@
     },
     "production": {
       "distribution": "store",
+      "autoIncrement": true,
       "android": {
         "buildType": "app-bundle"
       },
@@ -35,5 +36,8 @@
         "buildConfiguration": "Release"
       }
     }
+  },
+  "cli": {
+    "appVersionSource": "remote"
   }
 }

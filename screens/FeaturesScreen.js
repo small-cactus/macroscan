@@ -9,12 +9,34 @@ import {
   Alert,
   Appearance,
   Animated,
+  Platform,
+  Dimensions,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../userContext';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const FeaturesScreen = () => {
   const navigation = useNavigation();
@@ -224,7 +246,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   backButton: {
     position: 'absolute',
     left: '5%',
-    top: '9%',
+    top: isIphoneSE() ? '5%' : '9%',  // 20% from the top of the screen
     zIndex: 10,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
     borderRadius: 14,

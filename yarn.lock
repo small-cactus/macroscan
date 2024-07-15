@@ -3794,10 +3794,10 @@ expo-blur@~13.0.2:
   resolved "https://registry.yarnpkg.com/expo-blur/-/expo-blur-13.0.2.tgz#c2d179b19b13830db1d8b90c51373235f462e958"
   integrity sha512-t2p7BChO3Reykued++QJRMZ/og6J3aXtSQ+bU31YcBeXhZLkHwjWEhiPKPnJka7J2/yTs4+jOCNDY0kCZmcE3w==
 
-expo-camera@~15.0.10:
-  version "15.0.10"
-  resolved "https://registry.npmjs.org/expo-camera/-/expo-camera-15.0.10.tgz"
-  integrity sha512-cr0s8CHllPSf3bpT+2/D7nJx41Hec1HzSwYeeIZIe63uFUBRSx6R/eAtdrLOfg6cMoLhmh4wfHXBBnJdT015Fw==
+expo-camera@~15.0.13:
+  version "15.0.13"
+  resolved "https://registry.yarnpkg.com/expo-camera/-/expo-camera-15.0.13.tgz#270c00e1bc7eaf4049897a36fa1f9d217d8e320d"
+  integrity sha512-EhGk1hkc0dgKqtQIw9SX31cl9t+ffDBfMCma+0qvSBnEkcfDQImrDDHSODknQrq6yNQDT9w3LqH5ZouG0m9pJQ==
   dependencies:
     invariant "^2.2.4"
 
@@ -3896,6 +3896,13 @@ expo-in-app-purchases@^14.5.0:
   version "14.5.0"
   resolved "https://registry.npmjs.org/expo-in-app-purchases/-/expo-in-app-purchases-14.5.0.tgz"
   integrity sha512-rsVPH6fOoU+mzjn80IFLz5f4gxEHLxXv+Pl4Dwblc5IDYvKTaUvTljNuaVmWESZSjDOMBT1JUAYRAlMRfBWOcg==
+
+expo-insights@~0.7.0:
+  version "0.7.0"
+  resolved "https://registry.yarnpkg.com/expo-insights/-/expo-insights-0.7.0.tgz#ca777fd9b83c1cfddb6b9f937692dbd42aa01854"
+  integrity sha512-GC8WpaynF8QB+GoOfq1kBNeD1UICHvN2ek3KMmIIs1Iho1y3fwwwgLDeGCpOsVKQsNaX6viDVPCedj4V2SD4lA==
+  dependencies:
+    expo-eas-client "~0.12.0"
 
 expo-json-utils@~0.13.0:
   version "0.13.1"
@@ -6612,6 +6619,11 @@ react-native-vector-icons@^10.0.3:
   dependencies:
     prop-types "^15.7.2"
     yargs "^16.1.1"
+
+react-native-vision-camera@^4.5.0:
+  version "4.5.0"
+  resolved "https://registry.yarnpkg.com/react-native-vision-camera/-/react-native-vision-camera-4.5.0.tgz#47b475d12b3002baf18a2fbe9f4fd75c97f2cb00"
+  integrity sha512-WvfAad9uMgNmS7sndo+j4XInhwhgt6fpwGqVkt6oU4a2QS9r3DWK5lVm+5nGhMkSUZp5aoKPP0tQGALStNfZeQ==
 
 react-native@0.74.2:
   version "0.74.2"

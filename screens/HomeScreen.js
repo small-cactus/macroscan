@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, ScrollView, TextInput, Alert } from 'react-native';
+import { StyleSheet, View, Text, TouchableOpacity, Modal, Image, Animated, ActivityIndicator, ScrollView, TextInput, Alert, Dimensions, Platform } from 'react-native';
 import { Camera } from 'expo-camera';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import * as ImagePicker from 'expo-image-picker';
@@ -15,6 +15,26 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { faInfinity } from '@fortawesome/free-solid-svg-icons';
 import { SymbolView, SymbolViewProps, SFSymbol } from 'expo-symbols';
 import { useUser } from '../userContext';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const MacroScanHome = () => {
   const { user, updateUser } = useUser();
@@ -78,29 +98,59 @@ const MacroScanHome = () => {
 
   useEffect(() => {
     const checkSubscription = async () => {
-      if (isIAPEnabled) {
-        try {
-          const purchases = await RNIap.getAvailablePurchases();
-          const hasActiveSubscription = purchases.some(purchase => {
-            return ['macroscan_plusplus_subscription', 'macroscan_plus_subscription'].includes(purchase.productId);
-          });
-          setIsSubscribed(hasActiveSubscription);
-        } catch (err) {
-          console.error('Failed to check subscriptions:', err);
+        if (isIAPEnabled) {
+            try {
+                const purchases = await RNIap.getAvailablePurchases();
+
+                // Determine if there is any active 'plusplus' subscription
+                const hasActivePlusPlusSubscription = purchases.some(purchase => 
+                    purchase.productId === 'macroscan_plusplus_subscription'
+                );
+
+                // Determine if there is any active 'plus' subscription
+                const hasActivePlusSubscription = purchases.some(purchase => 
+                    purchase.productId === 'macroscan_plus_subscription'
+                );
+
+                // Update subscription status based on active subscriptions
+                if (hasActivePlusPlusSubscription) {
+                    setIsSubscribed(true);
+                    setIsSubscribedPlus(false);
+                } else if (hasActivePlusSubscription) {
+                    setIsSubscribed(false);
+                    setIsSubscribedPlus(true);
+                } else {
+                    setIsSubscribed(false);
+                    setIsSubscribedPlus(false);
+                }
+                
+            } catch (err) {
+                console.error('Failed to check subscriptions:', err);
+                setIsSubscribed(false);
+                setIsSubscribedPlus(false);
+            }
+        } else {
+            // Update based on user's subscription status when IAP is not enabled
+            if (user?.subscriptionStatus === 'plusplus') {
+                setIsSubscribed(true);
+                setIsSubscribedPlus(false);
+            } else if (user?.subscriptionStatus === 'plus') {
+                setIsSubscribed(false);
+                setIsSubscribedPlus(true);
+            } else {
+                setIsSubscribed(false);
+                setIsSubscribedPlus(false);
+            }
         }
-      } else {
-        setIsSubscribed(user?.subscriptionStatus === 'plusplus');
-        setIsSubscribedPlus(user?.subscriptionStatus === 'plus');
-      }
     };
 
     checkSubscription();
-  }, [isIAPEnabled, user]);
+}, [isIAPEnabled, user]);
   
 //PLUSPLUS AND FREE
   useEffect(() => {
     const intervalId = setInterval(() => {
-      if (!isSubscribed && scanCount >= 5) {
+      if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
         setTimeLeftForScans(getTimeUntilMidnight());
       } else {
         setTimeLeftForScans('');
@@ -134,6 +184,18 @@ const MacroScanHome = () => {
     fadeOutFeedback();
     removeLatestHistoryEntry();
   };
+
+  useEffect(() => {
+    const checkAndResetScanCount = async () => {
+      if (scanCount > 5 && !isSubscribed && !isSubscribedPlus && !isFirstDayUnlimited) {
+        console.log("Resetting scan count to 0 as it exceeded 5 for a free user");
+        setScanCount(0);
+        await AsyncStorage.setItem('dailyScanCount', '0');
+      }
+    };
+
+    checkAndResetScanCount();
+  }, [scanCount, isSubscribed, isSubscribedPlus, isFirstDayUnlimited]);
 
   const removeLatestHistoryEntry = async () => {
     try {
@@ -291,107 +353,90 @@ const MacroScanHome = () => {
     return `${hours} hours and ${minutes} minutes`;
   };
 
-  const incrementScanCount = async () => {
+  const incrementScanCount = useCallback(async () => {
     if (!isFirstDayUnlimited && !isSubscribed) {
       const newCount = scanCount + 1;
       setScanCount(newCount);
       await AsyncStorage.setItem('dailyScanCount', newCount.toString());
     }
-  };
+  }, [isFirstDayUnlimited, isSubscribed, scanCount]);
 
   const pickImage = async () => {
-    let maxScansAllowed;
-  
-    if (isSubscribedPlus) {
-      maxScansAllowed = 20;
-    } else if (!isSubscribed || !isFirstDayUnlimited) {
-      maxScansAllowed = 5;
+    if (isFirstDayUnlimited || isSubscribed) {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 1,
+        });
+
+        if (!result.canceled && result.assets) {
+            const base64Data = await resizeImage(result.assets[0].uri);
+            setModalImageUri(result.assets[0].uri);
+            setModalVisible(true);
+            await sendImageToApi(base64Data);
+        }
+    } else if (isSubscribedPlus && scanCount < 20 || !isSubscribed && scanCount < 5) {
+        let result = await ImagePicker.launchImageLibraryAsync({
+            mediaTypes: ImagePicker.MediaTypeOptions.Images,
+            allowsEditing: true,
+            aspect: [4, 3],
+            quality: 1,
+        });
+
+        if (!result.canceled && result.assets) {
+            const base64Data = await resizeImage(result.assets[0].uri);
+            setModalImageUri(result.assets[0].uri);
+            setModalVisible(true);
+            await sendImageToApi(base64Data);
+            if (apiSuccess) await incrementScanCount();
+        }
     } else {
-      const timeLeft = getTimeUntilMidnight();
-      Alert.alert(
-        "No more Scans left",
-        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
-      );
-      return;
+        const timeLeft = getTimeUntilMidnight();
+        Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
     }
+};
   
-    if (scanCount >= maxScansAllowed) {
-      const timeLeft = getTimeUntilMidnight();
-      Alert.alert(
-        "No more Scans left",
-        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
-      );
-      return;
-    }
-  
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: true,
-      aspect: [4, 3],
-      quality: 1,
-    });
-  
-    if (!result.canceled && result.assets) {
-      const base64Data = await resizeImage(result.assets[0].uri);
-      setModalImageUri(result.assets[0].uri);
-      setModalVisible(true);
-      await sendImageToApi(base64Data);
-  
-      if (!(isSubscribed) && !isFirstDayUnlimited && apiSuccess) {
-        await incrementScanCount();
-      }
-    }
-  };
-  
-  const takePhoto = async () => {
-    if (!hasPermission) {
-      const { status } = await Camera.requestCameraPermissionsAsync();
-      setHasPermission(status === 'granted');
-    }
-  
-    if (hasPermission) {
-      let maxScansAllowed;
-  
-    if (isSubscribedPlus) {
-      maxScansAllowed = 20;
-    } else if (!isSubscribed || !isFirstDayUnlimited) {
-      maxScansAllowed = 5;
-    } else {
-      const timeLeft = getTimeUntilMidnight();
-      Alert.alert(
-        "No more Scans left",
-        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
-      );
-      return;
-    }
-  
-    if (scanCount >= maxScansAllowed) {
-      const timeLeft = getTimeUntilMidnight();
-      Alert.alert(
-        "No more Scans left",
-        `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`
-      );
-      return;
-    }
-  
+const takePhoto = async () => {
+  if (!hasPermission) {
+    const { status } = await Camera.requestCameraPermissionsAsync();
+    setHasPermission(status === 'granted');
+  }
+
+  if (hasPermission) {
+    if (isFirstDayUnlimited || isSubscribed) {
       let result = await ImagePicker.launchCameraAsync({
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,
       });
-  
+
       if (!result.canceled && result.assets) {
         const base64Data = await resizeImage(result.assets[0].uri);
         setModalImageUri(result.assets[0].uri);
         setModalVisible(true);
         await sendImageToApi(base64Data);
-  
-        if (!isSubscribed && !isFirstDayUnlimited && apiSuccess) {
-          await incrementScanCount();
-        }
       }
+    } else if (isSubscribedPlus && scanCount < 20 || !isSubscribed && scanCount < 5) {
+      let result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 1,
+      });
+
+      if (!result.canceled && result.assets) {
+        const base64Data = await resizeImage(result.assets[0].uri);
+        setModalImageUri(result.assets[0].uri);
+        setModalVisible(true);
+        await sendImageToApi(base64Data);
+        if (apiSuccess) await incrementScanCount();
+      }
+    } else {
+      const timeLeft = getTimeUntilMidnight();
+      Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
     }
-  };
+  }
+};
 
   const closeModal = () => {
     setModalVisible(false);
@@ -552,11 +597,23 @@ const MacroScanHome = () => {
       if (textResponse !== "No text data available in the response.") {
         const parsedData = parseNutrientData(textResponse);
         setNutrientData(parsedData);
+        setNutrientData(parsedData);
+        
+        // Check if parsedData and productName exist before attempting to use them
+        if (parsedData && parsedData.productName) {
+          if (!parsedData.productName.toLowerCase().includes("again")) {
+            // Food was detected, so increment the scan count
+            await incrementScanCount();
+          } else {
+            console.log("No food detected, scan count not incremented");
+          }
+        } else {
+          console.warn("Parsed data or product name is undefined");
+        }
       }
       console.log(msg)
       closeModal();
       setApiSuccess(true);
-      await incrementScanCount();
     } catch (error) {
       console.error("Error sending message to Anthropic API:", error);
       Alert.alert("High Demand", `We're experiencing extremely high demand, try again in 1 minute.`);
@@ -590,34 +647,40 @@ const MacroScanHome = () => {
   return (
     <View style={styles.container}>
       <View style={styles.headerContainer}>
-        <View style={styles.titleContainer}>
+      <View style={styles.titleContainer}>
           <Text style={styles.productName}>
             {nutrientData ? nutrientData.productName : 'No image selected'}
           </Text>
           <TouchableOpacity
-  style={styles.scanCounter}
-  onPress={() => {
-    let message = '';
-    if (isSubscribed) {
-      message = "You have unlimited scans because you're subscribed.";
-    } else if (isSubscribedPlus) {
-      message = `You have used ${scanCount} of 20 scans today.`;
-    } else {
-      message = `You have used ${scanCount} of 5 scans today.`;
-    }
-    Alert.alert("Scan Limit", message);
-  }}
->
-  <Text style={isSubscribed ? styles.infinityIcon : styles.scanCounterText}>
-    {isSubscribed ? (
-      <FontAwesomeIcon
-        icon={faInfinity}
-        size={24}
-        color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
-      />
-    ) : isSubscribedPlus ? (20 - scanCount) : (5 - scanCount)}
-  </Text>
-</TouchableOpacity>
+            style={styles.scanCounter}
+            onPress={() => {
+              let message = '';
+              if (isFirstDayUnlimited || (isFirstDayUnlimited && !isSubscribed)) {
+                message = "You have unlimited scans today. You'll have 5 scans a day starting tomorrow.";
+              } else if (isSubscribed) {
+                message = `You have unlimited scans because you're subscribed. Thank you!`;
+              } else if (isSubscribedPlus) {
+                message = `You have used ${scanCount} of 20 scans today.`;
+              } else {
+                message = `You have used ${scanCount} of 5 scans today.`;
+              }
+              Alert.alert("Scan Limit", message);
+            }}
+          >
+            <View style={styles.scanCounterContent}>
+              {isSubscribed || isFirstDayUnlimited ? (
+                <FontAwesomeIcon
+                  icon={faInfinity}
+                  size={24}
+                  color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
+                />
+              ) : (
+                <Text style={styles.scanCounterText}>
+                  {isSubscribedPlus ? (20 - scanCount) : (5 - scanCount)}
+                </Text>
+              )}
+            </View>
+          </TouchableOpacity>
         </View>
         {homeScreenImageUri && (
           <View style={styles.productImageContainer}>
@@ -747,7 +810,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-start',
     alignItems: 'center',
-    paddingTop: 20,
+    paddingTop: isIphoneSE() ? 0 : 20,
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
   },
   headerContainer: {
@@ -892,7 +955,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   productImage: {
     width: '100%',
-    height: 230, // Adjust the height as needed
+    height: isIphoneSE() ? 150 : 230,
     borderRadius: 25,
   },
   NeedHelpText: {

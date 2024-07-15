@@ -46,6 +46,7 @@ export const UserProvider = ({ children }) => {
 
     try {
       const response = await axios.post(apiBaseUrl, {
+        userString: email,
         email: email,
         name: name,
         action: 'create'
@@ -57,60 +58,68 @@ export const UserProvider = ({ children }) => {
   };
 
   const createUserWithApple = async (credential) => {
-    console.log(credential)
+    const userString = credential.user;
     const email = credential.email || '';
     let fullName = '';
     if (credential.fullName) {
-        fullName = `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim();
+      fullName = `${credential.fullName.givenName || ''} ${credential.fullName.familyName || ''}`.trim();
     }
-
+  
     try {
-        const response = await axios.post(apiBaseUrl, {
-            email: email,
-            name: fullName || null,  // Send null if no name is provided
-            action: 'create'
-        });
-        const newUser = { ...response.data, email: email, name: fullName };  // Keep name as is, no default 'No Name' needed here
-
-        await handleApiResponse(newUser);  // Handle API response by updating context and storage
-        return newUser;
-    } catch (error) {
-        console.error('Error creating user with Apple:', error);
-        throw error;  // Rethrow error to be handled by the caller
-    }
-};
-
-
-const updateUser = async (updates) => {
-      if (!user) return;
-
-      const sanitizeUpdates = (updates) => {
-        return Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
+      const response = await axios.post(apiBaseUrl, {
+        userString: userString,
+        email: email,
+        name: fullName || null,
+        action: 'create'
+      });
+      console.log('Cloud function output:', response.data);
+      
+      const newUser = { 
+        ...response.data,
+        email: response.data.email || email, // Prioritize email from cloud function
+        name: response.data.name || fullName // Prioritize name from cloud function
       };
+  
+      await handleApiResponse(newUser);
+      return newUser; // Return the newUser object, not response.data
+    } catch (error) {
+      console.error('Error creating user with Apple:', error);
+      throw error;
+    }
+  };
 
-      const sanitizedUpdates = sanitizeUpdates(updates);
-      console.log('Sanitized updates:', sanitizedUpdates);
+  const updateUser = async (updates) => {
+    if (!user) return;
 
-      try {
-        const response = await axios.post(apiBaseUrl, { email: user.email, updates: sanitizedUpdates, action: 'update' });
-        const newUserDetails = { ...user, ...sanitizedUpdates, apiKey: response.data.apiKey }; // Ensure the response contains the latest user data along with the API key
-        await AsyncStorage.setItem('@user', JSON.stringify(newUserDetails));
-        await AsyncStorage.setItem('@apikey', response.data.apiKey);
-        setUser(newUserDetails);
-        console.log('User updated:', newUserDetails);
-      } catch (error) {
-        console.error('Error updating user:', error);
-        console.error('Error details:', error.response ? error.response.data : error.message);
-      }
+    const sanitizeUpdates = (updates) => {
+      return Object.fromEntries(Object.entries(updates).filter(([_, v]) => v !== undefined));
     };
 
+    const sanitizedUpdates = sanitizeUpdates(updates);
+    console.log('Sanitized updates:', sanitizedUpdates);
 
+    try {
+      const response = await axios.post(apiBaseUrl, {
+        userString: user.userString,
+        updates: sanitizedUpdates,
+        action: 'update'
+      });
+      const newUserDetails = { ...user, ...sanitizedUpdates, apiKey: response.data.apiKey };
+      await AsyncStorage.setItem('@user', JSON.stringify(newUserDetails));
+      await AsyncStorage.setItem('@apikey', response.data.apiKey);
+      setUser(newUserDetails);
+      console.log('User updated:', newUserDetails);
+    } catch (error) {
+      console.error('Error updating user:', error);
+      console.error('Error details:', error.response ? error.response.data : error.message);
+    }
+  };
 
   const deleteUser = async () => {
     if (!user) return;
 
     try {
-      await axios.post(apiBaseUrl, { email: user.email, action: 'delete' });
+      await axios.post(apiBaseUrl, { userString: user.userString, action: 'delete' });
       await AsyncStorage.removeItem('@user');
       await AsyncStorage.removeItem('@apikey');
       setUser(null);

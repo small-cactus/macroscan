@@ -7,13 +7,33 @@ import {
   StyleSheet,
   Alert,
   KeyboardAvoidingView,
-  Platform,
   ScrollView,
   Image,
+  Dimensions,
+  Platform,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Appearance } from 'react-native';
 
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 export default function SignInScreen({ navigation }) {
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
@@ -32,6 +52,9 @@ export default function SignInScreen({ navigation }) {
   return (
       <View style={styles.View}>
         <Text style={styles.title}>Welcome to MacroScan</Text>
+        <Text style={styles.description}>
+            The easiest way to track macros
+          </Text>
         <Image
   source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
   style={styles.icon} // Define a style for your icon icon
@@ -65,17 +88,16 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    marginTop: -330,
+    padding: 0,
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
   },
   title: {
-    fontSize: 30,
+    fontSize: isIphoneSE() ? 28 : 30,
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
     marginTop: 100, // Adjust as needed to position the title at the top
-    marginBottom: 40,
+    marginBottom: 20,
     color: colorScheme === 'dark' ? '#fff' : '#333',
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     zIndex: 1,
@@ -112,7 +134,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     width: 150, // Adjust the width as needed
     height: 150, // Adjust the height as needed
     alignSelf: 'center', // Center the icon horizontally
-    marginBottom: -380, // Space between icon and the next element
     marginTop: -10,
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     zIndex: 1,
@@ -123,7 +144,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: 20,
     borderWidth: 0,
     width: '40%',
-    height: '5%',
+    height: isIphoneSE() ? '6.5%' : '5%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
@@ -152,5 +173,12 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontSize: 15,
     color: colorScheme === 'dark' ? '#fff' : '#000',
     textDecorationLine: 'underline'
+  },
+  description: {
+    fontSize: 20,
+    fontWeight: '400',
+    color: colorScheme === 'dark' ? '#EEE' : '#666',
+    textAlign: 'center',
+    marginBottom: '20%',
   },
 });

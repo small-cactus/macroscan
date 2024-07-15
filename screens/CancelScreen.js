@@ -11,10 +11,31 @@ import {
   Appearance,
   Dimensions,
   Animated,
+  Platform,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import { Ionicons } from '@expo/vector-icons';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const cancellationSteps = [
   {
@@ -189,7 +210,7 @@ const getDynamicStyles = (colorScheme) => {
       padding: '5%',
     },
     title: {
-      fontSize: 28,
+      fontSize: isIphoneSE() ? 24 : 26,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
       textAlign: 'center',
@@ -265,7 +286,7 @@ const getDynamicStyles = (colorScheme) => {
       backButton: {
         position: 'absolute',
         left: '5%',
-        top: '9%',
+        top: isIphoneSE() ? '5%' : '9%',
         zIndex: 10,
         backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
         borderRadius: 14,

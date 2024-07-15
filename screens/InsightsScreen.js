@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Alert, StyleSheet, View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Image, RefreshControl, Dimensions } from 'react-native';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Alert, StyleSheet, View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Image, RefreshControl, Dimensions, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useColorScheme } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,27 @@ import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import Anthropic from "@anthropic-ai/sdk";
 import { SymbolView } from 'expo-symbols';
 import SubscriptionModal from './SubscriptionModal';
+import { useFocusEffect } from '@react-navigation/native';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+    const smallIphoneDimensions = [
+      { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+      { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+      { width: 414, height: 736 }, // iPhone 8 Plus
+      { width: 360, height: 640 }, // iPhone SE (2020)
+      { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+      { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+    ];
+  
+    return (
+      Platform.OS === 'ios' &&
+      smallIphoneDimensions.some(
+        dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+      )
+    );
+  };
 
 let previousHistory = [];
 let previousGoals = {};
@@ -31,6 +52,7 @@ const InsightsScreen = () => {
     const [smartCoachContent, setSmartCoachContent] = useState(null);
     const [historyLoaded, setHistoryLoaded] = useState(false);
     const [nutrientDataLoaded, setNutrientDataLoaded] = useState(false);
+    const hasRunRef = useRef(false);
 
     const initializeData = async () => {
         await loadUserName();
@@ -92,6 +114,18 @@ const InsightsScreen = () => {
             await AsyncStorage.removeItem('smartCoachContent');
         }
     };
+
+    useFocusEffect(
+        useCallback(() => {
+            const refreshScreen = async () => {
+                setRefreshing(true);
+                await loadHistory();
+                setRefreshing(false);
+            };
+            
+            refreshScreen();
+        }, [])
+    );
 
     const onRefresh = useCallback(() => {
         setRefreshing(true);
@@ -1060,7 +1094,7 @@ const calculateCalorieIntake = async () => {
                 lightColor: '#F3E5F5', 
                 darkColor: 'purple', 
                 phrases: {
-                    needMore: "You have to consume {amount} grams more protein to meet your goal.",
+                    needMore: "You have to consume {amount} grams of protein to meet your goal.",
                     overGoal: "Heads up! You're {amount} grams over your protein goal."
                 }
             },
@@ -1072,7 +1106,7 @@ const calculateCalorieIntake = async () => {
                 lightColor: '#FFEBEE', 
                 darkColor: 'red', 
                 phrases: {
-                    needMore: "You need {amount} grams more fats to hit your goal.",
+                    needMore: "You need {amount} more grams of fats to hit your goal.",
                     overGoal: "Uh-oh! You're {amount} grams over your fat goal."
                 }
             },
@@ -1323,7 +1357,7 @@ const calculateCalorieIntake = async () => {
                 <View style={styles.modalContainer}>
                     <View style={styles.inputModalView}>
                     <TouchableOpacity style={styles.closeButton} onPress={() => setGoalModalVisible(false)}>
-                <Ionicons name="close" size={26} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+                <Ionicons name="close" size={26} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
             </TouchableOpacity>
                         <Text style={styles.inputModalText}>{step === 5 ? 'Set Your Goals' : 'Personal Details'}</Text>
                         <View style={styles.progressContainer}>
@@ -1404,7 +1438,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         marginLeft: '1%',
     },
     insightsTitle: {
-        marginTop: '12%',
+        marginTop: isIphoneSE() ? '5%' : '12%',  // 20% from the top of the screen
         fontSize: 24,
         fontWeight: 'bold',
         color: colorScheme === 'dark' ? '#fff' : '#000',
@@ -1418,7 +1452,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     arrowIconInsideCircle: {
         position: 'absolute',
-        left: 29,
+        left: isIphoneSE() ? 28 : 29,  // 20% from the top of the screen
         top: 18.5,
     },
     cardTitleSmartCoach: {
@@ -1442,7 +1476,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     iconButton: {
         position: 'absolute',
         right: '5%',
-        top: '8%',
+        top: isIphoneSE() ? '5%' : '8%',  // 20% from the top of the screen
         padding: 10,
         zIndex: 1,
         backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
@@ -1488,7 +1522,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         padding: '4%',
         paddingHorizontal: '6%',
         elevation: 2,
-        marginTop: '5%',
+        marginTop: '0%',
         marginHorizontal: '3%',
     },
     inputModalButtonText: {
@@ -1584,7 +1618,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     activityButton: {
         backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
         borderColor: 'transparent',
-        width: 300,
+        width: isIphoneSE() ? 250 : 300,  // 20% from the top of the screen
         alignItems: 'center',
         padding: '3.8%',
         borderRadius: 17,
@@ -1693,7 +1727,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
       goalButton: {
         backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
         borderColor: 'transparent',
-        width: 300,
+        width: isIphoneSE() ? 250 : 300,  // 20% from the top of the screen
         alignItems: 'center',
         padding: '3.8%',
         borderRadius: 17,
@@ -1721,7 +1755,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     closeButton: {
         position: 'absolute',
         borderRadius: 100,
-        backgroundColor: '#2a2a2d',
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
         padding: 6,
         top: 20,
         right: 20,

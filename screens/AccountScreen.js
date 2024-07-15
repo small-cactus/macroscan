@@ -134,26 +134,22 @@ export default function AccountScreen() {
       let purchasedAdsRemoval = false;
   
       if (isIAPEnabled) {
-        // Check App Store purchases if IAP is enabled
+        // Check App Store or Google Play Store purchases if IAP is enabled
         const purchases = await RNIap.getAvailablePurchases();
         console.log(`Available purchases: ${JSON.stringify(purchases)}`);
   
-        if (purchases && purchases.length > 0) {
-          subscribedPlusPlus = purchases.some(purchase => purchase.productId === 'macroscan_plusplus_subscription');
-          subscribedPlus = purchases.some(purchase => purchase.productId === 'macroscan_plus_subscription');
-          purchasedAdsRemoval = purchases.some(purchase => purchase.productId === 'remove_ads_one_time');
-        }
-      } else {
-        // Check storage if IAP is disabled
-        const storedUser = await AsyncStorage.getItem('@user');
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          if (parsedUser.subscriptionStatus) {
-            switch (parsedUser.subscriptionStatus) {
-              case 'plusplus':
+        // Current date to compare with expiration dates
+        const currentDate = new Date();
+  
+        purchases.forEach(purchase => {
+          const expirationDate = new Date(purchase.expirationDate);
+          // Check if the purchase is still valid
+          if (expirationDate > currentDate || purchase.expirationDate === undefined) {
+            switch (purchase.productId) {
+              case 'macroscan_plusplus_subscription':
                 subscribedPlusPlus = true;
                 break;
-              case 'plus':
+              case 'macroscan_plus_subscription':
                 subscribedPlus = true;
                 break;
               case 'remove_ads_one_time':
@@ -161,19 +157,42 @@ export default function AccountScreen() {
                 break;
             }
           }
+        });
+      } else {
+        // Check stored user data if IAP is disabled
+        const storedUser = await AsyncStorage.getItem('@user');
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          if (parsedUser.subscriptionStatus) {
+            const expirationDate = new Date(parsedUser.subscriptionExpirationDate);
+            const currentDate = new Date();
+            if (expirationDate > currentDate || parsedUser.subscriptionExpirationDate === undefined) {
+              switch (parsedUser.subscriptionStatus) {
+                case 'plusplus':
+                  subscribedPlusPlus = true;
+                  break;
+                case 'plus':
+                  subscribedPlus = true;
+                  break;
+                case 'remove_ads_one_time':
+                  purchasedAdsRemoval = true;
+                  break;
+              }
+            }
+          }
         }
       }
   
-      // Update state based on results
+      // Update state based on the results
       setIsSubscribedPlusPlus(subscribedPlusPlus);
       setIsSubscribedPlus(subscribedPlus);
       setHasPurchasedAdsRemoval(purchasedAdsRemoval);
   
       // Update user subscription status in storage and context
-      const newStatus = subscribedPlusPlus ? 'plusplus' : 
-                        subscribedPlus ? 'plus' : 
+      const newStatus = subscribedPlusPlus ? 'plusplus' :
+                        subscribedPlus ? 'plus' :
                         purchasedAdsRemoval ? 'remove_ads_one_time' : 'free';
-      
+  
       await updateUserSubscription(newStatus);
   
       console.log('Updated subscription status:', newStatus);
@@ -276,20 +295,20 @@ const sendAlert = (Title, messageToShow) => {
   Alert.alert(Title, messageToShow);
 }
 
-  useEffect(() => {
-    async function loadProfile() {
-      try {
-        const savedName = await AsyncStorage.getItem('userName');
-        const savedImageUri = await AsyncStorage.getItem('userImageUri');
-        setName(savedName || '');
-        setImageUri(savedImageUri || '../assets/profile.png');
-      } catch (error) {
-        Alert.alert('Error', 'Failed to load user data.');
-        logError('Failed to load user data', error);
-      }
+useEffect(() => {
+  async function loadProfile() {
+    try {
+      const savedName = await AsyncStorage.getItem('userName');
+      const savedImageUri = await AsyncStorage.getItem('userImageUri');
+      setName(savedName || '');
+      setImageUri(savedImageUri || null);  // Change this line
+    } catch (error) {
+      Alert.alert('Error', 'Failed to load user data.');
+      logError('Failed to load user data', error);
     }
-    loadProfile();
-  }, []);
+  }
+  loadProfile();
+}, []);
 
   const resetImageUri = async () => {
     try {
@@ -316,18 +335,27 @@ const sendAlert = (Title, messageToShow) => {
           text: 'Delete',
           onPress: async () => {
             try {
-              await AsyncStorage.removeItem('@user');
-              await AsyncStorage.removeItem('userImageUri');
-              await AsyncStorage.removeItem('userName');
-              await AsyncStorage.removeItem('@user_logged_in');
-              await AsyncStorage.removeItem('@product_history');
-              await AsyncStorage.removeItem('selectedModel');
-              await AsyncStorage.removeItem('dailyScanCount');
-              await AsyncStorage.removeItem('firstUseDate');
-              await AsyncStorage.removeItem('dateLastUsed');
-
+              const keysToRemove = [
+                '@user',
+                'userImageUri',
+                'userName',
+                '@user_logged_in',
+                '@product_history',
+                'selectedModel',
+                'dailyScanCount',
+                'firstUseDate',
+                'dateLastUsed'
+              ];
+  
+              for (const key of keysToRemove) {
+                const value = await AsyncStorage.getItem(key);
+                if (value !== null) {
+                  await AsyncStorage.removeItem(key);
+                }
+              }
+  
               setUser(null);
-
+  
               Alert.alert('Account deleted', 'Your account has been deleted.');
               navigation.reset({
                 index: 0,
@@ -387,13 +415,13 @@ const sendAlert = (Title, messageToShow) => {
     <ScrollView style={styles.container}>
       <View style={styles.imageContainer}>
         <TouchableOpacity onPress={pickImage}>
-          <Image
-            source={require('../assets/profile.png')}
-            style={styles.image}
-            onError={() => {
-              setLoadError(true);
-            }}
-          />
+        <Image
+          source={imageUri ? { uri: imageUri } : require('../assets/profile.png')}
+          style={styles.image}
+          onError={() => {
+            setLoadError(true);
+          }}
+        />
           <View style={styles.iconOverlay}>
             <MaterialCommunityIcons
               name="pencil"
@@ -609,7 +637,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   subscriptionTitlePlusPlus: {
     position: 'absolute',
     top: 0,
-    right: 170,
+    right: '47%',
     color: 'white',
     fontSize: fontSize,
     fontWeight: 'bold',
@@ -618,7 +646,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   subscriptionTitlePlus: {
     position: 'absolute',
     top: 0,
-    right: 180,
+    right: '50%',
     color: 'white',
     fontSize: fontSize,
     fontWeight: 'bold',
@@ -627,8 +655,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   subscriptionTitlePremium: {
     padding: 25,
     position: 'absolute',
-    top: 2,
-    right: 175,
+    top: '1%',
+    right: '47%',
     color: 'gold',
     fontSize: fontSize,
     fontWeight: 'bold',
@@ -642,7 +670,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: 25,
     position: 'absolute',
     top: 2,
-    right: 170,
+    right: '47%',
     color: 'silver',
     fontSize: fontSize,
     fontWeight: 'bold',
