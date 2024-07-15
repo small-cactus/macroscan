@@ -50,6 +50,11 @@ const PrivacyScreen = () => {
     const body = encodeURIComponent("Please describe your privacy concern or question:");
     Linking.openURL(`mailto:${email}?subject=${subject}&body=${body}`);
   };
+  
+  const handlePolicyPress = () => {
+    const policyUrl = "https://sites.google.com/view/macroscanprivacy/home";
+    Linking.openURL(policyUrl);
+  };
 
   const toggleFaq = index => {
     let updatedFaqs = [...faqOpen];
@@ -108,6 +113,9 @@ const PrivacyScreen = () => {
           </Text>
           <TouchableOpacity style={styles.contactButton} onPress={handleContactPress}>
             <Text style={styles.contactButtonText}>Contact Us About Privacy Concerns</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={styles.contactButton} onPress={handlePolicyPress}>
+            <Text style={styles.contactButtonText}>Click to view Privacy Policy</Text>
           </TouchableOpacity>
           <Text style={styles.faqHeader}>Frequently Asked Privacy Questions</Text>
           {faqQuestions.map((faq, index) => (

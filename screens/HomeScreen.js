@@ -488,9 +488,25 @@ const takePhoto = async () => {
             Please check my hint before trusting it with these guidelines:
             CRUCIAL GUIDANCE FOR USER INPUT:
       1. If the user's count is excessively inaccurate, e.g., you observe 8 items and the user claims 700, respond only with 'There aren't 700 items.' EXTREMELY IMPORTANT: Do not add further comments or descriptions.
-      2. Exercise judgment regarding the user's reliability before responding. If unsure, either reply with a concise four-word message or provide macronutrient data as outlined above.
+      2. Exercise judgment regarding the user's reliability before responding. If unsure, either reply with a concise four-word message or provide macronutrient data as outlined below.
+        
+        Remainder of rules and formatting guidelines:
+        
+        If the image depicts food, fruits, vegetables, or a beverage, list the macronutrient data for each item, focusing on the following, SAY NOTHING but the following macronutrient data:
+          Name of food(s) (number of food items, eg. bags, plates, pieces, example: 2 burgers. 2 bags. 2 pieces. 2 plates. 2 bowls. If 1 item, do not specify the item number)
+          Carbohydrates (g) per item
+          Proteins (g) per item
+          Fats (g) per item
+          Total Calories (cal) both items
+          Dietary Fiber (g) per item
+          Sugars (g) per item
+          Saturated Fats (g) per item
+          Sodium (mg) per item
 
-        DO NOT REPLY WITH MORE THAN 2 SENTENCES OR ANYTHING OTHER THAN EXACTLY WHAT YOU HAVE BEEN TOLD TO RESPOND WITH.`
+          NOTE: Only include calculations based on the quantity depicted. Exclude additional categories. Name meals by their collective identity, e.g., McDonalds Meal (number of items). Always include the unit next to the measurement.
+
+    Focus on precise amounts, detailing visible food items for an accurate nutrient breakdown, e.g., separate 'Proteins' for chicken.
+    Avoid discussing unrequested details like serving sizes or micronutrients. If no food or beverage is present, simply state 'No food found. Try again.' and cease further comments.`
           }, {
             "type": "image",
             "source": {

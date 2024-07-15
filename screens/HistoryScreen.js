@@ -70,6 +70,35 @@ const HistoryScreen = () => {
         }
     };
 
+    const deleteEntry = async (date) => {
+        Alert.alert(
+            "Delete Entry",
+            "Are you sure you want to delete this entry?",
+            [
+                {
+                    text: "Cancel",
+                    onPress: () => console.log("Cancel Pressed"),
+                    style: "cancel"
+                },
+                {
+                    text: "Delete",
+                    onPress: async () => {
+                        try {
+                            const updatedHistory = history.filter(item => item.date !== date);
+                            await AsyncStorage.setItem('@product_history', JSON.stringify(updatedHistory.reverse()));
+                            setHistory(updatedHistory);
+                            console.log("Entry deleted successfully.");
+                        } catch (e) {
+                            console.error("Error deleting entry: ", e);
+                        }
+                    },
+                    style: "destructive"
+                }
+            ],
+            { cancelable: false }
+        );
+    };
+
     const onRefresh = React.useCallback(() => {
         setRefreshing(true);
         loadHistory().then(() => setRefreshing(false));
@@ -126,21 +155,32 @@ const HistoryScreen = () => {
             </TouchableOpacity>
             {history.length > 0 ? (
                 <ScrollView
-                style={styles.scrollContainer}
-                refreshControl={
-                    <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-                }
-            >
-                {history.map((item, index) => (
-                    <TouchableOpacity key={index} style={styles.card} onPress={() => setSelectedItem(item)}>
-                        <Image source={{ uri: item.imageUri }} style={styles.productImage} />
-                        <View style={styles.info}>
-                            <Text style={styles.productName}>{item.productName}</Text>
-                            <Text style={styles.date}>{new Date(item.date).toLocaleString()}</Text>
+                    style={styles.scrollContainer}
+                    refreshControl={
+                        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+                    }
+                >
+                    {history.map((item, index) => (
+                        <View key={index} style={styles.cardContainer}>
+                            <TouchableOpacity style={styles.card} onPress={() => setSelectedItem(item)}>
+                                <Image source={{ uri: item.imageUri }} style={styles.productImage} />
+                                <View style={styles.info}>
+                                    <Text style={styles.productName}>{item.productName}</Text>
+                                    <Text style={styles.date}>{new Date(item.date).toLocaleString()}</Text>
+                                </View>
+                                <TouchableOpacity style={styles.deleteButton} onPress={() => deleteEntry(item.date)}>
+                                <SymbolView 
+                                    name="trash.slash.fill" // SF Symbol name for 'close'
+                                    size={26} 
+                                    tintColor={colorScheme === 'dark' ? '#fff' : '#000'} 
+                                    type="hierarchical" // or other types like 'monochrome', 'palette', etc.
+                                    style={styles.symbol}
+                                />
+                            </TouchableOpacity>
+                            </TouchableOpacity>
                         </View>
-                    </TouchableOpacity>
-                ))}
-            </ScrollView>
+                    ))}
+                </ScrollView>
             ) : (
                 <Text style={styles.emptyText}>Your history is currently empty. Items you scan will appear here.</Text>
             )}
@@ -296,7 +336,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     iconButton: {
         position: 'absolute', // Corrected to 'absolute' for exact placement
-        right: '5%',  // 5% from the right edge of the screen
+        right: '6%',  // 6.5% from the right edge of the screen
         top: isIphoneSE() ? '5%' : '8%',
         padding: 10,
         zIndex: 1,  // Ensure it stays on top of other components if needed
@@ -321,6 +361,13 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         backgroundColor: colorScheme === 'dark' ? '#3a3a3d' : '#CCCCCC',
         width: '100%', // Make sure this stretches across the nutrient item
         marginVertical: 5,
+    },
+    deleteButton: {
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 10,
+        backgroundColor: colorScheme === 'dark' ? '#161618' : '#ddd',
+        borderRadius: 15,
     },
 });
 

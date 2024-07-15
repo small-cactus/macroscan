@@ -10,6 +10,7 @@ import {
   Appearance,
   Dimensions,
   Platform,
+  Linking,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -46,6 +47,11 @@ const AboutScreen = () => {
     Linking.openURL(`mailto:${email}?subject=${subject}&body=${body}`);
   };
 
+  const handleTermsPress = () => {
+    const policyUrl = "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/";
+    Linking.openURL(policyUrl);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
@@ -58,9 +64,12 @@ const AboutScreen = () => {
             <View style={styles.logoBackground}>
               <Image source={require('../assets/icon.png')} style={styles.logo} />
             </View>
+            <TouchableOpacity style={styles.contactButton} onPress={handleTermsPress}>
+            <Text style={styles.contactButtonText}>Terms and Conditions</Text>
+          </TouchableOpacity>
           </View>
           <Text style={styles.description}>
-            MacroScan v1.0.0 (19)
+            MacroScan v1.0.0 (21)
           </Text>
           <Text style={styles.description}>
             If you have questions, feedback, or concerns, email us from the help and support page in settings.
@@ -127,8 +136,8 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: '5%',
   },
   contactButton: {
-    marginTop: 10,
-    marginBottom: 20,
+    marginTop: 20,
+    marginBottom: 0,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
     borderRadius: 90,
     padding: 10,

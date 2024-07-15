@@ -120,6 +120,7 @@ const InsightsScreen = () => {
             const refreshScreen = async () => {
                 setRefreshing(true);
                 await loadHistory();
+                checkAndUpdateSmartCoach();
                 setRefreshing(false);
             };
             
