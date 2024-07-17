@@ -69,7 +69,7 @@ const AboutScreen = () => {
           </TouchableOpacity>
           </View>
           <Text style={styles.description}>
-            MacroScan v1.0.0 (21)
+            MacroScan v1.2 (49)
           </Text>
           <Text style={styles.description}>
             If you have questions, feedback, or concerns, email us from the help and support page in settings.

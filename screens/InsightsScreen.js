@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Alert, StyleSheet, View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Image, RefreshControl, Dimensions, Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColorScheme } from 'react-native';
+import { useColorScheme, Linking } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
 import Anthropic from "@anthropic-ai/sdk";
@@ -665,12 +665,12 @@ const calculateCalorieIntake = async () => {
 
     const calculatedGoal = {
         calories: adjustedCalories.toFixed(0),
-        sodium: 2300,
+        sodium: 1700,
         carbohydrates: ((adjustedCalories * 0.5) / 4).toFixed(0),
         proteins: ((adjustedCalories * 0.2) / 4).toFixed(0),
         fats: ((adjustedCalories * 0.3) / 9).toFixed(0),
-        fiber: 25,
-        sugars: 50
+        fiber: 26,
+        sugars: 20
     };
 
     setNewGoal(calculatedGoal);
@@ -1346,7 +1346,19 @@ const calculateCalorieIntake = async () => {
     </View>
     {history.length > 0 && renderDynamicCards()}
     <Text style={styles.BottomDescriptionText}>
-        Smart Coach uses AI to suggest diets and workouts based on your trends. Goal cards are dynamically prioritized for importance automatically.
+        Smart Coach uses AI to suggest diets and workouts based on your trends. Goal cards are dynamically prioritized for importance automatically. To see how your goals were predicted, click the links below:
+        
+        <TouchableOpacity onPress={() => Linking.openURL("https://en.wikipedia.org/wiki/Energy_expenditure")}>
+            <Text style={styles.linkText}>Energy Expenditure | </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => Linking.openURL("https://www.thecalculatorsite.com/articles/health/bmr-formula.php")}>
+            <Text style={styles.linkText}>BMR Formula | </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity onPress={() => Linking.openURL("https://en.wikipedia.org/wiki/Harris–Benedict_equation")}>
+            <Text style={styles.linkText}>Harris–Benedict Equation | </Text>
+        </TouchableOpacity>
     </Text>
 </ScrollView>
             <Modal
@@ -1762,6 +1774,10 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         right: 20,
         zIndex: 1,
     },
+    linkText: {
+        color: colorScheme === 'dark' ? '#AAA' : '#555',
+        textDecorationLine: 'underline'
+    }
 });
 
 const getCompletionPercent = (current, goal) => (current / goal) * 100;

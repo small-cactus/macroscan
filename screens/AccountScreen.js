@@ -11,8 +11,7 @@ import { useUser } from '../userContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const itemSkus = Platform.select({
-  ios: ['macroscan_plusplus_subscription', 'macroscan_plus_subscription', 'remove_ads_one_time'],
-  android: ['macroscan_plusplus_subscription', 'macroscan_plus_subscription', 'remove_ads_one_time']
+  ios: ['macroscan_plusplus', 'macroscan_plus'],
 });
 
 const { width, height } = Dimensions.get('window');
@@ -88,15 +87,15 @@ export default function AccountScreen() {
       log(`Purchase completed for: ${productId}, ${JSON.stringify(purchase)}`);
       
       // New logic to update subscription states
-      if (productId === 'macroscan_plusplus_subscription') {
+      if (productId === 'macroscan_plusplus') {
         setIsSubscribedPlusPlus(true);
         setIsSubscribedPlus(false); // Cancel lower subscription
-        await updateUserSubscription('macroscan_plusplus_subscription');
+        await updateUserSubscription('macroscan_plusplus');
         log('Updated user subscription to MacroScan++');
-      } else if (productId === 'macroscan_plus_subscription') {
+      } else if (productId === 'macroscan_plus') {
         setIsSubscribedPlus(true);
         setIsSubscribedPlusPlus(false); // Cancel higher subscription
-        await updateUserSubscription('macroscan_plus_subscription');
+        await updateUserSubscription('macroscan_plus');
         log('Updated user subscription to MacroScan+');
       }
   
@@ -116,7 +115,7 @@ export default function AccountScreen() {
       } else if (error.code === 'E_SERVICE_ERROR') {
         Alert.alert('Service Error', 'An error occurred with the payment service. Please try again later.');
       } else {
-        Alert.alert('Purchase Error', 'An unknown error occurred while processing the purchase. Please try again later.');
+        Alert.alert('Purchase Error', error);
       }
     }
   };
@@ -146,10 +145,10 @@ export default function AccountScreen() {
           // Check if the purchase is still valid
           if (expirationDate > currentDate || purchase.expirationDate === undefined) {
             switch (purchase.productId) {
-              case 'macroscan_plusplus_subscription':
+              case 'macroscan_plusplus':
                 subscribedPlusPlus = true;
                 break;
-              case 'macroscan_plus_subscription':
+              case 'macroscan_plus':
                 subscribedPlus = true;
                 break;
               case 'remove_ads_one_time':
@@ -250,12 +249,12 @@ export default function AccountScreen() {
           await RNIap.finishTransaction(purchase, true);
           log(`Transaction finished: ${JSON.stringify(purchase)}`);
     
-          if (purchase.productId === 'macroscan_plusplus_subscription') {
+          if (purchase.productId === 'macroscan_plusplus') {
             setIsSubscribedPlusPlus(true);
-            await updateUserSubscription('macroscan_plusplus_subscription');
-          } else if (purchase.productId === 'macroscan_plus_subscription') {
+            await updateUserSubscription('macroscan_plusplus');
+          } else if (purchase.productId === 'macroscan_plus') {
             setIsSubscribedPlus(true);
-            await updateUserSubscription('macroscan_plus_subscription');
+            await updateUserSubscription('macroscan_plus');
           } else if (purchase.productId === 'remove_ads_one_time') {
             setHasPurchasedAdsRemoval(true);
             await updateUserSubscription('remove_ads_one_time');
@@ -277,10 +276,10 @@ export default function AccountScreen() {
 
   const unlockFeatures = (productId) => {
     switch (productId) {
-      case 'macroscan_plusplus_subscription':
+      case 'macroscan_plusplus':
         log("Features for MacroScan++ Unlocked!");
         break;
-      case 'macroscan_plus_subscription':
+      case 'macroscan_plus':
         log("Features for MacroScan+ Unlocked!");
         break;
       case 'remove_ads_one_time':
@@ -474,7 +473,7 @@ useEffect(() => {
                 if (isSubscribedPlusPlus) {
                   sendAlert('Plan Already Active', 'You already have the MacroScan++ plan. No action needed.')
                 } else {
-                  handlePurchase('macroscan_plusplus_subscription');
+                  handlePurchase('macroscan_plusplus');
                 }
               }}>
               <Text style={isSubscribedPlusPlus ? styles.subscribeButtonTextDisabledPlusPlus : styles.subscribeButtonText}>
@@ -507,7 +506,7 @@ useEffect(() => {
                 if (isSubscribedPlus) {
                   sendAlert('Plan Already Active', 'You already have the MacroScan+ plan. No action needed.')
                 } else {
-                  handlePurchase('macroscan_plus_subscription');
+                  handlePurchase('macroscan_plus');
                 }
               }}>
               <Text style={isSubscribedPlusPlus ? styles.subscribeButtonTextDisabled : isSubscribedPlus ? styles.subscribeButtonTextDisabled : styles.subscribeButtonText}>

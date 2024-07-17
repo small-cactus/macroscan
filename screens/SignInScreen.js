@@ -97,11 +97,7 @@ export default function SignInScreen({ navigation }) {
       console.log('handleUserVerification response:', newUser);
       await AsyncStorage.setItem('@user_logged_in', 'true');
       if (!newUser.name || newUser.name === 'No Name' || !newUser.email) {
-        navigation.navigate('CompleteProfile');
-        navigation.reset({
-          index: 0,
-          routes: [{ name: 'CompleteProfile' }],
-        });
+        Alert.alert("Sign in Failed", "Apple sign in failed, our servers are US based, if you're seeing this, you have a slow connection.");
       } else {
         await AsyncStorage.setItem('userName', newUser.name);
         await AsyncStorage.setItem('userEmail', newUser.email);

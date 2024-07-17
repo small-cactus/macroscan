@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View, AppRegistry, Dimensions, Platform } from 'react-native';
+import { StatusBar, StyleSheet, Appearance, useColorScheme, ActivityIndicator, View, AppRegistry, Dimensions, Platform, Linking } from 'react-native';
 import NetInfo from '@react-native-community/netinfo';
 import 'react-native-get-random-values';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -10,6 +10,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { IAPProvider } from './IAPContext';
 import { UserProvider } from './userContext';
 import { SymbolView, SymbolViewProps, SFSymbol } from 'expo-symbols';
+import Superwall from "@superwall/react-native-superwall"
 
 // Screens
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -104,6 +105,12 @@ function App() {
     }
     return checksum.toString();
   };
+
+  React.useEffect(() => {
+    const apiKey = Platform.OS === "ios" ? "pk_bda2670c19f0b35a69ea4d829c74af62e480386339850ce8" : "MY_ANDROID_API_KEY"
+
+    Superwall.configure(apiKey)
+  }, [])
 
   useEffect(() => {
     const verifyChecksum = (name, storedChecksum) => {

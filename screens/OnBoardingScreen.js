@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+import Superwall from "@superwall/react-native-superwall"
 
 const { width, height } = Dimensions.get('window');
 
@@ -70,13 +71,19 @@ const OnboardingScreen = () => {
     });
   };
 
+  const showPaywall = () => {
+    Superwall.shared.register('onboarding').then(() => {
+      navigateHome();
+    });
+  };
+
   const handleNext = () => {
     if (currentIndex < onboardingSteps.length - 1) {
       flatListRef.current.scrollToIndex({ index: currentIndex + 1 });
       setCurrentIndex(currentIndex + 1);
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     } else {
-      navigateHome();
+      showPaywall();
     }
   };
 
