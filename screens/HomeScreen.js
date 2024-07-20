@@ -104,12 +104,13 @@ const MacroScanHome = () => {
 
                 // Determine if there is any active 'plusplus' subscription
                 const hasActivePlusPlusSubscription = purchases.some(purchase => 
-                    purchase.productId === 'macroscan_plusplus_subscription'
-                );
+                  purchase.productId === 'macroscan_plusplus' || 
+                  purchase.productId === 'macroscan_plusplus_yearly'
+              );
 
                 // Determine if there is any active 'plus' subscription
                 const hasActivePlusSubscription = purchases.some(purchase => 
-                    purchase.productId === 'macroscan_plus_subscription'
+                    purchase.productId === 'macroscan_plus'
                 );
 
                 // Update subscription status based on active subscriptions
@@ -672,7 +673,7 @@ const takePhoto = async () => {
             onPress={() => {
               let message = '';
               if (isFirstDayUnlimited || (isFirstDayUnlimited && !isSubscribed)) {
-                message = "You have unlimited scans today. You'll have 5 scans a day starting tomorrow.";
+                message = "You have unlimited scans today.";
               } else if (isSubscribed) {
                 message = `You have unlimited scans because you're subscribed. Thank you!`;
               } else if (isSubscribedPlus) {
@@ -771,26 +772,31 @@ const takePhoto = async () => {
         </View>
       </Animated.View>
       <Modal
-        animationType="slide"
-        transparent={true}
-        visible={modalVisible}
-        onRequestClose={() => setModalVisible(false)}
-      >
-        <View style={styles.centeredView}>
-          <View style={styles.modalView}>
-            {modalImageUri && (
-              <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
-            )}
-            {isLoading ? (
+  animationType="slide"
+  transparent={true}
+  visible={modalVisible}
+  onRequestClose={() => setModalVisible(false)}
+>
+  <View style={styles.centeredView}>
+    <View style={styles.modalView}>
+      {modalImageUri && (
+        <View style={styles.imageContainer}>
+          <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
+          {isLoading && (
+            <View style={styles.loadingOverlay}>
               <ActivityIndicator size="large" color={styles.activityIndicatorColor.color} />
-            ) : (
-              <TouchableOpacity style={styles.closeButton} onPress={() => setModalVisible(false)}>
-                <Text style={styles.closeButtonText}>Close</Text>
-              </TouchableOpacity>
-            )}
-          </View>
+            </View>
+          )}
         </View>
-      </Modal>
+      )}
+      {!isLoading && (
+        <TouchableOpacity style={styles.closeButton} onPress={() => setModalVisible(false)}>
+          <Text style={styles.closeButtonText}>Close</Text>
+        </TouchableOpacity>
+      )}
+    </View>
+  </View>
+</Modal>
       <Modal
         animationType="slide"
         transparent={true}
@@ -799,13 +805,12 @@ const takePhoto = async () => {
       >
         <View style={styles.centeredView}>
           <View style={styles.inputModalView}>
-            <Text style={styles.inputModalText}>Enter the food name or type</Text>
-            <Text style={styles.inputModalText}>(e.g., apple, pasta)</Text>
+            <Text style={styles.inputModalText}>Enter any extra details, it can be anything.</Text>
             <TextInput
               style={styles.input}
               onChangeText={setUserInput}
               value={userInput}
-              placeholder="Name or type of food"
+              placeholder="2 slices of watermelon, and a burger"
               keyboardType="default"
             />
             <TouchableOpacity
@@ -935,20 +940,37 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   modalView: {
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFF',
-    borderRadius: 20,
+    borderRadius: 40,
     padding: 20,
     alignItems: 'center',
-    shadowColor: colorScheme === 'dark' ? '#000' : '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5,
+    shadowColor: '#000',
+    shadowOffset: {
+        width: 0,
+        height: 1
+    },
+    shadowOpacity: 100,
+    shadowRadius: 90,
+    elevation: 100,
   },
   imagePreview: {
     width: 300,
     height: 400,
-    borderRadius: 10,
+    borderRadius: 30,
     marginBottom: 15,
+  },
+  imageContainer: {
+    position: 'relative',
+  },
+  loadingOverlay: {
+    borderRadius: 30,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   closeButton: {
     backgroundColor: '#AAAAAA',
@@ -961,7 +983,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   productImageContainer: {
     width: '100%',
@@ -984,7 +1005,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     textAlign: 'center',
   },
   activityIndicatorColor: {
-    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+    color: colorScheme === 'dark' ? '#fff' : '#fff',
   },
   feedbackContainer: {
     flexDirection: 'column',
@@ -1015,16 +1036,16 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     margin: 20,
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     borderRadius: 40,
-    padding: 35,
+    padding: 25,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: {
-      width: 0,
-      height: 2
+        width: 0,
+        height: 1
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 4,
-    elevation: 5
+    shadowOpacity: 100,
+    shadowRadius: 90,
+    elevation: 100,
   },
   input: {
     height: 40,
@@ -1032,21 +1053,21 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     borderWidth: 2,
     padding: 10,
     width: 300,
-    borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#000',
-    color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+    borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#bbb',
+    color: colorScheme === 'dark' ? '#c5c5c5' : '#000',
     borderRadius: 15,
   },
   inputModalButton: {
     backgroundColor: colorScheme === 'dark' ? '#2d2d2d' : '#000',
     borderRadius: 90,
-    padding: '3%',
-    paddingHorizontal: '6%',
+    padding: '4%',
+    paddingHorizontal: '15%',
     elevation: 2,
-    marginTop: '5%',
+    marginTop: '3%',
   },
   inputModalButtonText: {
     color: "white",
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: "500",
     textAlign: "center"
   },

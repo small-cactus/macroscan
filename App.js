@@ -10,6 +10,7 @@ import Icon from 'react-native-vector-icons/Ionicons';
 import { IAPProvider } from './IAPContext';
 import { UserProvider } from './userContext';
 import { SymbolView, SymbolViewProps, SFSymbol } from 'expo-symbols';
+  // UNCOMMENT THIS FOR PRODUCTION USE
 import Superwall from "@superwall/react-native-superwall"
 
 // Screens
@@ -33,6 +34,7 @@ import InsightsScreen from './screens/InsightsScreen';
 import LoadingScreen from './screens/LoadingScreen';
 import CancelScreen from './screens/CancelScreen';
 import OnBoardingScreen from './screens/OnBoardingScreen';
+import FoodScanScreen from './screens/FoodScanScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -42,8 +44,6 @@ const isIphoneSE = () => {
     { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
     { width: 414, height: 736 }, // iPhone 8 Plus
     { width: 360, height: 640 }, // iPhone SE (2020)
-    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
-    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
   ];
 
   return (
@@ -83,8 +83,8 @@ function HomeTabs() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Insights" component={InsightsScreen} />
+      <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
     </Tab.Navigator>
@@ -106,6 +106,7 @@ function App() {
     return checksum.toString();
   };
 
+  // UNCOMMENT THIS FOR PRODUCTION USE
   React.useEffect(() => {
     const apiKey = Platform.OS === "ios" ? "pk_bda2670c19f0b35a69ea4d829c74af62e480386339850ce8" : "MY_ANDROID_API_KEY"
 
@@ -203,6 +204,7 @@ function App() {
             <Stack.Screen name="LoadingScreen" component={LoadingScreen} options={{ headerShown: false }} />
             <Stack.Screen name="OnBoardingScreen" component={OnBoardingScreen} options={{ headerShown: false }} />
             <Stack.Screen name="HomeTabs" component={HomeTabs} options={{ headerShown: false }} />
+            <Stack.Screen name="FoodScanScreen" component={FoodScanScreen} options={{ headerShown: false }} />
             <Stack.Screen name="SupportScreen" component={SupportScreen} options={{ headerShown: false }} />
             <Stack.Screen name="PrivacyScreen" component={PrivacyScreen} options={{ headerShown: false }} />
             <Stack.Screen name="FeaturesScreen" component={FeaturesScreen} options={{ headerShown: false }} />

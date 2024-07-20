@@ -159,7 +159,7 @@ const InsightsScreen = () => {
             await AsyncStorage.setItem('previousGoals', currentGoalsString);
     
             if (history.length === 0 || Object.keys(nutrientData.goal).length === 0) {
-                setSmartCoachContent("Smart Coach insights are unavailable right now, scan some items and try later.");
+                setSmartCoachContent("Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!");
             } else {
                 if (currentTime - lastAPICallTime >= 15 * 60 * 1000) {
                     const insights = generateUserInsights(userName, nutrientData.goal, history);
@@ -369,7 +369,7 @@ const InsightsScreen = () => {
                 console.log(`Number of items from today: ${filteredHistory.length}`);
     
                 if (filteredHistory.length === 0) {
-                    const unavailableMessage = "Smart Coach insights are unavailable right now, scan some items and try later.";
+                    const unavailableMessage = "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
                     setSmartCoachContent(unavailableMessage);
                     await AsyncStorage.setItem('smartCoachContent', unavailableMessage);
                 }
@@ -377,7 +377,7 @@ const InsightsScreen = () => {
                 // If no history data found, set history to an empty array
                 setHistory([]);
                 console.log('No history data found in storage.');
-                const unavailableMessage = "Smart Coach insights are currently unavailable because you haven't scanned any meals today. Please scan your meals so I can assist you.";
+                const unavailableMessage = "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
                 setSmartCoachContent(unavailableMessage);
                 await AsyncStorage.setItem('smartCoachContent', unavailableMessage);
             }
@@ -527,7 +527,7 @@ const sendInsightsToAnthropic = async (insights) => {
     
         if (!apiKey || !model) {
             console.error('API key or model not found');
-            return "Smart Coach insights are unavailable right now, scan some items and try later.";
+            return "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
         }
 
         const anthropic = new Anthropic({
@@ -613,7 +613,7 @@ IMPORTANT: If it is physically impossible to work off the calories or other nutr
         if (responseContent && Array.isArray(responseContent) && responseContent[0] && responseContent[0].text) {
             return responseContent[0].text;
         } else {
-            return "Smart Coach insights are unavailable right now, scan some items and try later.";
+            return "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
         }
     } catch (error) {
         console.error("Error sending message to Anthropic API:", error);
@@ -875,70 +875,42 @@ const calculateCalorieIntake = async () => {
                         <Text style={styles.modalDescription}>We use advanced calculations to find the best values to help you achieve your goals.</Text>
                         </View>
                 );
-            case 5:
-                return (
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputModalTitleSmartCoach}>Smart Coach autofilled your goals. Feel free to edit them.</Text>
-                        <Text style={styles.inputLabel}>Calories Per Day</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Calories"
-                            keyboardType="numeric"
-                            value={newGoal.calories.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, calories: text })}
-                        />
-                        <Text style={styles.inputLabel}>Sodium Per Day (mg)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Sodium"
-                            keyboardType="numeric"
-                            value={newGoal.sodium.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, sodium: text })}
-                        />
-                        <Text style={styles.inputLabel}>Carbohydrates Per Day (g)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Carbohydrates"
-                            keyboardType="numeric"
-                            value={newGoal.carbohydrates.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, carbohydrates: text })}
-                        />
-                        <Text style={styles.inputLabel}>Proteins Per Day (g)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Proteins"
-                            keyboardType="numeric"
-                            value={newGoal.proteins.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, proteins: text })}
-                        />
-                        <Text style={styles.inputLabel}>Fats Per Day (g)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Fats"
-                            keyboardType="numeric"
-                            value={newGoal.fats.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, fats: text })}
-                        />
-                        <Text style={styles.inputLabel}>Fiber Per Day (g)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Fiber"
-                            keyboardType="numeric"
-                            value={newGoal.fiber.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, fiber: text })}
-                        />
-                        <Text style={styles.inputLabel}>Sugars Per Day (g)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Sugars"
-                            keyboardType="numeric"
-                            value={newGoal.sugars.toString()}
-                            onChangeText={(text) => setNewGoal({ ...newGoal, sugars: text })}
-                        />
-                    </View>
-                );
-            default:
-                return null;
+                case 5:
+                    return (
+                      <View style={styles.inputContainer}>
+                        <Text style={styles.inputModalTitleSmartCoach}>
+                          Smart Coach autofilled your goals. Feel free to edit them.
+                        </Text>
+                        {['calories', 'sodium', 'carbohydrates', 'proteins', 'fats', 'fiber', 'sugars'].map((field) => (
+                          <View key={field}>
+                            <Text style={styles.inputLabel}>{field.charAt(0).toUpperCase() + field.slice(1)} Per Day {field !== 'sodium' ? '(g)' : '(mg)'}</Text>
+                            <View style={styles.inputRow}>
+                              <TouchableOpacity
+                                style={styles.inputButton}
+                                onPress={() => setNewGoal({ ...newGoal, [field]: Math.round(newGoal[field] * 0.9) })}
+                              >
+                                <Text style={styles.inputButtonText}>-10%</Text>
+                              </TouchableOpacity>
+                              <TextInput
+                                style={styles.input}
+                                placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
+                                keyboardType="numeric"
+                                value={newGoal[field].toString()}
+                                onChangeText={(text) => setNewGoal({ ...newGoal, [field]: text })}
+                              />
+                              <TouchableOpacity
+                                style={styles.inputButton}
+                                onPress={() => setNewGoal({ ...newGoal, [field]: Math.round(newGoal[field] * 1.1) })}
+                              >
+                                <Text style={styles.inputButtonText}>+10%</Text>
+                              </TouchableOpacity>
+                            </View>
+                          </View>
+                        ))}
+                      </View>
+                    );
+                  default:
+                    return null;
         }
     };
     
@@ -1278,7 +1250,7 @@ const calculateCalorieIntake = async () => {
             await AsyncStorage.setItem('previousGoals', currentGoalsString);
     
             if (history.length === 0 || Object.keys(nutrientData.goal).length === 0) {
-                setSmartCoachContent("Smart Coach insights are unavailable right now, scan some items and try later.");
+                setSmartCoachContent("Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!");
                 console.log("No history or goal data available.");
             } else {
                 const insights = generateUserInsights(userName, nutrientData.goal, history);
@@ -1329,7 +1301,7 @@ const calculateCalorieIntake = async () => {
     }
 >
     <Text style={styles.TopDescriptionText}>
-    Set your daily goals, track trends, and optimize your progress.
+    Set your daily goals, track trends, and optimize your progress. Goals you complete will dissappear automatically.
     </Text>
     <Text style={styles.cardTitle}>Hi {userName},</Text>
     <View style={styles.card}>
@@ -1499,21 +1471,20 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         flex: 1,
         justifyContent: 'center',
         alignItems: 'center',
-        backgroundColor: 'rgba(0, 0, 0, 0.7)', // More dimmed background
     },
     inputModalView: {
         backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
         borderRadius: 40,
-        padding: 25,
+        padding: 20,
         alignItems: 'center',
         shadowColor: '#000',
         shadowOffset: {
             width: 0,
-            height: 2
+            height: 1
         },
-        shadowOpacity: 0.55,
-        shadowRadius: 4,
-        elevation: 5,
+        shadowOpacity: 100,
+        shadowRadius: 90,
+        elevation: 100,
         width: '90%',
         height: '80%',
     },
@@ -1522,9 +1493,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         margin: 12,
         borderWidth: 2,
         padding: 15,
-        width: 180,
-        borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#000',
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+        width: 160,
+        borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#bbb',
+        color: colorScheme === 'dark' ? '#c5c5c5' : '#000',
         borderRadius: 15,
         fontSize: 17,
         textAlign: 'center'
@@ -1666,7 +1637,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     },
     progressBar: {
         height: '100%',
-        backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
+        backgroundColor: colorScheme === 'dark' ? '#d1d1d1' : '#333',
         borderRadius: 5,
     },
     goalContainer: {
@@ -1691,14 +1662,13 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         textAlign: "center",
         fontSize: 22,
         fontWeight: "bold",
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+        color: colorScheme === 'dark' ? '#d0d0d0' : '#000',
     },
     inputModalTitleSmartCoach: {
         marginBottom: '5%',
         textAlign: "center",
-        fontSize: 18,
-        fontWeight: "600",
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
+        fontSize: 17,
+        color: colorScheme === 'dark' ? '#9b9b9b' : '#000',
     },
     checkButton: {
         position: 'absolute',
@@ -1777,7 +1747,23 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     linkText: {
         color: colorScheme === 'dark' ? '#AAA' : '#555',
         textDecorationLine: 'underline'
-    }
+    },
+    inputRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 15,
+    },
+    inputButton: {
+        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
+      paddingVertical: 10,
+      paddingHorizontal: '3%',
+      borderRadius: 12,
+    },
+    inputButtonText: {
+        color: colorScheme === 'dark' ? '#FFF' : '#000',
+      fontSize: 16,
+      fontWeight: '500',
+    },
 });
 
 const getCompletionPercent = (current, goal) => (current / goal) * 100;

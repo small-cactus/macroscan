@@ -11,7 +11,7 @@ import { useUser } from '../userContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const itemSkus = Platform.select({
-  ios: ['macroscan_plusplus', 'macroscan_plus'],
+  ios: ['macroscan_plusplus', 'macroscan_plus', 'macroscan_plusplus_yearly'],
 });
 
 const { width, height } = Dimensions.get('window');
@@ -87,7 +87,7 @@ export default function AccountScreen() {
       log(`Purchase completed for: ${productId}, ${JSON.stringify(purchase)}`);
       
       // New logic to update subscription states
-      if (productId === 'macroscan_plusplus') {
+      if (productId === 'macroscan_plusplus' || productId === 'macroscan_plusplus_yearly') {
         setIsSubscribedPlusPlus(true);
         setIsSubscribedPlus(false); // Cancel lower subscription
         await updateUserSubscription('macroscan_plusplus');
@@ -146,6 +146,9 @@ export default function AccountScreen() {
           if (expirationDate > currentDate || purchase.expirationDate === undefined) {
             switch (purchase.productId) {
               case 'macroscan_plusplus':
+                subscribedPlusPlus = true;
+                break;
+              case 'macroscan_plusplus_yearly':
                 subscribedPlusPlus = true;
                 break;
               case 'macroscan_plus':
@@ -249,7 +252,7 @@ export default function AccountScreen() {
           await RNIap.finishTransaction(purchase, true);
           log(`Transaction finished: ${JSON.stringify(purchase)}`);
     
-          if (purchase.productId === 'macroscan_plusplus') {
+          if (purchase.productId === 'macroscan_plusplus' || purchase.productId === 'macroscan_plusplus_yearly') {
             setIsSubscribedPlusPlus(true);
             await updateUserSubscription('macroscan_plusplus');
           } else if (purchase.productId === 'macroscan_plus') {
@@ -276,6 +279,9 @@ export default function AccountScreen() {
 
   const unlockFeatures = (productId) => {
     switch (productId) {
+      case 'macroscan_plusplus_yearly':
+        log("Features for MacroScan++ Unlocked!");
+        break;
       case 'macroscan_plusplus':
         log("Features for MacroScan++ Unlocked!");
         break;

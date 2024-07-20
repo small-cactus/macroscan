@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,7 +7,8 @@ import {
   Alert,
   Image,
   Dimensions,
-  Platform
+  Platform,
+  Animated
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import * as AppleAuthentication from 'expo-apple-authentication';
@@ -45,11 +46,28 @@ export default function SignUpScreen({ navigation }) {
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
   const { createUserWithGoogle, createUserWithApple } = useUser();
+  const fadeAnim1 = useRef(new Animated.Value(0)).current;
+  const fadeAnim2 = useRef(new Animated.Value(0)).current;
+  const [isDisabled, setIsDisabled] = useState(false);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
     clientId: '675290991564-r29a0q0hf25s70vnh3u29m7tsupihm3f.apps.googleusercontent.com',
     scopes: ['profile', 'email'],
   });
+
+  useEffect(() => {
+    Animated.timing(fadeAnim1, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start(() => {
+      Animated.timing(fadeAnim2, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      }).start();
+    });
+  }, [fadeAnim1, fadeAnim2]);
 
   useEffect(() => {
     if (response?.type === 'success') {
@@ -109,6 +127,16 @@ export default function SignUpScreen({ navigation }) {
     }
   };
 
+  const handlePress = () => {
+    if (!isDisabled) {
+      setIsDisabled(true);
+      signInWithApple();
+      setTimeout(() => {
+        setIsDisabled(false);
+      }, 1000);
+    }
+  };
+
   const signInWithApple = async () => {
     await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     try {
@@ -130,14 +158,23 @@ export default function SignUpScreen({ navigation }) {
 
   return (
     <View style={styles.view}>
-      <Text style={styles.title}>Sign Up for MacroScan</Text>
-      <Image
-        source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
-        style={styles.icon}
-      />
+      <Text style={styles.title}>Sign up for MacroScan</Text>
+      <View style={styles.descriptionContainer}>
+        <Animated.Text style={[styles.description, { opacity: fadeAnim1 }]}>
+          Don't worry,
+        </Animated.Text>
+        <Text>{' '}</Text>
+        <Animated.Text style={[styles.description, { opacity: fadeAnim2 }]}>
+          we'll make this easy.
+        </Animated.Text>
+      </View>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoBackground}>
+              <Image source={require('../assets/icon.png')} style={styles.logo} />
+            </View>
+            </View>
       <View style={styles.container}>
-        <View style={styles.separatorBox}></View>
-        <TouchableOpacity style={styles.AppleContinueButton} onPress={signInWithApple}>
+        <TouchableOpacity style={styles.AppleContinueButton} onPress={handlePress}>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}>
             <Text style={styles.AppleContinueText}>
               Continue with Apple
@@ -176,44 +213,53 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     flexGrow: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 20,
-    marginTop: 200,
+    padding: 0,
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
-    color: colorScheme === 'dark' ? '#161618' : '#FFF',
   },
   title: {
-    fontSize: 24,
+    fontSize: isIphoneSE() ? 28 : 30,
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
-    marginTop: isIphoneSE() ? 50 : 100,
+    marginTop: isIphoneSE() ? 45 : 100,
     marginBottom: 20,
     color: colorScheme === 'dark' ? '#fff' : '#333',
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     zIndex: 1,
   },
   button: {
-    width: '80%',
+    width: '80%', // Match the input fields width
     backgroundColor: '#000000',
     padding: 10,
-    borderRadius: 20,
+    borderRadius: 20, // Maintain rounded corners for consistency
     alignItems: 'center',
     marginTop: 10,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   buttonText: {
+    color: '#FFFFFF',
     color: colorScheme === 'dark' ? '#e9e9e9' : '#FFF',
     fontWeight: 'bold',
     fontSize: 16,
   },
-  icon: {
-    width: 120,
-    height: 120,
-    alignSelf: 'center',
-    marginTop: '-2%',
-    marginBottom: "-120%",
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
-    zIndex: 1,
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: '20%',
+  },
+  logoBackground: {
+    marginTop: '0%',
+    backgroundColor: '#FFF',
+    borderRadius: 32,
+    padding: 0,
+    shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15.84,
+    elevation: 10,
+  },
+  logo: {
+    width: 125,
+    height: 125,
   },
   separatorBox: {
     width: 330,
@@ -225,15 +271,15 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   AppleContinueButton: {
     alignSelf: 'center',
-    marginTop: 20,
+    marginTop: isIphoneSE() ? 25 : 0,
     marginBottom: 20,
     borderWidth: 0,
-    width: '85%',
-    height: isIphoneSE() ? '8%' : '6%',
-    justifyContent: 'center',
+    width: '75%',
+    height: 55,
+    justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
-    borderRadius: 100,
+    borderRadius: 200,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   AppleContinueText: {
@@ -260,11 +306,29 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontSize: 18,
   },
   signUpRedirect: {
+    alignSelf: 'center',
     marginTop: 20,
-    marginBottom: 20,
+    marginBottom: '70%',
+    width: '100%',
+    height: '5%',
+    justifyContent: 'center', // Center the content vertically
+    alignItems: 'center',
   },
   signUpRedirectText: {
     color: colorScheme === 'dark' ? '#fff' : '#000',
     textDecorationLine: 'underline',
+  },
+  descriptionContainer: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: isIphoneSE() ? '10%' : '15%',
+    paddingHorizontal: 20, // Add some padding to ensure text doesn't touch screen edges
+  },
+  description: {
+    fontSize: 20,
+    fontWeight: '400',
+    color: colorScheme === 'dark' ? '#EEE' : '#666',
   },
 });

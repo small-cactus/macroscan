@@ -56,6 +56,10 @@ const SettingsScreen = () => {
       navigateTo: "SupportScreen"
     },
     // {
+    //   title: "Food scanning test",
+    //   navigateTo: "FoodScanScreen"
+    // },
+    // {
     //   title: "On Boarding Test",
     //   navigateTo: "OnBoardingScreen"
     // },

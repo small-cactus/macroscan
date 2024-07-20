@@ -7,7 +7,29 @@ import {
   Animated,
   Appearance,
   SafeAreaView,
+  Dimensions,
+  Platform,
 } from 'react-native';
+
+const { width, height } = Dimensions.get('window');
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
+    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
+    { width: 414, height: 736 }, // iPhone 8 Plus
+    { width: 360, height: 640 }, // iPhone SE (2020)
+    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
 
 const LoadingScreen = () => {
   const colorScheme = Appearance.getColorScheme();
@@ -23,6 +45,7 @@ const LoadingScreen = () => {
     'Calibrating taste buds',
     'Finalizing flavors',
   ];
+
 
   useEffect(() => {
     const changePhrase = () => {
@@ -41,7 +64,7 @@ const LoadingScreen = () => {
     };
 
     changePhrase();
-    const interval = setInterval(changePhrase, 3000);
+    const interval = setInterval(changePhrase, 2000);
 
     return () => clearInterval(interval);
   }, [fadeAnim]);
@@ -71,17 +94,17 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: '5%',
   },
   title: {
-    fontSize: 28,
+    fontSize: isIphoneSE() ? 28 : 30,
     fontWeight: 'bold',
     color: colorScheme === 'dark' ? '#FFF' : '#000',
     textAlign: 'center',
-    marginBottom: '15%',
+    marginBottom: '10%',
   },
   loadingIndicator: {
-    marginBottom: '5%',
+    marginBottom: '10%',
   },
   subText: {
-    fontSize: 16,
+    fontSize: isIphoneSE() ? 16 : 18,
     color: colorScheme === 'dark' ? '#EEE' : '#666',
     textAlign: 'center',
   },

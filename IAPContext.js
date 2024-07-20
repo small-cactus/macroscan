@@ -3,7 +3,7 @@ import React, { createContext, useState, useContext } from 'react';
 const IAPContext = createContext();
 
 export const IAPProvider = ({ children }) => {
-  const [isIAPEnabled, setIsIAPEnabled] = useState(true);
+  const [isIAPEnabled, setIsIAPEnabled] = useState(true); // SET THIS TO TRUE FOR PRODUCTION USE
 
   const toggleIAP = () => {
     setIsIAPEnabled(!isIAPEnabled);

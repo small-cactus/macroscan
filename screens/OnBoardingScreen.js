@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
+  // UNCOMMENT THIS FOR PRODUCTION USE
 import Superwall from "@superwall/react-native-superwall"
 
 const { width, height } = Dimensions.get('window');
@@ -28,20 +29,24 @@ const OnboardingScreen = () => {
 
   const onboardingSteps = [
     {
-      title: "Welcome to MacroScan",
-      description: "Get ready to revolutionize your nutrition tracking for free!",
-      imageLight: require('../assets/welcome.png'),
-      imageDark: require('../assets/welcome-dark.png'),
-      imageStyle: { width: width * 0.9, height: height * 0.2 },
-      bottomDescription: "MacroScan uses AI to analyze your meals and provide accurate nutritional information.",
+      title: "Start Your Journey",
+      description: "Get ready to jumpstart your health with MacroScan",
+      imageStyle: { width: width * 0.9, height: height * 0.9 },
+      features: [
+        { title: "Daily scan count", description: "All users start with unlimited scans" },
+        { title: "Snap a photo, or choose one", description: "Capture any food, store bought or homemade" },
+        { title: "Instant results like magic", description: "Nutrients appear instantly on demand" },
+        { title: "Track Daily", description: "Monitor your intake with Insights" },
+        { title: "Smart Coach", description: "Get tailored AI-driven dietary advice" }
+      ]
     },
     {
-      title: "Take a Photo",
-      description: "Simply snap a picture of your meal.",
+      title: "Capture an image",
+      description: "You'll see buttons like this on the home page. They'll say Take photo or Choose from gallery.",
       imageLight: require('../assets/camera-light.jpg'),
       imageDark: require('../assets/camera-dark.jpg'),
       imageStyle: { width: width * 0.9, height: height * 0.15 },
-      bottomDescription: "Our advanced AI will identify the foods and portion sizes.",
+      bottomDescription: "When on the homescreen, click them to submit a meal to be scanned by our advanced AI system",
     },
     {
       title: "Get Instant Results",
@@ -49,7 +54,15 @@ const OnboardingScreen = () => {
       imageLight: require('../assets/resultImage-light.jpg'),
       imageDark: require('../assets/resultImage-dark.jpg'),
       imageStyle: { width: width * 0.9, height: height * 0.55 },
-      bottomDescription: "Track your daily intake and make informed dietary decisions.",
+      bottomDescription: "Don't bother writing it down either, it get's saved automatically",
+    },
+    {
+      title: "Fix Your Results",
+  description: "You can always fix your results.",
+  imageLight: require('../assets/fixScan-light.jpg'),
+  imageDark: require('../assets/fixScan-dark.jpg'),
+  imageStyle: { width: width * 0.6, height: height * 0.15 },
+  bottomDescription: "Just tap the X and write the name of the food, or anything else.",
     },
   ];
 
@@ -70,12 +83,17 @@ const OnboardingScreen = () => {
       routes: [{ name: 'HomeTabs' }],
     });
   };
-
+  // // UNCOMMENT THIS FOR PRODUCTION USE
   const showPaywall = () => {
-    Superwall.shared.register('onboarding').then(() => {
+    Superwall.shared.register('onboardingV2').then(() => {
       navigateHome();
     });
   };
+
+  // COMMENT THIS FOR PRODUCTION USE
+  // const showPaywall = () => {
+  //     navigateHome();
+  // };
 
   const handleNext = () => {
     if (currentIndex < onboardingSteps.length - 1) {
@@ -100,6 +118,21 @@ const OnboardingScreen = () => {
       <View style={styles.slide}>
         <Text style={styles.title}>{item.title}</Text>
         <Text style={styles.description}>{item.description}</Text>
+        {item.features && (
+          <View style={styles.featuresContainer}>
+            {item.features.map((feature, idx) => (
+              <View key={idx} style={styles.featureItem}>
+                <View style={styles.featureNumberContainer}>
+                  <Text style={styles.featureNumber}>{idx + 1}</Text>
+                </View>
+                <View style={styles.featureTextContainer}>
+                  <Text style={styles.featureTitle}>{feature.title}</Text>
+                  <Text style={styles.featureDescription}>{feature.description}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+        )}
         <Image 
           source={colorScheme === 'dark' ? item.imageDark : item.imageLight}
           style={[styles.image, item.imageStyle]}
@@ -186,8 +219,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: '5%',
   },
   image: {
+    width: width, // Slightly smaller to account for padding
+    height: height, // Adjust height as needed
     resizeMode: 'contain',
-    marginBottom: '5%',
   },
   bottomDescription: {
     fontSize: 16,
@@ -232,6 +266,48 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: '#FFF',
     fontSize: 16,
     fontWeight: 'bold',
+  },
+  featuresContainer: {
+    width: '100%',
+    marginTop: '10%',
+    marginBottom: '5%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: '3%',
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: '5%',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  featureNumberContainer: {
+    width: 50,
+    height: 50,
+    borderRadius: 15,
+    backgroundColor: colorScheme === 'dark' ? '#444' : '#DDD',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 10,
+  },
+  featureNumber: {
+    fontSize: 25,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#FFF' : '#000',
+  },
+  featureTextContainer: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: 19,
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#FFF' : '#000',
+  },
+  featureDescription: {
+    fontSize: 15,
+    color: colorScheme === 'dark' ? '#CCC' : '#333',
+    marginTop: 2,
   },
 });
 

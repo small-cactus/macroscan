@@ -55,10 +55,11 @@ export default function SignInScreen({ navigation }) {
         <Text style={styles.description}>
             The easiest way to track macros
           </Text>
-        <Image
-  source={colorScheme === 'dark' ? require('../assets/icon-light.png') : require('../assets/icon.png')}
-  style={styles.icon} // Define a style for your icon icon
-/>
+          <View style={styles.logoContainer}>
+            <View style={styles.logoBackground}>
+              <Image source={require('../assets/icon.png')} style={styles.logo} />
+            </View>
+            </View>
 <View style={styles.container}></View>
         <View style={styles.container}>
         </View>
@@ -96,24 +97,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold',
     color: '#000',
     textAlign: 'center',
-    marginTop: 100, // Adjust as needed to position the title at the top
+    marginTop: isIphoneSE() ? 45 : 100,
     marginBottom: 20,
     color: colorScheme === 'dark' ? '#fff' : '#333',
     backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
     zIndex: 1,
-  },
-  input: {
-    width: '80%', // Adjust based on preference
-    backgroundColor: '#FFFFFF',
-    marginBottom: 12,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    borderRadius: 20, // Increased borderRadius for more pronounced rounded corners
-    borderWidth: 1,
-    borderColor: 'gray',
-    color: '#000',
-    borderColor: colorScheme === 'dark' ? '#5f5f5f' : '#ddd',
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#fff',
   }, // Text color
   button: {
     width: '80%', // Match the input fields width
@@ -121,7 +109,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: 10,
     borderRadius: 20, // Maintain rounded corners for consistency
     alignItems: 'center',
-    marginTop: 10,
+    marginTop: isIphoneSE() ? 10 : 0,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
   },
   buttonText: {
@@ -130,21 +118,32 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold',
     fontSize: 16,
   },
-  icon: {
-    width: 150, // Adjust the width as needed
-    height: 150, // Adjust the height as needed
-    alignSelf: 'center', // Center the icon horizontally
-    marginTop: -10,
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
-    zIndex: 1,
+  logoContainer: {
+    alignItems: 'center',
+    marginBottom: '20%',
+  },
+  logoBackground: {
+    marginTop: '0%',
+    backgroundColor: '#FFF',
+    borderRadius: 32,
+    padding: 0,
+    shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 15.84,
+    elevation: 10,
+  },
+  logo: {
+    width: 125,
+    height: 125,
   },
   SignUpButton:{
     alignSelf: 'center',
-    marginTop: 20,
+    marginTop: isIphoneSE() ? 25 : 0,
     marginBottom: 20,
     borderWidth: 0,
     width: '40%',
-    height: isIphoneSE() ? '6.5%' : '5%',
+    height: isIphoneSE() ? '6%' : '5%',
     justifyContent: 'center', // Center the content vertically
     alignItems: 'center',
     backgroundColor: "#000000",
@@ -162,7 +161,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   SignInButton: {
     alignSelf: 'center',
     marginTop: 20,
-    marginBottom: 210,
+    marginBottom: '70%',
     width: '100%',
     height: '5%',
     justifyContent: 'center', // Center the content vertically
@@ -179,6 +178,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: '400',
     color: colorScheme === 'dark' ? '#EEE' : '#666',
     textAlign: 'center',
-    marginBottom: '20%',
+    marginBottom: '15%',
   },
 });
