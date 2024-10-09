@@ -29,7 +29,7 @@ export default function CameraScreen() {
   const [zoom, setZoom] = useState(0);
   const [showTutorial, setShowTutorial] = useState(false);
 
-  const DEBUG_ALWAYS_SHOW_TUTORIAL = true;
+  const DEBUG_ALWAYS_SHOW_TUTORIAL = false;
 
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const loadingTextAnim = useRef(new Animated.Value(0)).current;
@@ -232,14 +232,46 @@ export default function CameraScreen() {
     return <View />;
   }
 
-  if (!permission.granted) {
-    return (
-      <View style={styles.container}>
-        <Text style={styles.message}>We need your permission to show the camera</Text>
-        <Button onPress={requestPermission} title="Grant Permission" />
+// Inside your CameraScreen component
+
+if (!permission.granted) {
+  return (
+    <View style={styles.container}>
+      <BlurView intensity={50} style={StyleSheet.absoluteFill} />
+          {/* Close Button */}
+          <TouchableOpacity style={styles.closeButton} onPress={haptic}>
+            <BlurView intensity={30} style={styles.blurViewButton}>
+              <Ionicons name="close" size={40} color="#fff" />
+            </BlurView>
+          </TouchableOpacity>
+
+          {/* Permissions needed title */}
+          <TouchableOpacity style={styles.flashButton} onPress={haptic}>
+            <BlurView intensity={30} style={styles.blurViewTitle}>
+              <Text style={styles.title}>Permissions needed</Text>
+            </BlurView>
+          </TouchableOpacity>
+      <View style={styles.permissionContent}>
+        <Text style={styles.permissionDescription}>
+          We need your permission to use the camera.
+        </Text>
+        <Text style={styles.permissionDescription}>
+          If this button doesn't do anything, go into your iPhone's settings, scroll down and find MacroScan in Apps at the bottom, and toggle on Camera permissions.
+        </Text>
+        <TouchableOpacity
+          style={styles.tutorialCloseButton}
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            requestPermission();
+          }}
+        >
+            <Text style={styles.tutorialCloseButtonText}>Grant Permission</Text>
+        </TouchableOpacity>
       </View>
-    );
-  }
+    </View>
+  );
+}
+
 
   const onCameraReady = () => {
     setIsCameraReady(true);
@@ -261,8 +293,8 @@ export default function CameraScreen() {
   };
 
   const secret = () => {
+    setShowTutorial(true);
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
-    Alert.alert('You found a secret', 'Hi, from MacroScan developers.');
   };
 
   const haptic = () => {
@@ -687,6 +719,7 @@ const styles = StyleSheet.create({
     flexShrink: 1,
   },
   tutorialCloseButton: {
+    marginTop: 20,
     backgroundColor: '#fff',
     paddingVertical: 12,
     paddingHorizontal: 40,
@@ -723,5 +756,24 @@ const styles = StyleSheet.create({
     borderWidth: 0.2,
     borderColor: '#aaa',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
+  },
+  permissionContent: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  permissionTitleContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 20,
+  },
+  permissionDescription: {
+    fontSize: 18,
+    fontWeight: '400',
+    color: '#eee',
+    textAlign: 'center',
+    marginBottom: 50,
+    paddingHorizontal: 20,
   },
 });
