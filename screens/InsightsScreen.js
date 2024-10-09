@@ -1238,7 +1238,7 @@ const calculateCalorieIntake = async () => {
             console.log("Current goals string:", currentGoalsString);
     
             if (storedHistoryString === currentHistoryString && storedGoalsString === currentGoalsString) {
-                Alert.alert("No Changes Detected", "It looks like you haven't scanned anything or updated your goals yet. Once you do, Smart Coach will be able to assist you.");
+                Alert.alert("No Changes Detected", "It looks like you haven't scanned anything or updated your goals yet. Once you do, Smart Coach will automatically update.");
                 console.log("No changes detected, skipping API call.");
                 return;
             }
@@ -1389,7 +1389,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         flex: 1,
         alignItems: 'center',
         paddingTop: 20,
-        backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+        backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
     scrollContainer: {
         width: '100%',
@@ -1404,7 +1404,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         marginLeft: '1%',
     },
     card: {
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
+        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#eee',
         padding: '4%',
         marginVertical: '2%',
         borderRadius: 25,
@@ -1464,7 +1464,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
         top: isIphoneSE() ? '5%' : '8%',  // 20% from the top of the screen
         padding: 10,
         zIndex: 1,
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
+        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
         borderRadius: 15,
     },
     modalContainer: {
@@ -1693,7 +1693,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
       },
       TopDescriptionText: {
         fontSize: 16,
-        color: colorScheme === 'dark' ? '#AAA' : '#555',
+        color: colorScheme === 'dark' ? '#888' : '#555',
         textAlign: 'center',
         paddingHorizontal: '4%',
         marginTop: '-1%',

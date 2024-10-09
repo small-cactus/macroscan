@@ -14,7 +14,7 @@ import {
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
   // UNCOMMENT THIS FOR PRODUCTION USE
-import Superwall from "@superwall/react-native-superwall"
+// import Superwall from "@superwall/react-native-superwall"
 
 const { width, height } = Dimensions.get('window');
 
@@ -84,16 +84,16 @@ const OnboardingScreen = () => {
     });
   };
   // // UNCOMMENT THIS FOR PRODUCTION USE
-  const showPaywall = () => {
-    Superwall.shared.register('onboardingV2').then(() => {
-      navigateHome();
-    });
-  };
+  // const showPaywall = () => {
+  //   Superwall.shared.register('onboardingV2').then(() => {
+  //     navigateHome();
+  //   });
+  // };
 
   // COMMENT THIS FOR PRODUCTION USE
-  // const showPaywall = () => {
-  //     navigateHome();
-  // };
+  const showPaywall = () => {
+      navigateHome();
+  };
 
   const handleNext = () => {
     if (currentIndex < onboardingSteps.length - 1) {

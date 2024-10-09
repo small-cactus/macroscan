@@ -48,6 +48,14 @@
           "assets": ["./assets/icon.png", "./assets/splash.png", "./assets/adaptive-icon.png", "./assets/favicon.png"]
         }
       ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow MacroScan to access your camera",
+          "microphonePermission": "Allow MacroScan to access your microphone",
+          "recordAudioAndroid": true
+        }
+      ],
       "expo-secure-store"
     ],
     "jsEngine": "hermes"

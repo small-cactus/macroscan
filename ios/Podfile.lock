@@ -1,5 +1,7 @@
 PODS:
   - boost (1.83.0)
+  - BVLinearGradient (2.8.3):
+    - React-Core
   - DoubleConversion (1.1.6)
   - EASClient (0.12.0):
     - ExpoModulesCore
@@ -232,7 +234,7 @@ PODS:
     - ExpoModulesCore
   - ExpoBlur (13.0.2):
     - ExpoModulesCore
-  - ExpoCamera (15.0.13):
+  - ExpoCamera (15.0.16):
     - ExpoModulesCore
     - ZXingObjC/OneD
     - ZXingObjC/PDF417
@@ -283,6 +285,8 @@ PODS:
   - ExpoRandom (14.0.1):
     - ExpoModulesCore
   - ExpoSecureStore (13.0.1):
+    - ExpoModulesCore
+  - ExpoSensors (13.0.9):
     - ExpoModulesCore
   - ExpoSymbols (0.1.4):
     - ExpoModulesCore
@@ -1553,6 +1557,8 @@ PODS:
     - React
   - RNCPicker (2.7.5):
     - React-Core
+  - RNDateTimePicker (8.2.0):
+    - React-Core
   - RNGestureHandler (2.16.2):
     - DoubleConversion
     - glog
@@ -1652,11 +1658,34 @@ PODS:
   - "sqlite3 (3.45.3+1)":
     - "sqlite3/common (= 3.45.3+1)"
   - "sqlite3/common (3.45.3+1)"
-  - VisionCamera (4.5.0):
-    - VisionCamera/Core (= 4.5.0)
-    - VisionCamera/React (= 4.5.0)
-  - VisionCamera/Core (4.5.0)
-  - VisionCamera/React (4.5.0):
+  - superwall-react-native (1.2.2):
+    - DoubleConversion
+    - glog
+    - hermes-engine
+    - RCT-Folly (= 2024.01.01.00)
+    - RCTRequired
+    - RCTTypeSafety
+    - React-Codegen
+    - React-Core
+    - React-debug
+    - React-Fabric
+    - React-featureflags
+    - React-graphics
+    - React-ImageManager
+    - React-NativeModulesApple
+    - React-RCTFabric
+    - React-rendererdebug
+    - React-utils
+    - ReactCommon/turbomodule/bridging
+    - ReactCommon/turbomodule/core
+    - SuperwallKit (= 3.6.6)
+    - Yoga
+  - SuperwallKit (3.6.6)
+  - VisionCamera (4.5.3):
+    - VisionCamera/Core (= 4.5.3)
+    - VisionCamera/React (= 4.5.3)
+  - VisionCamera/Core (4.5.3)
+  - VisionCamera/React (4.5.3):
     - React-Core
   - Yoga (0.0.0)
   - ZXingObjC/Core (3.6.9)
@@ -1667,6 +1696,7 @@ PODS:
 
 DEPENDENCIES:
   - boost (from `../node_modules/react-native/third-party-podspecs/boost.podspec`)
+  - BVLinearGradient (from `../node_modules/react-native-linear-gradient`)
   - DoubleConversion (from `../node_modules/react-native/third-party-podspecs/DoubleConversion.podspec`)
   - EASClient (from `../node_modules/expo-eas-client/ios`)
   - EXApplication (from `../node_modules/expo-application/ios`)
@@ -1697,6 +1727,7 @@ DEPENDENCIES:
   - ExpoModulesCore (from `../node_modules/expo-modules-core`)
   - ExpoRandom (from `../node_modules/expo-random/ios`)
   - ExpoSecureStore (from `../node_modules/expo-secure-store/ios`)
+  - ExpoSensors (from `../node_modules/expo-sensors/ios`)
   - ExpoSymbols (from `../node_modules/expo-symbols/ios`)
   - ExpoWebBrowser (from `../node_modules/expo-web-browser/ios`)
   - EXStructuredHeaders (from `../node_modules/expo-structured-headers/ios`)
@@ -1765,6 +1796,7 @@ DEPENDENCIES:
   - "RNCAsyncStorage (from `../node_modules/@react-native-async-storage/async-storage`)"
   - "RNCMaskedView (from `../node_modules/@react-native-community/masked-view`)"
   - "RNCPicker (from `../node_modules/@react-native-picker/picker`)"
+  - "RNDateTimePicker (from `../node_modules/@react-native-community/datetimepicker`)"
   - RNGestureHandler (from `../node_modules/react-native-gesture-handler`)
   - RNIap (from `../node_modules/react-native-iap`)
   - RNKeychain (from `../node_modules/react-native-keychain`)
@@ -1772,6 +1804,7 @@ DEPENDENCIES:
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNSVG (from `../node_modules/react-native-svg`)
   - RNVectorIcons (from `../node_modules/react-native-vector-icons`)
+  - "superwall-react-native (from `../node_modules/@superwall/react-native-superwall`)"
   - VisionCamera (from `../node_modules/react-native-vision-camera`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
 
@@ -1783,11 +1816,14 @@ SPEC REPOS:
     - SDWebImageWebPCoder
     - SocketRocket
     - sqlite3
+    - SuperwallKit
     - ZXingObjC
 
 EXTERNAL SOURCES:
   boost:
     :podspec: "../node_modules/react-native/third-party-podspecs/boost.podspec"
+  BVLinearGradient:
+    :path: "../node_modules/react-native-linear-gradient"
   DoubleConversion:
     :podspec: "../node_modules/react-native/third-party-podspecs/DoubleConversion.podspec"
   EASClient:
@@ -1848,6 +1884,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/expo-random/ios"
   ExpoSecureStore:
     :path: "../node_modules/expo-secure-store/ios"
+  ExpoSensors:
+    :path: "../node_modules/expo-sensors/ios"
   ExpoSymbols:
     :path: "../node_modules/expo-symbols/ios"
   ExpoWebBrowser:
@@ -1981,6 +2019,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/@react-native-community/masked-view"
   RNCPicker:
     :path: "../node_modules/@react-native-picker/picker"
+  RNDateTimePicker:
+    :path: "../node_modules/@react-native-community/datetimepicker"
   RNGestureHandler:
     :path: "../node_modules/react-native-gesture-handler"
   RNIap:
@@ -1995,6 +2035,8 @@ EXTERNAL SOURCES:
     :path: "../node_modules/react-native-svg"
   RNVectorIcons:
     :path: "../node_modules/react-native-vector-icons"
+  superwall-react-native:
+    :path: "../node_modules/@superwall/react-native-superwall"
   VisionCamera:
     :path: "../node_modules/react-native-vision-camera"
   Yoga:
@@ -2002,6 +2044,7 @@ EXTERNAL SOURCES:
 
 SPEC CHECKSUMS:
   boost: d3f49c53809116a5d38da093a8aa78bf551aed09
+  BVLinearGradient: 880f91a7854faff2df62518f0281afb1c60d49a3
   DoubleConversion: 76ab83afb40bddeeee456813d9c04f67f78771b5
   EASClient: 1509a9a6b48b932ec61667644634daf2562983b8
   EXApplication: c08200c34daca7af7fd76ac4b9d606077410e8ad
@@ -2019,7 +2062,7 @@ SPEC CHECKSUMS:
   ExpoAppleAuthentication: 7af0b493e820dc0b22150cb9531fc1c31dc4fbfd
   ExpoAsset: 100b840e5dc1e1619df2d7c76441d33fb84a3202
   ExpoBlur: fa53f874e7b208bc3756d1bf07903c12e790beb1
-  ExpoCamera: c5be8a28a769c4dee3a02e017e5b55415d9beb2c
+  ExpoCamera: 929be541d1c1319fcf32f9f5d9df8b97804346b5
   ExpoCrypto: 156078f266bf28f80ecf5e2a9c3a0d6ffce07a1c
   ExpoFileSystem: 80bfe850b1f9922c16905822ecbf97acd711dc51
   ExpoFont: 43b69559cef3d773db57c7ae7edd3cb0aa0dc610
@@ -2032,6 +2075,7 @@ SPEC CHECKSUMS:
   ExpoModulesCore: d7b31b6d68b2ba815c46660d86018c789178fdb9
   ExpoRandom: 099ddce39b39ffb984b45118d031e8713e962a50
   ExpoSecureStore: 5f6b712785986b54d95a92bd365aabb82a52088e
+  ExpoSensors: 3bc12e5186b94703464d1554ce5ebfff05f91093
   ExpoSymbols: 5adb1166f2929fc8d2497b98d5c48c4b94effe33
   ExpoWebBrowser: 7595ccac6938eb65b076385fd23d035db9ecdc8e
   EXStructuredHeaders: cb8d1f698e144f4c5547b4c4963e1552f5d2b457
@@ -2100,6 +2144,7 @@ SPEC CHECKSUMS:
   RNCAsyncStorage: 826b603ae9c0f88b5ac4e956801f755109fa4d5c
   RNCMaskedView: 0e1bc4bfa8365eba5fbbb71e07fbdc0555249489
   RNCPicker: 3e2c37a8328f368ce14da050cdc8231deb5fc9f9
+  RNDateTimePicker: 40ffda97d071a98a10fdca4fa97e3977102ccd14
   RNGestureHandler: 2282cfbcf86c360d29f44ace393203afd5c6cff7
   RNIap: b30126ab51607421ba595d534a3710d2796212f4
   RNKeychain: bfe3d12bf4620fe488771c414530bf16e88f3678
@@ -2111,7 +2156,9 @@ SPEC CHECKSUMS:
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: abac6f5de4d4d62d24e11868d7a2f427e0ef940d
   sqlite3: 02d1f07eaaa01f80a1c16b4b31dfcbb3345ee01a
-  VisionCamera: 412fec057156eb5fe84a44351e8ed71a072c1228
+  superwall-react-native: 6bfc2fe106be407fe1db67706288a6c6c781a723
+  SuperwallKit: e6db6c60f6dc95c3dc841525f84dc8504cfffb5a
+  VisionCamera: cb84d0d8485b3e67c91b62931d3aa88f49747c92
   Yoga: ae3c32c514802d30f687a04a6a35b348506d411f
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5
 

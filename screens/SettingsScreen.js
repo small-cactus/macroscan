@@ -55,10 +55,10 @@ const SettingsScreen = () => {
       title: "Help and Support",
       navigateTo: "SupportScreen"
     },
-    // {
-    //   title: "Food scanning test",
-    //   navigateTo: "FoodScanScreen"
-    // },
+    {
+      title: "Fullscreen camera test (beta)",
+      navigateTo: "CameraScreen"
+    },
     // {
     //   title: "On Boarding Test",
     //   navigateTo: "OnBoardingScreen"
@@ -66,7 +66,7 @@ const SettingsScreen = () => {
   ];
 
   const handleSettingPress = (navigateTo) => {
-    AsyncStorage.removeItem('@user_goals');
+    //AsyncStorage.removeItem('@user_goals');
     navigation.navigate(navigateTo);
   };
 
@@ -94,7 +94,7 @@ const SettingsScreen = () => {
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
   },
   container: {
     padding: '5%',
@@ -115,7 +115,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     marginBottom: '3%',
-    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f3f3f3',
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
     padding: 10,
     borderRadius: 10,
   },
