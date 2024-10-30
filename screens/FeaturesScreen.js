@@ -1,39 +1,62 @@
-import React, { useState, useEffect } from 'react';
+// FeaturesScreen.js
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   StyleSheet,
   View,
   Text,
   ScrollView,
   TouchableOpacity,
+  TouchableWithoutFeedback,
   SafeAreaView,
+  LayoutAnimation,
+  UIManager,
+  Platform,
+  Dimensions,
   Alert,
   Appearance,
   Animated,
-  Platform,
-  Dimensions,
+  Easing,
+  ActionSheetIOS,
+  Picker,
+  Modal,
+  FlatList,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../userContext';
+import { BlurView } from 'expo-blur';
+import * as Linking from 'expo-linking';
+import AnimatedCenteredText from './AnimatedCenteredText';
 
+// Enable LayoutAnimation on Android
+if (
+  Platform.OS === 'android' &&
+  UIManager.setLayoutAnimationEnabledExperimental
+) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
+
+const DEBUG_MOCK_UNLIMITED = false;
 const { width, height } = Dimensions.get('window');
 
 const isIphoneSE = () => {
   const smallIphoneDimensions = [
-    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
-    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
-    { width: 414, height: 736 }, // iPhone 8 Plus
-    { width: 360, height: 640 }, // iPhone SE (2020)
-    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
-    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 320, height: 568 },
+    { width: 375, height: 667 },
+    { width: 414, height: 736 },
+    { width: 360, height: 640 },
+    { width: 375, height: 812 },
+    { width: 360, height: 780 },
   ];
 
   return (
     Platform.OS === 'ios' &&
     smallIphoneDimensions.some(
-      (dim) => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+      (dim) =>
+        (width === dim.width && height === dim.height) ||
+        (width === dim.height && height === dim.width)
     )
   );
 };
@@ -44,46 +67,157 @@ const FeaturesScreen = () => {
   const styles = getDynamicStyles(colorScheme);
   const { user } = useUser();
 
-  const renderSeparator = () => <View style={styles.separator} />;
-
   const models = {
     'claude-3-5-sonnet-20240620': 'Complex Processing',
-    'claude-3-sonnet-20240229': 'Standard Processing',
-    'claude-3-haiku-20240307': 'Fast Processing',
+    'claude-3-haiku-20240307': 'Default Processing',
   };
 
-  const descriptions = {
-    'claude-3-5-sonnet-20240620': 'Highest accuracy, slower processing',
-    'claude-3-sonnet-20240229': 'Balanced accuracy and speed',
-    'claude-3-haiku-20240307': 'Fastest speed, average accuracy',
+  const [selectedModel, setSelectedModel] = useState(
+    'claude-3-haiku-20240307'
+  );
+  const [selectedMode, setSelectedMode] = useState('fast');
+  const [isUnlocked, setIsUnlocked] = useState(false);
+  const [debugUnlocked, setDebugUnlocked] = useState(DEBUG_MOCK_UNLIMITED);
+  const [debugTapCount, setDebugTapCount] = useState(0);
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+
+  // Animated values for scaling buttons
+  const scaleValues = {
+    fast: useRef(new Animated.Value(1)).current,
+    accurate: useRef(new Animated.Value(1)).current,
   };
 
-  const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
-  const [selectedMode, setSelectedMode] = useState('fast'); // Default to Fast Mode
-  const [subscriptionStatus, setSubscriptionStatus] = useState('free');
+  // Animated values for button colors
+  const buttonBackgroundColors = {
+    fast: useRef(new Animated.Value(0)).current,
+    accurate: useRef(new Animated.Value(0)).current,
+  };
+  const buttonBorderColors = {
+    fast: useRef(new Animated.Value(0)).current,
+    accurate: useRef(new Animated.Value(0)).current,
+  };
 
-  // Separate Animated.Values for Models and Modes
-  const [modelBorderColor] = useState(new Animated.Value(0));
-  const [modeBorderColor] = useState(new Animated.Value(0));
+  // Tutorial state variables
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [debugShowTutorialAlways, setDebugShowTutorialAlways] = useState(false);
 
-  // Separate Current Border Colors for Models and Modes
-  const [currentModelBorderColor, setCurrentModelBorderColor] = useState('#AAA');
-  const [currentModeBorderColor, setCurrentModeBorderColor] = useState('#AAA');
+  const tutorialOpacityAnim = useRef(new Animated.Value(0)).current;
+  const tutorialData = [
+    {
+      key: '1',
+      title: 'Welcome to Scanner Settings',
+      description:
+        'Adjust how our intelligence features scan your meals to get the most accurate macro information.',
+      icon: 'restaurant',
+    },
+    {
+      key: '2',
+      title: 'Fast Mode (Default)',
+      description:
+        'Provides instant results without in-depth analysis. Great for packaged or well-known foods. Less accurate for homemade meals.',
+      icon: 'flash',
+    },
+    {
+      key: '3',
+      title: 'Accurate Mode',
+      description:
+        'Accurate Mode uses specialized reasoning with multiple scoring runs for high accuracy. It’s ideal for homemade or complex meals; it does take a bit longer but it is rarely wrong.',
+      icon: 'shield-checkmark',
+      isBeta: true,
+    },
+    {
+      key: '4',
+      title: 'Processing Models',
+      description:
+        'You can change the intelligence model for food content detection. The Complex model gives more accurate scans but takes longer. Since all features are optimized for the Fast intelligence model, we recommend using fast mode.',
+      icon: 'settings',
+    },
+  ];
+
+  const [tutorialIndex, setTutorialIndex] = useState(0);
+  const flatListRef = useRef(null);
+
+  // New state to track the currently visible tutorial index
+  const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
+
+  // Viewability Config for FlatList
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50, // Consider item visible if 50% is visible
+  };
+
+  // Handler when viewable items change
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems.length > 0) {
+      const index = viewableItems[0].index;
+      if (index !== null && index !== undefined) {
+        setCurrentTutorialIndex(index);
+      }
+    }
+  }).current;
 
   useEffect(() => {
-    checkSubscription();
+    checkUnlockStatus();
     loadSettings();
-  }, []);
+  }, [debugUnlocked]);
 
-  const checkSubscription = async () => {
-    const status = user ? user.subscriptionStatus : 'free';
-    setSubscriptionStatus(status);
+  useEffect(() => {
+    // Animate initial button states
+    Object.keys(buttonBackgroundColors).forEach((mode) => {
+      animateButtonSelection(mode, mode === selectedMode);
+    });
+  }, [selectedMode]);
+
+  useEffect(() => {
+    checkTutorial();
+  }, [debugShowTutorialAlways]);
+
+  const checkTutorial = async () => {
+    try {
+      const hasViewedTutorial = await AsyncStorage.getItem(
+        'hasViewedFeaturesTutorial'
+      );
+      if (!hasViewedTutorial || debugShowTutorialAlways) {
+        setShowTutorial(true);
+        Animated.timing(tutorialOpacityAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      }
+    } catch (error) {
+      console.error('Error checking tutorial status:', error);
+    }
+  };
+
+  const dismissTutorial = async () => {
+    try {
+      await AsyncStorage.setItem('hasViewedFeaturesTutorial', 'true');
+    } catch (error) {
+      console.error('Error setting tutorial status:', error);
+    }
+
+    // Start fade-out animation
+    Animated.timing(tutorialOpacityAnim, {
+      toValue: 0,
+      duration: 500,
+      useNativeDriver: true,
+    }).start(() => {
+      setShowTutorial(false);
+      tutorialOpacityAnim.setValue(0);
+      setTutorialIndex(0);
+    });
+  };
+
+  const checkUnlockStatus = async () => {
+    const status =
+      debugUnlocked || (user ? user.hasUnlimitedAccess : false);
+    setIsUnlocked(status);
   };
 
   const loadSettings = async () => {
     try {
       const model = await AsyncStorage.getItem('selectedModel');
-      const mode = await AsyncStorage.getItem('selectedMode'); // Changed key to 'selectedMode' for clarity
+      const mode = await AsyncStorage.getItem('selectedMode');
       if (model) setSelectedModel(model);
       if (mode) setSelectedMode(mode);
     } catch (error) {
@@ -91,111 +225,35 @@ const FeaturesScreen = () => {
     }
   };
 
-  // Animation Functions for Models
-  const animateModelBorderColorGreen = () => {
-    setCurrentModelBorderColor('green');
-    Animated.sequence([
-      Animated.timing(modelBorderColor, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: false,
-      }),
-      Animated.timing(modelBorderColor, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: false,
-      }),
-    ]).start(() => setCurrentModelBorderColor('#AAA'));
+  const showBetaAlert = () => {
+    Alert.alert(
+      'Beta Feature',
+      `Accurate mode is a beta feature, while most of the time it can be more accurate, sometimes it can be extremely wrong, up to 50% wrong.`
+    );
+  }
+
+  const handleTitlePress = () => {
+    setShowTutorial(true);
+    Animated.timing(tutorialOpacityAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
   };
-
-  const animateModelBorderColorRed = () => {
-    setCurrentModelBorderColor('red');
-    Animated.sequence([
-      Animated.timing(modelBorderColor, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-      Animated.timing(modelBorderColor, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-    ]).start(() => setCurrentModelBorderColor('#AAA'));
-  };
-
-  // Animation Functions for Modes
-  const animateModeBorderColorGreen = () => {
-    setCurrentModeBorderColor('green');
-    Animated.sequence([
-      Animated.timing(modeBorderColor, {
-        toValue: 1,
-        duration: 500,
-        useNativeDriver: false,
-      }),
-      Animated.timing(modeBorderColor, {
-        toValue: 0,
-        duration: 500,
-        useNativeDriver: false,
-      }),
-    ]).start(() => setCurrentModeBorderColor('#AAA'));
-  };
-
-  const animateModeBorderColorRed = () => {
-    setCurrentModeBorderColor('red');
-    Animated.sequence([
-      Animated.timing(modeBorderColor, {
-        toValue: 1,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-      Animated.timing(modeBorderColor, {
-        toValue: 0,
-        duration: 200,
-        useNativeDriver: false,
-      }),
-    ]).start(() => setCurrentModeBorderColor('#AAA'));
-  };
-
-  // Interpolate Border Colors Separately
-  const modelBorderColorInterpolate = modelBorderColor.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#AAA', currentModelBorderColor],
-  });
-
-  const modeBorderColorInterpolate = modeBorderColor.interpolate({
-    inputRange: [0, 1],
-    outputRange: ['#AAA', currentModeBorderColor],
-  });
 
   const handleModelChange = async (model) => {
-    if (selectedModel === model) {
-      await Haptics.selectionAsync();
-      return;
-    }
-
-    const showAlert = (message) => {
-      setTimeout(() => {
-        Alert.alert('Upgrade Required', message);
-      }, 500);
-    };
-
-    if (subscriptionStatus === 'free' && model !== 'claude-3-haiku-20240307') {
-      animateModelBorderColorRed();
-      showAlert('You need to be a subscribed user to change this setting.');
-      return;
-    }
-
-    if (subscriptionStatus === 'plus' && model === 'claude-3-opus-20240229') {
-      animateModelBorderColorRed();
-      showAlert('You need to be a MacroScan++ subscriber to use this setting.');
+    if (!isUnlocked && model !== 'claude-3-haiku-20240307') {
+      Alert.alert(
+        'Unlock Required',
+        'Upgrade to MacroScan Unlimited to access Complex Processing.'
+      );
       return;
     }
 
     try {
       await AsyncStorage.setItem('selectedModel', model);
       setSelectedModel(model);
-      animateModelBorderColorGreen();
+      Haptics.selectionAsync();
     } catch (error) {
       console.error('Error saving selectedModel:', error);
     }
@@ -203,252 +261,677 @@ const FeaturesScreen = () => {
 
   const handleModeChange = async (mode) => {
     try {
-      await AsyncStorage.setItem('selectedMode', mode); // Changed key to 'selectedMode' for consistency
+      await AsyncStorage.setItem('selectedMode', mode);
       setSelectedMode(mode);
-      animateModeBorderColorGreen();
+      Haptics.selectionAsync();
     } catch (error) {
       console.error('Error saving selectedMode:', error);
     }
   };
 
+  const handleModelSelectorPress = () => {
+    if (Platform.OS === 'ios') {
+      const options = Object.entries(models).map(([key, value]) => ({
+        key,
+        title: value,
+        locked: !isUnlocked && key !== 'claude-3-haiku-20240307',
+      }));
+
+      ActionSheetIOS.showActionSheetWithOptions(
+        {
+          options: [
+            'Cancel',
+            ...options.map(
+              (opt) => `${opt.title}${opt.locked ? ' (Paid Feature)' : ''}`
+            ),
+          ],
+          cancelButtonIndex: 0,
+          title: 'Select Processing Model',
+          message: 'Choose the processing model that best fits your needs',
+        },
+        (buttonIndex) => {
+          if (buttonIndex === 0) return;
+          const selectedOption = options[buttonIndex - 1];
+
+          if (selectedOption.locked) {
+            Alert.alert(
+              'Unlock Required',
+              'Upgrade to MacroScan Unlimited to access Complex Processing.'
+            );
+            return;
+          }
+
+          handleModelChange(selectedOption.key);
+        }
+      );
+    } else {
+      setShowAndroidPicker(true);
+    }
+  };
+
+  const animateButtonSelection = (mode, selected) => {
+    const duration = 200;
+
+    // Animate background color
+    Animated.timing(buttonBackgroundColors[mode], {
+      toValue: selected ? 1 : 0,
+      duration,
+      useNativeDriver: false,
+    }).start();
+
+    // Animate border color
+    Animated.timing(buttonBorderColors[mode], {
+      toValue: selected ? 1 : 0,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const toggleModelSelector = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    // This function is no longer used as model selector is handled differently
+  }, []);
+
+  const renderScanModeButton = (mode, icon, title, description) => {
+    const scaleValue = scaleValues[mode];
+
+    const backgroundColor = buttonBackgroundColors[mode].interpolate({
+      inputRange: [0, 1],
+      outputRange: [
+        colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+        colorScheme === 'dark' ? '#2c2c2e' : '#e5e5e5',
+      ],
+    });
+
+    const borderColor = buttonBorderColors[mode].interpolate({
+      inputRange: [0, 1],
+      outputRange: [
+        'transparent',
+        colorScheme === 'dark' ? '#5c5c5e' : '#d5d5d5',
+      ],
+    });
+
+    const handlePressIn = () => {
+      Animated.spring(scaleValue, {
+        toValue: 0.97,
+        useNativeDriver: false,
+      }).start();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleValue, {
+        toValue: 1,
+        friction: 3,
+        tension: 40,
+        useNativeDriver: false,
+      }).start();
+
+      handleModeChange(mode);
+      Object.keys(buttonBackgroundColors).forEach((m) => {
+        animateButtonSelection(m, m === mode);
+      });
+    };
+
+    return (
+      <TouchableWithoutFeedback
+        key={mode}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Animated.View
+          style={[
+            styles.modeButton,
+            {
+              backgroundColor,
+              borderColor,
+              transform: [{ scale: scaleValue }],
+            },
+          ]}
+        >
+          <View style={styles.modeButtonContent}>
+            <View style={styles.modeIconContainer}>
+              <Ionicons
+                name={icon}
+                size={24}
+                color={colorScheme === 'dark' ? '#FFF' : '#000'}
+              />
+            </View>
+            <View style={styles.modeTextContainer}>
+              <Text style={styles.modeButtonTitle}>{title}</Text>
+              <Text style={styles.modeButtonDescription}>{description}</Text>
+            </View>
+          </View>
+        </Animated.View>
+      </TouchableWithoutFeedback>
+    );
+  };
+
+  // Android Picker Modal
+  const AndroidPickerModal = () => (
+    <Modal
+      visible={showAndroidPicker}
+      transparent={true}
+      animationType="slide"
+      onRequestClose={() => setShowAndroidPicker(false)}
+    >
+      <View style={styles.modalContainer}>
+        <View
+          style={[
+            styles.pickerContainer,
+            { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fff' },
+          ]}
+        >
+          <View style={styles.pickerHeader}>
+            <TouchableOpacity onPress={() => setShowAndroidPicker(false)}>
+              <Text
+                style={[
+                  styles.pickerHeaderButton,
+                  { color: colorScheme === 'dark' ? '#fff' : '#000' },
+                ]}
+              >
+                Cancel
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => setShowAndroidPicker(false)}>
+              <Text
+                style={[
+                  styles.pickerHeaderButton,
+                  { color: colorScheme === 'dark' ? '#fff' : '#000' },
+                ]}
+              >
+                Done
+              </Text>
+            </TouchableOpacity>
+          </View>
+          <Picker
+            selectedValue={selectedModel}
+            onValueChange={(itemValue) => {
+              if (!isUnlocked && itemValue !== 'claude-3-haiku-20240307') {
+                Alert.alert(
+                  'Unlock Required',
+                  'Upgrade to MacroScan Unlimited to access Complex Processing.'
+                );
+                return;
+              }
+              handleModelChange(itemValue);
+              setShowAndroidPicker(false);
+            }}
+            style={{ color: colorScheme === 'dark' ? '#fff' : '#000' }}
+          >
+            {Object.entries(models).map(([key, value]) => (
+              <Picker.Item
+                key={key}
+                label={`${
+                  value
+                }${
+                  !isUnlocked && key !== 'claude-3-haiku-20240307'
+                    ? ' (Locked)'
+                    : ''
+                }`}
+                value={key}
+                enabled={isUnlocked || key === 'claude-3-haiku-20240307'}
+              />
+            ))}
+          </Picker>
+        </View>
+      </View>
+    </Modal>
+  );
+
+  const renderTutorialItem = ({ item, index }) => (
+    <View style={styles.tutorialPage}>
+      <View style={styles.tutorialInnerContent}>
+        <View style={styles.tutorialIconContainer}>
+          <BlurView intensity={30} style={styles.tutorialIcon}>
+            <Ionicons
+              name={item.icon}
+              size={80}
+              color={colorScheme === 'dark' ? '#fff' : '#000'}
+            />
+          </BlurView>
+        </View>
+        <Text style={styles.tutorialTitle}>{item.title}</Text>
+        {item.isBeta && (
+          <TouchableOpacity onPress={showBetaAlert}>
+          <View style={styles.betaContainer}>
+            <Text style={styles.betaTag}>BETA</Text>
+          </View>
+        </TouchableOpacity>
+        )}
+        <AnimatedCenteredText
+          text={item.description}
+          colorScheme={colorScheme}
+          visible={currentTutorialIndex === index}
+        />
+      </View>
+    </View>
+  );
+
+  const handleScroll = (event) => {
+    const newIndex = Math.round(
+      event.nativeEvent.contentOffset.x / width
+    );
+    if (newIndex !== tutorialIndex) {
+      setTutorialIndex(newIndex);
+    }
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
-      <TouchableOpacity style={styles.backButton} onPress={() => navigation.goBack()}>
-        <Ionicons name="chevron-back" size={24} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
-      </TouchableOpacity>
-      <ScrollView style={styles.container}>
-        <Text style={styles.title}>Scanner Settings</Text>
-        {subscriptionStatus === 'free' && (
-          <Text style={styles.upgradeText}>
-            Upgrade to change options. Default is Fast.
-          </Text>
-        )}
-        {subscriptionStatus === 'plus' && (
-          <Text style={styles.upgradeText}>
-            As a MacroScan+ subscriber, you can use Balanced and Fast. Upgrade to MacroScan++ for more features.
-          </Text>
-        )}
-        {subscriptionStatus === 'plusplus' && (
-          <Text style={styles.upgradeText}>
-            As a MacroScan++ subscriber, you have full access to all options. Enjoy experimenting!
-          </Text>
-        )}
-        <View style={styles.content}>
-          {/* Processing Models Section */}
-          <Text style={styles.sectionTitle}>Processing Models</Text>
-          {Object.entries(models).map(([key, value]) => (
-            <Animated.View
-              key={key}
-              style={[
-                styles.optionButton,
-                selectedModel === key && styles.optionButtonSelected,
-                {
-                  borderColor:
-                    selectedModel === key ? modelBorderColorInterpolate : 'transparent',
-                },
-              ]}
-            >
-              <TouchableOpacity onPress={() => handleModelChange(key)}>
-                <Text style={styles.optionText}>{value}</Text>
-                <Text style={styles.descriptionText}>{descriptions[key]}</Text>
-              </TouchableOpacity>
-            </Animated.View>
-          ))}
-
-          {/* Separator */}
-          {renderSeparator()}
-
-          {/* Preferred Mode Section */}
-          <Text style={styles.title}>Preferred Mode</Text>
-          <Text style={styles.upgradeText}>
-            Choose how scans are prioritized for speed and accuracy.
-          </Text>
-          <View style={styles.content}>
-            {/* Always Fast Mode */}
-            <Animated.View
-              style={[
-                styles.optionButton,
-                selectedMode === 'fast' && styles.optionButtonSelected,
-                {
-                  borderColor:
-                    selectedMode === 'fast' ? modeBorderColorInterpolate : 'transparent',
-                },
-              ]}
-            >
-              <TouchableOpacity onPress={() => handleModeChange('fast')}>
-                <Text style={styles.optionText}>Always Fast</Text>
-                <Text style={styles.descriptionText}>
-                  ~5 second scan time, high accuracy on well-known foods
+      {/* Tutorial Overlay */}
+      {showTutorial && (
+        <Animated.View
+          style={[styles.tutorialOverlay, { opacity: tutorialOpacityAnim }]}
+        >
+          <BlurView intensity={50} style={StyleSheet.absoluteFill} />
+          <View style={styles.tutorialContainer}>
+            <View style={styles.tutorialContent}>
+              <FlatList
+                data={tutorialData}
+                renderItem={renderTutorialItem}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.key}
+                scrollEnabled={true}
+                extraData={tutorialIndex}
+                onMomentumScrollEnd={handleScroll}
+                ref={flatListRef}
+                style={styles.flatList}
+                contentContainerStyle={styles.flatListContent}
+                onViewableItemsChanged={onViewableItemsChanged} // Add this prop
+                viewabilityConfig={viewabilityConfig} // Add this prop
+              />
+            </View>
+            <View style={styles.tutorialFooter}>
+              <View style={styles.pagination}>
+                {tutorialData.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      currentTutorialIndex === index
+                        ? styles.paginationDotActive
+                        : styles.paginationDotInactive,
+                    ]}
+                  />
+                ))}
+              </View>
+              <TouchableOpacity
+                style={styles.tutorialNextButton}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  if (currentTutorialIndex < tutorialData.length - 1) {
+                    const nextIndex = currentTutorialIndex + 1;
+                    setTutorialIndex(nextIndex);
+                    flatListRef.current.scrollToIndex({ index: nextIndex });
+                  } else {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                    dismissTutorial();
+                  }
+                }}
+              >
+                <Text style={styles.tutorialNextButtonText}>
+                  {currentTutorialIndex === tutorialData.length - 1
+                    ? 'Get Started'
+                    : 'Next'}
                 </Text>
               </TouchableOpacity>
-            </Animated.View>
-
-            {/* Always Accurate Mode */}
-            <Animated.View
-              style={[
-                styles.optionButton,
-                selectedMode === 'accurate' && styles.optionButtonSelected,
-                {
-                  borderColor:
-                    selectedMode === 'accurate' ? modeBorderColorInterpolate : 'transparent',
-                },
-              ]}
-            >
-              <TouchableOpacity onPress={() => handleModeChange('accurate')}>
-                <Text style={styles.optionText}>Always Accurate</Text>
-                <Text style={styles.descriptionText}>
-                  ~20 second scan time, much higher accuracy on homemade food
-                </Text>
-              </TouchableOpacity>
-            </Animated.View>
-
-            {/* Dynamic Mode */}
-            <Animated.View
-              style={[
-                styles.optionButton,
-                selectedMode === 'dynamic' && styles.optionButtonSelected,
-                {
-                  borderColor:
-                    selectedMode === 'dynamic' ? modeBorderColorInterpolate : 'transparent',
-                },
-              ]}
-            >
-              <TouchableOpacity onPress={() => handleModeChange('dynamic')}>
-                <Text style={styles.optionText}>Dynamic</Text>
-                <Text style={styles.descriptionText}>
-                  Switches automatically between fast and accurate mode based off each individual scan before it processes.
-                </Text>
-              </TouchableOpacity>
-            </Animated.View>
+            </View>
           </View>
-          <Text style={styles.bottomDescriptionText}>
-            Accuracy is unlikely to change with either mode, but accurate mode is much less likely to make up ingredients or macros in foods that do not have those ingredients visible in the image.
-          </Text>
+        </Animated.View>
+      )}
+
+      {/* Header with Back Button and Title */}
+      <View style={styles.header}>
+        {/* Left Section */}
+        <View style={styles.headerLeft}>
+          <TouchableOpacity
+            style={styles.backButton}
+            onPress={() => navigation.goBack()}
+          >
+            <Ionicons
+              name="chevron-back"
+              size={24}
+              color={colorScheme === 'dark' ? '#FFF' : '#000'}
+            />
+          </TouchableOpacity>
         </View>
+
+        {/* Center Section */}
+        <View style={styles.headerCenter}>
+          <TouchableOpacity onPress={handleTitlePress}>
+            <Text style={styles.title}>Scanner Settings</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Right Section (Empty Placeholder) */}
+        <View style={styles.headerRight} />
+      </View>
+
+      <ScrollView style={styles.container}>
+        {/* Remove Scan Mode Title */}
+        {/* <Text style={styles.sectionTitle}>Scan Mode</Text> */}
+        <Text style={styles.sectionDescription}>
+          Choose between quick results or detailed analysis. Switch anytime
+          based on your needs!
+        </Text>
+
+        <View style={styles.modeButtonsContainer}>
+          {renderScanModeButton(
+            'fast',
+            'flash',
+            'Default Mode',
+            'Instant results • Great for packaged foods • Quick tracking'
+          )}
+          {renderScanModeButton(
+            'accurate',
+            'shield-checkmark',
+            'Accurate Mode',
+            'Detailed analysis • Best for homemade meals • Highly accurate'
+          )}
+        </View>
+
+        <View style={styles.separator} />
+
+        {/* Processing Model Section */}
+        <TouchableOpacity
+          style={styles.modelSelectorButton}
+          onPress={handleModelSelectorPress}
+        >
+          <View style={styles.modelSelectorButtonContent}>
+            <View>
+              <Text style={styles.modelSelectorLabel}>
+                Processing Model
+              </Text>
+              <Text style={styles.modelSelectorValue}>
+                {models[selectedModel]}
+              </Text>
+            </View>
+            <Ionicons
+              name="chevron-down"
+              size={24}
+              color={colorScheme === 'dark' ? '#FFF' : '#000'}
+            />
+          </View>
+        </TouchableOpacity>
+
+        {/* Tip Description moved closer */}
+        <Text style={styles.bottomNote}>
+          💡 Tip: Default Mode provides quick results for common foods. Use Accurate
+          Mode for complex or homemade meals to get precise nutritional
+          information.
+        </Text>
       </ScrollView>
+
+      {Platform.OS === 'android' && <AndroidPickerModal />}
     </SafeAreaView>
   );
 };
 
-const getDynamicStyles = (colorScheme) =>
-  StyleSheet.create({
+const getDynamicStyles = (colorScheme) => {
+  const baseStyles = StyleSheet.create({
     safeArea: {
       flex: 1,
       backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
     container: {
-      padding: '5%',
+      paddingHorizontal: '5%',
     },
-    title: {
-      fontSize: 25,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      textAlign: 'center',
-      marginBottom: '5%',
-    },
-    sectionTitle: { // Added sectionTitle for Processing Models
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      textAlign: 'center',
-      marginTop: '5%',
-      marginBottom: '2%',
-    },
-    content: {
-      marginTop: '2%',
-      marginBottom: '20%',
-    },
-    optionButton: {
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#DDD',
-      padding: '2.5%',
-      borderRadius: 17,
-      marginBottom: '3%',
-      borderWidth: 2,
-    },
-    optionButtonSelected: {
-      // Removed static borderColor to use animated borderColor
-    },
-    optionText: {
-      fontSize: 18,
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      textAlign: 'center',
-    },
-    descriptionText: {
-      fontSize: 14,
-      color: colorScheme === 'dark' ? '#bbb' : '#333',
-      textAlign: 'center',
-      marginTop: 5,
-    },
-    modeTitle: {
-      fontSize: 20,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      textAlign: 'center',
-      marginTop: '5%',
-    },
-    modeToggle: {
+    header: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
-      marginTop: 10,
+      alignItems: 'center',
+      justifyContent: 'space-between', // Distribute space evenly
+      marginTop: isIphoneSE() ? '5%' : '2%',
+      paddingHorizontal: '5%',
+      height: 60, // Optional: Set a fixed height for consistency
     },
-    modeButton: {
+    headerLeft: {
+      width: 50, // Fixed width to balance the center
+      alignItems: 'flex-start',
+    },
+    headerCenter: {
       flex: 1,
-      padding: '2.5%',
-      borderRadius: 10,
-      marginHorizontal: 5,
-      backgroundColor: colorScheme === 'dark' ? '#333' : '#EEE',
-      borderWidth: 2,
+      alignItems: 'center',
     },
-    modeButtonSelected: {
-      borderColor: '#AAA',
-    },
-    modeText: {
-      fontSize: 16,
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      textAlign: 'center',
-    },
-    modeDescription: {
-      fontSize: 12,
-      color: colorScheme === 'dark' ? '#bbb' : '#333',
-      textAlign: 'center',
-      marginTop: 5,
-    },
-    upgradeText: {
-      fontSize: 15,
-      color: colorScheme === 'dark' ? '#888' : '#555',
-      textAlign: 'center',
-      marginVertical: '2%',
-      paddingHorizontal: '2%',
-    },
-    bottomDescriptionText: {
-      fontSize: 15,
-      color: colorScheme === 'dark' ? '#888' : '#555',
-      textAlign: 'center',
-      paddingHorizontal: '2%',
-      marginTop: '-18%',
-      marginBottom: '10%',
+    headerRight: {
+      width: 50, // Same width as headerLeft to balance
+      alignItems: 'flex-end',
     },
     backButton: {
-      position: 'absolute',
-      left: '5%',
-      top: isIphoneSE() ? '5%' : '9%',
-      zIndex: 10,
       backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
       borderRadius: 14,
+      padding: 10,
+      // Removed marginRight
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 0.25,
       shadowRadius: 3,
       elevation: 5,
-      padding: 10,
+    },
+    title: {
+      fontSize: 25,
+      fontWeight: 'bold',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+    },
+    content: {
+      marginTop: '2%',
+      marginBottom: '20%',
+    },
+    sectionDescription: {
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      marginBottom: 15,
+      textAlign: 'center', // Center align text
+    },
+    modeButtonsContainer: {
+      marginTop: 15,
+      marginBottom: 15,
+    },
+    modeButton: {
+      borderRadius: 17,
+      marginBottom: 10,
+      borderWidth: 2,
+    },
+    modeButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      padding: 15,
+    },
+    modeIconContainer: {
+      backgroundColor: colorScheme === 'dark' ? '#3c3c3e' : '#e0e0e0',
+      padding: 12,
+      borderRadius: 12,
+      marginRight: 15,
+    },
+    modeTextContainer: {
+      flex: 1,
+      justifyContent: 'center',
+    },
+    modeButtonTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      marginBottom: 4,
+    },
+    modeButtonDescription: {
+      fontSize: 13,
+      color: colorScheme === 'dark' ? '#bbb' : '#666',
+      lineHeight: 18,
     },
     separator: {
-      height: 5,
-      backgroundColor: '#333333',
-      marginVertical: 16,
-      marginBottom: 16,
-      borderRadius: 900,
+      height: 1,
+      backgroundColor: colorScheme === 'dark' ? '#333' : '#e0e0e0',
+      marginVertical: 20,
+    },
+    modelSelectorButton: {
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+      padding: 15,
+      borderRadius: 16,
+      marginBottom: 10,
+    },
+    modelSelectorButtonContent: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    modelSelectorLabel: {
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+    },
+    modelSelectorValue: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      marginTop: 2,
+    },
+    bottomNote: {
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      textAlign: 'center',
+      marginTop: 10, // Reduced margin to bring it closer
+      marginBottom: 30,
+      paddingHorizontal: '5%',
+      fontStyle: 'italic',
+    },
+    // New styles for the picker modal
+    modalContainer: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.5)',
+    },
+    pickerContainer: {
+      backgroundColor: '#fff',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 20,
+    },
+    pickerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      padding: 15,
+      borderBottomWidth: 1,
+      borderBottomColor: colorScheme === 'dark' ? '#333' : '#e0e0e0',
+    },
+    pickerHeaderButton: {
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    // Tutorial Overlay Styles
+    tutorialOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'transparent',
+      zIndex: 8,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    tutorialContainer: {
+      width: '100%',
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    tutorialContent: {
+      height: '60%',
+    },
+    flatList: {
+      flexGrow: 0,
+    },
+    flatListContent: {
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    tutorialPage: {
+      width: width,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 20,
+    },
+    tutorialInnerContent: {
+      alignItems: 'center',
+      marginTop: 50, // Move the icon and text down
+    },
+    tutorialIconContainer: {
+      marginBottom: 30,
+    },
+    tutorialIcon: {
+      borderRadius: 40,
+      padding: 20,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#555' : '#CCC',
+      backgroundColor:
+        colorScheme === 'dark'
+          ? 'rgba(255, 255, 255, 0.1)'
+          : 'rgba(0, 0, 0, 0.1)',
+    },
+    tutorialTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+      textAlign: 'center',
+      marginBottom: 20,
+    },
+    tutorialFooter: {
+      width: '100%',
+      alignItems: 'center',
+      marginBottom: 50,
+    },
+    pagination: {
+      flexDirection: 'row',
+      marginBottom: 20,
+    },
+    paginationDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginHorizontal: 5,
+    },
+    paginationDotActive: {
+      backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+    },
+    paginationDotInactive: {
+      backgroundColor: colorScheme === 'dark' ? '#777' : '#ccc',
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    tutorialNextButton: {
+      backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
+      paddingVertical: 12,
+      paddingHorizontal: 40,
+      borderRadius: 25,
+    },
+    tutorialNextButtonText: {
+      color: colorScheme === 'dark' ? '#000' : '#fff',
+      fontSize: 18,
+      fontWeight: 'bold',
+    },
+    betaContainer: {
+      borderRadius: 8,
+      overflow: 'hidden',
+      borderWidth: 1,
+      marginBottom: 12,
+      borderColor: colorScheme === 'dark' ? '#555' : '#CCC',
+      backgroundColor:
+        colorScheme === 'dark'
+          ? 'rgba(255, 255, 255, 0.1)'
+          : 'rgba(0, 0, 0, 0.1)',
+    },
+    betaTag: {
+      fontSize: 14,
+      color: '#007AFF',
+      fontWeight: '600',
+      paddingHorizontal: 12,
+      paddingVertical: 4,
     },
   });
+
+  return baseStyles;
+};
 
 export default FeaturesScreen;

@@ -563,8 +563,8 @@ const styles = StyleSheet.create({
     zIndex: 5,
     borderRadius: 20,
     overflow: 'hidden',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
   },
   flashButton: {
     position: 'absolute',
@@ -593,8 +593,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     alignItems: 'center',
     overflow: 'hidden',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
   },
   zoomText: {
@@ -610,8 +610,8 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
     marginBottom: 20,
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
   },
   blurViewDescription2: {
     borderRadius: 90,
@@ -620,8 +620,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     overflow: 'hidden',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
     marginTop: 14,
   },
   description: {
@@ -647,8 +647,8 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     marginBottom: 25,
     overflow: 'hidden',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
   },
   blurView: {
     padding: 20,
@@ -736,8 +736,8 @@ const styles = StyleSheet.create({
     paddingHorizontal: 18,
     alignItems: 'center',
     overflow: 'hidden',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
     backgroundColor: 'rgba(255, 255, 255, 0.1)',
     marginBottom: 50
   },
@@ -753,8 +753,8 @@ const styles = StyleSheet.create({
   tutorialIcon: {
     borderRadius: 20,
     overflow: 'hidden',
-    borderWidth: 0.2,
-    borderColor: '#aaa',
+    borderWidth: 1,
+    borderColor: '#555',
     backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
   permissionContent: {
