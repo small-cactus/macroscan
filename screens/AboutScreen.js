@@ -29,27 +29,27 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 const CHANGELOG = [
   {
     title: 'UI Overhaul',
-    details: 'Complete dark mode focus with updated colors and animations.',
+    details: 'Now when you scan a food you have access to each ingredient used to make that food, plus more. We completely remade dark mode with updated colors, animations, and gradients.',
   },
   {
     title: 'Enhanced Scanning',
-    details: 'Improved meal detection accuracy with detailed ingredients and macro analysis.',
+    details: 'Improved meal detection accuracy with detailed ingredients, prep time, overview, and macro analysis. Complex scans have a 93% accuracy on average, fast scans have 73% accuracy on average.',
   },
   {
     title: 'New Pricing',
-    details: 'Single $2.99 lifetime purchase. All premium features included.',
+    details: 'Single $2.99 lifetime purchase. All premium features included with unlimited fast and complex scans.',
   },
   {
     title: 'Free Plan Updates',
-    details: '2 daily scans, access to premium features except unlimited scanning.',
+    details: 'You now get 2 fast scans, and 2 complex scans every day. When you run out of either, it will automatically switch to the available mode.',
   },
   {
     title: 'Camera Improvements',
-    details: 'Custom photo interface with faster processing and higher accuracy.',
+    details: 'We added a custom photo interface that is not only faster but also more accurate, we removed compression and frame limits.',
   },
   {
     title: 'Insights Update',
-    details: 'Improved analysis with upcoming workout and recipe suggestions.',
+    details: 'We completely remade the insights screen to allow for more complex and prettier looking graphs, we also made changes to every part of our tracking and trends features.',
   },
 ];
 
@@ -123,7 +123,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.5.0 (67)</Text>
+            <Text style={styles.version}>Version 1.5.0 (70)</Text>
             <View style={styles.betaContainer}>
               <Text style={styles.betaTag}>BETA</Text>
             </View>
@@ -207,13 +207,10 @@ const getDynamicStyles = colorScheme =>
     },
     logoBackground: {
       backgroundColor: '#FFF',
-      borderRadius: 30,
+      borderRadius: 35,
       padding: 0,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-      elevation: 5,
+      borderWidth: 2,
+      borderColor: '#eee'
     },
     logo: {
       width: 130,
@@ -291,15 +288,12 @@ const getDynamicStyles = colorScheme =>
       fontWeight: '600',
     },
     backButton: {
-      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-      borderRadius: 14,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3,
-      elevation: 5,
+      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
+      borderRadius: 140,
       padding: 10,
-      width: 40,
+      // Removed marginRight
+      borderWidth: 2,
+      borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
     },
   });
 

@@ -20,6 +20,12 @@ import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
 import { faInfinity } from '@fortawesome/free-solid-svg-icons';
 import { useUser } from '../userContext';
 import { useNavigation } from '@react-navigation/native';
+import { Pressable } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AnimatedTextFoodScan from './AnimatedTextFoodScan'; // Adjust the path accordingly
+import AnimatedTextFoodScanFast from './AnimatedTextFoodScanFast'; // Adjust the path accordingly
+
+const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
 
 const { width, height } = Dimensions.get('window');
 
@@ -77,6 +83,7 @@ const FoodScanScreen = () => {
   const [foodData, setFoodData] = useState(null);
   const [activeTab, setActiveTab] = useState('');
   const colorScheme = useColorScheme();
+  const styles = getDynamicStyles(colorScheme);
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const [loadingTextQueue, setLoadingTextQueue] = useState([]);
   const [currentLoadingText, setCurrentLoadingText] = useState('');
@@ -716,31 +723,21 @@ const stopLoadingAnimation = () => {
     let foodFound = false; // Local variable to track if food was found
   
     try {
-      const apiKey = await AsyncStorage.getItem('@apikey');
-      if (!apiKey) {
-        console.error("API key not found");
-        Alert.alert('Error', 'API key not found');
-        setIsLoading(false);
-        // Do not update average processing time on error
-        return;
-      }
-  
-      const anthropic = new Anthropic({ apiKey });
-  
       const base64Image = await imageToBase64(imageUri);
   
+      // Define your system prompts here (unchanged)
       const systemPromptFast = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
   
   When presented with an image, follow these steps:
   
   1. Carefully examine the image to identify all food items or components of the meal, including those that may be partially visible or in small quantities.
   2. If the image does not contain food, respond only with "{No Food Found.}"
-
+  
   IMPORTANT STEPS:
   
   3. Pay meticulous attention to serving size measurements. Provide nutrient information based precisely on the serving size shown in the image. For example, if the image depicts a whole jar of peanut butter, report nutrients for the entire jar. If it shows 2/3 of a cookie, provide nutrients for 2/3 of a cookie. Aim for maximum accuracy in all calculations. Ensure the serving size value correctly represents the entire food content visible in the image. For instance, if the image shows a plate of food, the serving size should be "1 plate." If it displays 2/3 of a cookie, the serving size should be "2/3 cookie."
   4. Clearly state any assumptions or adjustments made specific to the image within the details value. For example, if you only analyzed 2/3 of a cookie because that's what was shown in the image, explicitly mention this. Your explanation might read: "Nutrient information is provided for 2/3 of a cookie, as that was the portion visible in the image." This transparency ensures the user understands the basis of your nutrient calculations.
-
+  
   5. For food images, analyze and provide the following information in JSON format:
   
   {
@@ -882,154 +879,431 @@ const stopLoadingAnimation = () => {
   }
   
   Ensure that your JSON response is based on the highest-scored thought path from your thorough analysis.
-
+  
   Pay meticulous attention to serving size measurements. Provide nutrient information based precisely on the serving size shown in the image. For example, if the image depicts a whole jar of peanut butter, report nutrients for the entire jar. If it shows 2/3 of a cookie, provide nutrients for 2/3 of a cookie. Aim for maximum accuracy in all calculations. Ensure the serving size value correctly represents the entire food content visible in the image. For instance, if the image shows a plate of food, the serving size should be "1 plate." If it displays 2/3 of a cookie, the serving size should be "2/3 cookie."
   Clearly state any assumptions or adjustments made specific to the image within the details value. For example, if you only analyzed 2/3 of a cookie because that's what was shown in the image, explicitly mention this. Your explanation might read: "Nutrient information is provided for 2/3 of a cookie, as that was the portion visible in the image." This transparency ensures the user understands the basis of your nutrient calculations.
   
   Include anything you saw like, drinks, condiments, or other items that were NOT included in the calculations for macronutrients inside the 'details' section of the JSON output. These things might include condiments, also include things you are unsure about in the details screen. Be specific and concise.
   `;
   
-      if (mode === 'fast') {
-        console.log(currentLoadingText);
-        // Fast mode logic
-        console.log(
-          "Using fast mode. Sending request to Anthropic API with prompt:",
-          systemPromptFast
-        );
-        const response = await anthropic.messages.create({
-          model: selectedModel,
-          max_tokens: 4096,
-          temperature: 0.7,
-          system: systemPromptFast,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text:
-                    "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'",
-                },
-                {
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: "image/jpeg",
-                    data: base64Image,
+      // Check the toggle variable
+      if (useOpenAI) {
+        console.log("Using OpenAI API");
+      
+        const apiKey = await AsyncStorage.getItem('@openai_api_key');
+        if (!apiKey) {
+          console.error("OpenAI API key not found");
+          Alert.alert('Error', 'OpenAI API key not found');
+          setIsLoading(false);
+          stopLoadingAnimation();
+          setProcessingImage(null);
+          return;
+        }
+      
+        if (mode === 'accurate') {
+          // Accurate mode with OpenAI API
+          console.log("Using accurate mode with OpenAI API");
+      
+          const firstPayload = {
+            model: "gpt-4o",
+            temperature: 0.7,
+            messages: [
+              {
+                role: "system",
+                content: systemPromptAccurate
+              },
+              {
+                role: "user",
+                content: [
+                  { 
+                    type: "text", 
+                    text: "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'" 
                   },
+                  { 
+                    type: "image_url", 
+                    image_url: { 
+                      url: `data:image/jpeg;base64,${base64Image}` 
+                    } 
+                  }
+                ]
+              }
+            ],
+            max_tokens: 4096,
+            temperature: 0.7,
+          };
+      
+          const firstResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(firstPayload),
+          });
+      
+          const firstResponseJson = await firstResponse.json();
+      
+          if (firstResponseJson.error) {
+            console.error("OpenAI API error:", firstResponseJson.error);
+            Alert.alert('Error', 'OpenAI API error');
+            setIsLoading(false);
+            stopLoadingAnimation();
+            setProcessingImage(null);
+            return;
+          }
+      
+          const firstAssistantReply = firstResponseJson.choices[0].message.content;
+      
+          if (firstAssistantReply.includes("No Food Found.}")) {
+            setNoFoodFound(true);
+            setFoodData(null);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            setActiveTab('');
+            foodFound = false;
+          } else {
+            // Second API call with JSON schema
+            const secondPayload = {
+              model: "gpt-4o",
+              temperature: 0.7,
+              messages: [
+                {
+                  role: "system",
+                  content: "You analyze food images and provide structured nutritional data."
                 },
+                {
+                  role: "user",
+                  content: [
+                    { 
+                      type: "text", 
+                      text: firstAssistantReply 
+                    },
+                    { 
+                      type: "image_url", 
+                      image_url: { 
+                        url: `data:image/jpeg;base64,${base64Image}` 
+                      } 
+                    }
+                  ]
+                }
               ],
-            },
-            {
-              role: "assistant",
-              content: "{",
-            },
-          ],
-        });
-        console.log("Received response from Anthropic API (fast mode):", response);
-  
-        const responseText = response.content[0].text;
-        if (responseText.includes("No Food Found.}")) {
-          setNoFoodFound(true); // Set noFoodFound to false when "No Food Found.}" is in the response
-          setFoodData(null);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          setActiveTab('');
-          foodFound = false; // Food was not found
+              response_format: {
+                type: "json_schema",
+                json_schema: {
+                  name: "food_analysis_schema",
+                  schema: {
+                    type: "object",
+                    properties: {
+                      food: {
+                        type: "object",
+                        properties: {
+                          name: { type: "string" },
+                          class: { type: "string" },
+                          type: { type: "string" },
+                          calories: {
+                            type: "object",
+                            properties: {
+                              amount: { type: "number" },
+                              marginOfErrorPercent: { type: "number" }
+                            }
+                          },
+                          proteins: {
+                            type: "object",
+                            properties: {
+                              amount: { type: "number" },
+                              marginOfErrorPercent: { type: "number" }
+                            }
+                          },
+                          carbohydrates: {
+                            type: "object",
+                            properties: {
+                              amount: { type: "number" },
+                              marginOfErrorPercent: { type: "number" }
+                            }
+                          },
+                          fats: {
+                            type: "object",
+                            properties: {
+                              amount: { type: "number" },
+                              marginOfErrorPercent: { type: "number" }
+                            }
+                          },
+                          fiber: {
+                            type: "object",
+                            properties: {
+                              amount: { type: "number" },
+                              marginOfErrorPercent: { type: "number" }
+                            }
+                          },
+                          sodium: {
+                            type: "object",
+                            properties: {
+                              amount: { type: "number" },
+                              marginOfErrorPercent: { type: "number" }
+                            }
+                          },
+                          ingredients: {
+                            type: "array",
+                            items: {
+                              type: "object",
+                              properties: {
+                                name: { type: "string" },
+                                wikipediaLink: { type: "string" },
+                                description: { type: "string" }
+                              }
+                            }
+                          },
+                          details: {
+                            type: "object",
+                            properties: {
+                              summary: { type: "string" },
+                              prepTime: { type: "string" },
+                              servingSize: { type: "string" },
+                              wikipediaLink: { type: "string" }
+                            }
+                          }
+                        },
+                        required: ["name", "calories", "proteins", "carbohydrates", "fats", "details"]
+                      }
+                    },
+                    required: ["food"]
+                  }
+                }
+              }
+            };
+      
+            const secondResponse = await fetch('https://api.openai.com/v1/chat/completions', {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify(secondPayload),
+            });
+      
+            const secondResponseJson = await secondResponse.json();
+      
+            if (secondResponseJson.error) {
+              console.error("OpenAI API error:", secondResponseJson.error);
+              Alert.alert('Error', 'OpenAI API error');
+              setIsLoading(false);
+              stopLoadingAnimation();
+              setProcessingImage(null);
+              return;
+            }
+      
+            try {
+              const parsedData = JSON.parse(secondResponseJson.choices[0].message.content);
+              if (parsedData && parsedData.food) {
+                setFoodData(parsedData.food);
+                setNoFoodFound(false);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                fadeOutTab('Nutrition');
+      
+                await storeProductDetails({
+                  productName: parsedData.food.name,
+                  imageUri: imageUri,
+                  nutrients: parsedData.food,
+                  date: new Date().toISOString(),
+                });
+      
+                foodFound = true;
+              } else {
+                throw new Error("Parsed data is missing required properties.");
+              }
+            } catch (parseError) {
+              console.error("Error parsing JSON response:", parseError);
+              setFoodData(null);
+              setErrorOccured(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              setActiveTab('');
+              foodFound = false;
+            }
+          }
         } else {
-          const jsonString = `{${responseText}`;
+          // Fast mode with OpenAI API
+          const payload = {
+            model: "gpt-4o",
+            temperature: 0.7,
+            messages: [
+              {
+                role: "system",
+                content: systemPromptFast
+              },
+              {
+                role: "user",
+                content: [
+                  { 
+                    type: "text", 
+                    text: "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'" 
+                  },
+                  { 
+                    type: "image_url", 
+                    image_url: { 
+                      url: `data:image/jpeg;base64,${base64Image}` 
+                    } 
+                  }
+                ]
+              }
+            ],
+            response_format: {
+              type: "json_schema",
+              json_schema: {
+                name: "food_analysis_schema",
+                schema: {
+                  type: "object",
+                  properties: {
+                    food: {
+                      type: "object",
+                      properties: {
+                        name: { type: "string" },
+                        class: { type: "string" },
+                        type: { type: "string" },
+                        calories: {
+                          type: "object",
+                          properties: {
+                            amount: { type: "number" },
+                            marginOfErrorPercent: { type: "number" }
+                          }
+                        },
+                        proteins: {
+                          type: "object",
+                          properties: {
+                            amount: { type: "number" },
+                            marginOfErrorPercent: { type: "number" }
+                          }
+                        },
+                        carbohydrates: {
+                          type: "object",
+                          properties: {
+                            amount: { type: "number" },
+                            marginOfErrorPercent: { type: "number" }
+                          }
+                        },
+                        fats: {
+                          type: "object",
+                          properties: {
+                            amount: { type: "number" },
+                            marginOfErrorPercent: { type: "number" }
+                          }
+                        },
+                        fiber: {
+                          type: "object",
+                          properties: {
+                            amount: { type: "number" },
+                            marginOfErrorPercent: { type: "number" }
+                          }
+                        },
+                        sodium: {
+                          type: "object",
+                          properties: {
+                            amount: { type: "number" },
+                            marginOfErrorPercent: { type: "number" }
+                          }
+                        },
+                        ingredients: {
+                          type: "array",
+                          items: {
+                            type: "object",
+                            properties: {
+                              name: { type: "string" },
+                              wikipediaLink: { type: "string" },
+                              description: { type: "string" }
+                            }
+                          }
+                        },
+                        details: {
+                          type: "object",
+                          properties: {
+                            summary: { type: "string" },
+                            prepTime: { type: "string" },
+                            servingSize: { type: "string" },
+                            wikipediaLink: { type: "string" }
+                          }
+                        }
+                      },
+                      required: ["name", "calories", "proteins", "carbohydrates", "fats", "details"]
+                    }
+                  },
+                  required: ["food"]
+                }
+              }
+            }
+          };
+      
+          const response = await fetch('https://api.openai.com/v1/chat/completions', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(payload),
+          });
+      
+          const responseJson = await response.json();
+      
+          if (responseJson.error) {
+            console.error("OpenAI API error:", responseJson.error);
+            Alert.alert('Error', 'OpenAI API error');
+            setIsLoading(false);
+            stopLoadingAnimation();
+            setProcessingImage(null);
+            return;
+          }
+      
           try {
-            console.log(currentLoadingText);
-            const parsedData = JSON.parse(jsonString);
+            const parsedData = JSON.parse(responseJson.choices[0].message.content);
             if (parsedData && parsedData.food) {
               setFoodData(parsedData.food);
               setNoFoodFound(false);
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
               fadeOutTab('Nutrition');
-  
-              // Directly store the product details
+      
               await storeProductDetails({
                 productName: parsedData.food.name,
                 imageUri: imageUri,
                 nutrients: parsedData.food,
                 date: new Date().toISOString(),
               });
-  
-              foodFound = true; // Food was found
+      
+              foodFound = true;
             } else {
               throw new Error("Parsed data is missing required properties.");
             }
           } catch (parseError) {
-            console.error(
-              "Error parsing JSON response (fast mode):",
-              parseError
-            );
+            console.error("Error parsing JSON response:", parseError);
             setFoodData(null);
             setErrorOccured(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
             setActiveTab('');
-            foodFound = false; // Food was not found
+            foodFound = false;
           }
         }
       } else {
-        // Accurate mode logic
-        console.log(
-          "Using accurate mode. Sending first request to Anthropic API with prompt:",
-          systemPromptAccurate
-        );
-        const firstResponse = await anthropic.messages.create({
-          model: selectedModel,
-          max_tokens: 4096,
-          temperature: 0.7,
-          system: systemPromptAccurate,
-          messages: [
-            {
-              role: "user",
-              content: [
-                {
-                  type: "text",
-                  text:
-                    "Analyze this image and provide nutritional information as specified. If the image doesn't contain any food AT ALL, just say '{No Food Found.}'",
-                },
-                {
-                  type: "image",
-                  source: {
-                    type: "base64",
-                    media_type: "image/jpeg",
-                    data: base64Image,
-                  },
-                },
-              ],
-            },
-            {
-              role: "assistant",
-              content: "",
-            },
-          ],
-        });
+        // Existing Anthropic API code
+        console.log("Using Anthropic API");
   
-        console.log(
-          "Received first response from Anthropic API (accurate mode):",
-          firstResponse
-        );
+        const apiKey = await AsyncStorage.getItem('@apikey');
+        if (!apiKey) {
+          console.error("API key not found");
+          Alert.alert('Error', 'API key not found');
+          setIsLoading(false);
+          // Do not update average processing time on error
+          return;
+        }
   
-        const firstResponseText = firstResponse.content[0].text;
-        if (firstResponseText.includes("No Food Found.}")) {
-          setNoFoodFound(true); // Set noFoodFound to false when "No Food Found.}" is in the response
-          setFoodData(null);
-          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-          setActiveTab('');
-          foodFound = false; // Food was not found
-        } else {
-          // Proceed to second request
+        const anthropic = new Anthropic({ apiKey });
+  
+        if (mode === 'fast') {
+          // Fast mode logic
           console.log(
-            "Sending second request to Anthropic API (accurate mode) with prompt:",
-            systemPromptAccurateJson
+            "Using fast mode. Sending request to Anthropic API with prompt:",
+            systemPromptFast
           );
-          const secondResponse = await anthropic.messages.create({
+          const response = await anthropic.messages.create({
             model: selectedModel,
             max_tokens: 4096,
             temperature: 0.7,
-            system: systemPromptAccurateJson,
+            system: systemPromptFast,
             messages: [
               {
                 role: "user",
@@ -1051,57 +1325,186 @@ const stopLoadingAnimation = () => {
               },
               {
                 role: "assistant",
-                content: `{${firstResponse.content[0].text}`,
+                content: "{",
               },
+            ],
+          });
+          console.log("Received response from Anthropic API (fast mode):", response);
+  
+          const responseText = response.content[0].text;
+          if (responseText.includes("No Food Found.}")) {
+            setNoFoodFound(true); // Set noFoodFound to true when "No Food Found.}" is in the response
+            setFoodData(null);
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+            setActiveTab('');
+            foodFound = false; // Food was not found
+          } else {
+            const jsonString = `{${responseText}`;
+            try {
+              const parsedData = JSON.parse(jsonString);
+              if (parsedData && parsedData.food) {
+                setFoodData(parsedData.food);
+                setNoFoodFound(false);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                fadeOutTab('Nutrition');
+  
+                // Directly store the product details
+                await storeProductDetails({
+                  productName: parsedData.food.name,
+                  imageUri: imageUri,
+                  nutrients: parsedData.food,
+                  date: new Date().toISOString(),
+                });
+  
+                foodFound = true; // Food was found
+              } else {
+                throw new Error("Parsed data is missing required properties.");
+              }
+            } catch (parseError) {
+              console.error(
+                "Error parsing JSON response (fast mode):",
+                parseError
+              );
+              setFoodData(null);
+              setErrorOccured(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+              setActiveTab('');
+              foodFound = false; // Food was not found
+            }
+          }
+        } else {
+          // Accurate mode logic
+          console.log(
+            "Using accurate mode. Sending first request to Anthropic API with prompt:",
+            systemPromptAccurate
+          );
+          const firstResponse = await anthropic.messages.create({
+            model: selectedModel,
+            max_tokens: 4096,
+            temperature: 0.7,
+            system: systemPromptAccurate,
+            messages: [
               {
                 role: "user",
-                content:
-                  "Now, based on your analysis and focusing on the highest-scored thought path, provide the JSON data as specified. Continue from the opening curly brace.",
+                content: [
+                  {
+                    type: "text",
+                    text:
+                      "Analyze this image and provide nutritional information as specified. If the image doesn't contain any food AT ALL, just say '{No Food Found.}'",
+                  },
+                  {
+                    type: "image",
+                    source: {
+                      type: "base64",
+                      media_type: "image/jpeg",
+                      data: base64Image,
+                    },
+                  },
+                ],
               },
               {
                 role: "assistant",
-                content: "{",
+                content: "",
               },
             ],
           });
   
           console.log(
-            "Received second response from Anthropic API (accurate mode):",
-            secondResponse
+            "Received first response from Anthropic API (accurate mode):",
+            firstResponse
           );
   
-          const responseText = secondResponse.content[0].text;
-          const jsonString = `{${responseText}`;
-          try {
-            const parsedData = JSON.parse(jsonString);
-            if (parsedData && parsedData.food) {
-              setFoodData(parsedData.food);
-              setNoFoodFound(false);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              fadeOutTab('Nutrition');
-  
-              // Directly store the product details
-              await storeProductDetails({
-                productName: parsedData.food.name,
-                imageUri: imageUri,
-                nutrients: parsedData.food,
-                date: new Date().toISOString(),
-              });
-  
-              foodFound = true; // Food was found
-            } else {
-              throw new Error("Parsed data is missing required properties.");
-            }
-          } catch (parseError) {
-            console.error(
-              "Error parsing JSON response (accurate mode):",
-              parseError
-            );
+          const firstResponseText = firstResponse.content[0].text;
+          if (firstResponseText.includes("No Food Found.}")) {
+            setNoFoodFound(true);
             setFoodData(null);
-            setErrorOccured(true);
             Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
             setActiveTab('');
-            foodFound = false; // Food was not found
+            foodFound = false;
+          } else {
+            // Proceed to second request
+            console.log(
+              "Sending second request to Anthropic API (accurate mode) with prompt:",
+              systemPromptAccurateJson
+            );
+            const secondResponse = await anthropic.messages.create({
+              model: selectedModel,
+              max_tokens: 4096,
+              temperature: 0.7,
+              system: systemPromptAccurateJson,
+              messages: [
+                {
+                  role: "user",
+                  content: [
+                    {
+                      type: "text",
+                      text:
+                        "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'",
+                    },
+                    {
+                      type: "image",
+                      source: {
+                        type: "base64",
+                        media_type: "image/jpeg",
+                        data: base64Image,
+                      },
+                    },
+                  ],
+                },
+                {
+                  role: "assistant",
+                  content: `{${firstResponse.content[0].text}`,
+                },
+                {
+                  role: "user",
+                  content:
+                    "Now, based on your analysis and focusing on the highest-scored thought path, provide the JSON data as specified. Continue from the opening curly brace.",
+                },
+                {
+                  role: "assistant",
+                  content: "{",
+                },
+              ],
+            });
+  
+            console.log(
+              "Received second response from Anthropic API (accurate mode):",
+              secondResponse
+            );
+  
+            const responseText = secondResponse.content[0].text;
+            const jsonString = `{${responseText}`;
+            try {
+              const parsedData = JSON.parse(jsonString);
+              if (parsedData && parsedData.food) {
+                setFoodData(parsedData.food);
+                setNoFoodFound(false);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+                fadeOutTab('Nutrition');
+  
+                // Directly store the product details
+                await storeProductDetails({
+                  productName: parsedData.food.name,
+                  imageUri: imageUri,
+                  nutrients: parsedData.food,
+                  date: new Date().toISOString(),
+                });
+  
+                foodFound = true;
+              } else {
+                throw new Error("Parsed data is missing required properties.");
+              }
+            } catch (parseError) {
+              console.error(
+                "Error parsing JSON response (accurate mode):",
+                parseError
+              );
+              setFoodData(null);
+              setErrorOccured(true);
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+              setActiveTab('');
+              foodFound = false;
+            }
           }
         }
       }
@@ -1169,7 +1572,6 @@ const stopLoadingAnimation = () => {
     });
   };
   
-
   const imageToBase64 = async (uri) => {
     try {
       const response = await fetch(uri);
@@ -1184,7 +1586,7 @@ const stopLoadingAnimation = () => {
       console.error("Error converting image to base64:", error);
       throw error;
     }
-  };
+  };  
 
   const fadeOutTitle = (callback) => {
     Animated.timing(fadeAnimTitle, {
@@ -1363,33 +1765,140 @@ const stopLoadingAnimation = () => {
     </View>
   );
 
-  const renderButtons = () => (
-    <View style={styles.buttonContainer}>
-      <TouchableOpacity style={styles.button} onPress={async () => {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        takePhoto();
-      }}>
-        <Text style={styles.buttonText}>Take Photo Now</Text>
-      </TouchableOpacity>
-      <TouchableOpacity style={styles.button} onPress={async () => {
-        await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        pickImage();
-      }}>
-        <Text style={styles.buttonText}>Pick from Gallery</Text>
-      </TouchableOpacity>
-    </View>
-  );
+  const renderButtons = () => {
+    // Separate Animated.Values for each button
+    const scaleAnimScan = useRef(new Animated.Value(1)).current;
+    const scaleAnimChoose = useRef(new Animated.Value(1)).current;
+
+    // Handlers for Scan Meal Button
+    const onPressInScan = () => {
+      Animated.spring(scaleAnimScan, {
+        toValue: 0.95,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    const onPressOutScan = () => {
+      Animated.spring(scaleAnimScan, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    // Handlers for Choose Photo Button
+    const onPressInChoose = () => {
+      Animated.spring(scaleAnimChoose, {
+        toValue: 0.95,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    const onPressOutChoose = () => {
+      Animated.spring(scaleAnimChoose, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    return (
+      <View style={styles.buttonContainer}>
+        {/* Choose Photo Button */}
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            pickImage();
+          }}
+          onPressIn={onPressInChoose}
+          onPressOut={onPressOutChoose}
+          accessibilityLabel="Pick from Gallery"
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+          style={({ pressed }) => [
+            {
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: scaleAnimChoose }] }}>
+            <LinearGradient
+              colors={['#101010', '#1b1b1d']}
+              style={styles.button}
+              start={[0, 0]}
+              end={[1, 1]}
+            >
+              <View style={styles.buttonContent}>
+                <Icon name="images" size={24} color="#fff" style={styles.icon} />
+                <Text style={styles.buttonText}>Choose photo</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        </Pressable>
+
+                {/* Scan Meal Button */}
+                <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            takePhoto();
+          }}
+          onPressIn={onPressInScan}
+          onPressOut={onPressOutScan}
+          accessibilityLabel="Take Photo Now"
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+          style={({ pressed }) => [
+            {
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: scaleAnimScan }] }}>
+            <LinearGradient
+              colors={['#101010', '#555']}
+              style={styles.button}
+              start={[1, 1.3]}
+              end={[1, 0]}
+            >
+              <View style={styles.buttonContent}>
+                <Icon name="scan" size={24} color="#fff" style={styles.icon} />
+                <Text style={styles.buttonText}>Scan meal</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        </Pressable>
+      </View>
+    );
+  };
 
   return (
     <View style={styles.container}>
-      <Animated.View style={{ opacity: fadeAnimTitle }}>
-        <Text style={styles.title}>
-        {foodData ? (foodData.name.length > 23 ? foodData.name.slice(0, 23) + '...' : foodData.name) : noFoodFound ? 'No Food Found' : ErrorOccured ? "Couldn't Process" : 'No Image Selected'}
-        </Text>
-        <Text style={styles.subtitle}>
-        {foodData ? `${foodData.class} • ${foodData.type}` : ErrorOccured ? 'Something went wrong, please try again' : 'Take clear, centered, and level photos.'}        </Text>
-      </Animated.View>
-
+  <AnimatedTextFoodScan
+    text={
+      foodData
+        ? foodData.name.length > 23
+          ? foodData.name.slice(0, 23) + '...'
+          : foodData.name
+        : noFoodFound
+        ? 'No Food Found'
+        : ErrorOccured
+        ? "Couldn't Process"
+        : 'No Image Selected'
+    }
+    colorScheme={colorScheme}
+    style={styles.title}
+  />
+  <AnimatedTextFoodScan
+    text={
+      foodData
+        ? `${foodData.class} • ${foodData.type}`
+        : ErrorOccured
+        ? 'Something went wrong, please try again'
+        : 'Take clear, centered, and level photos.'
+    }
+    colorScheme={colorScheme}
+    style={styles.subtitle}
+  />
       <View style={styles.imageContainer}>
         {showPlaceholder ? (
           <Animated.View
@@ -1505,15 +2014,19 @@ const stopLoadingAnimation = () => {
           {renderButtons()}
         </ScrollView>
       ) : (
-        <View style={styles.noContentContainer}>
-          <Text style={styles.placeholderTextInScroll}>
-            {noFoodFound 
-              ? "The image you scanned doesn't appear to have any food in it. If it is an image of food, try taking a photo with better lighting or zoom out." 
-              : ErrorOccured 
-                ? "An error occurred while processing the image. We aren't sure what happened, but it's likely to work again. Please try again." 
-                : "The nutrient data and ingredients of food you scan will appear here."}
-          </Text>
-        </View>
+<View style={styles.noContentContainer}>
+  <AnimatedTextFoodScanFast
+    text={
+      noFoodFound
+        ? "The image you scanned doesn't appear to have any food in it. If it is an image of food, try taking a photo with better lighting or zoom out."
+        : ErrorOccured
+        ? 'An error occurred while processing the image. We aren\'t sure what happened, but it\'s likely to work again. Please try again.'
+        : 'The nutrient data and ingredients of food you scan will appear here.'
+    }
+    colorScheme={colorScheme}
+    style={styles.placeholderTextInScroll}
+  />
+</View>
       )}
 
       {!foodData && renderButtons()}
@@ -1536,7 +2049,7 @@ const stopLoadingAnimation = () => {
 >
   <View style={styles.modalBackground}>
     <View style={styles.activityIndicatorWrapper}>
-      <ActivityIndicator size="large" color="#FFFFFF" />
+      <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#FFF' : '#000'} />
       <Animated.View
         style={[
           styles.loadingTextContainer,
@@ -1566,7 +2079,8 @@ const stopLoadingAnimation = () => {
                 <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
                 {isLoading && (
                   <View style={styles.loadingOverlay}>
-                    <ActivityIndicator size="large" color="#FFFFFF" />
+                    <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#FFF' : '#000'}
+                    />
                   </View>
                 )}
               </View>
@@ -1609,11 +2123,11 @@ const stopLoadingAnimation = () => {
   );
 };
 
-const styles = StyleSheet.create({
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#000000',
-    paddingTop: isIphoneSE() ? 0 : 40, // Retain conditional padding
+    backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
+    paddingTop: isIphoneSE() ? 0 : 40,
   },
   scanCounterContainer: {
     position: 'absolute',
@@ -1622,7 +2136,7 @@ const styles = StyleSheet.create({
   },
   scanCounter: {
     borderWidth: 2.5,
-    borderColor: '#5a5a5a',
+    borderColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
     borderRadius: 50,
     padding: 5,
     alignItems: 'center',
@@ -1633,7 +2147,7 @@ const styles = StyleSheet.create({
   scanCounterText: {
     fontSize: 21,
     fontWeight: '500',
-    color: '#e0e0e0',
+    color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
   },
   feedbackContainer: {
     flexDirection: 'column',
@@ -1646,7 +2160,7 @@ const styles = StyleSheet.create({
   },
   feedbackText: {
     fontSize: 15.5,
-    color: '#AAAAAA',
+    color: colorScheme === 'dark' ? '#AAAAAA' : '#666666',
     marginBottom: 10,
   },
   iconButtonContainer: {
@@ -1655,22 +2169,25 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     width: '100%',
   },
+  icon: {
+    marginRight: 10, // Space between icon and text
+  },
   iconButton: {
     padding: 3,
     marginHorizontal: 30,
-    backgroundColor: '#e9e9e9',
+    backgroundColor: colorScheme === 'dark' ? '#e9e9e9' : '#DDD',
     borderRadius: 100,
   },
   inputModalView: {
     margin: 20,
-    backgroundColor: '#161618',
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFFFFF',
     borderRadius: 40,
     padding: 25,
     alignItems: 'center',
-    shadowColor: '#000',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#999',
     shadowOffset: {
-        width: 0,
-        height: 1
+      width: 0,
+      height: 1,
     },
     shadowOpacity: 100,
     shadowRadius: 90,
@@ -1682,12 +2199,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     padding: 10,
     width: 300,
-    borderColor: '#4a4a4a',
-    color: '#c5c5c5',
+    borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#CCCCCC',
+    color: colorScheme === 'dark' ? '#c5c5c5' : '#333333',
     borderRadius: 15,
   },
   inputModalButton: {
-    backgroundColor: '#2d2d2d',
+    backgroundColor: colorScheme === 'dark' ? '#2d2d2d' : '#F0F0F0',
     borderRadius: 90,
     padding: '4%',
     paddingHorizontal: '15%',
@@ -1695,17 +2212,21 @@ const styles = StyleSheet.create({
     marginTop: '3%',
   },
   inputModalButtonText: {
-    color: "white",
+    color: colorScheme === 'dark' ? 'white' : 'black',
     fontSize: 15,
-    fontWeight: "500",
-    textAlign: "center"
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
   inputModalText: {
     marginBottom: '2%',
-    textAlign: "center",
+    textAlign: 'center',
     fontSize: 15,
-    fontWeight: "500",
-    color: '#e9e9e9',
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#333333',
   },
   noContentContainer: {
     flex: 1,
@@ -1714,24 +2235,23 @@ const styles = StyleSheet.create({
     paddingHorizontal: 35,
   },
   placeholderTextInScroll: {
-    color: '#4a4a4a',
+    color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
     fontSize: 16,
     fontWeight: '400',
     textAlign: 'center',
-    marginBottom: 150,
   },
   scrollIndicator: {
     position: 'absolute',
     bottom: 20,
     alignSelf: 'center',
-    backgroundColor: 'black',
+    backgroundColor: colorScheme === 'dark' ? 'black' : '#FFFFFF',
     borderRadius: 200,
     padding: 3,
   },
   title: {
     fontSize: 24,
     fontWeight: 'bold',
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
     textAlign: 'center',
     marginBottom: 4,
     marginTop: 20,
@@ -1739,7 +2259,7 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontSize: 16,
-    color: '#888888',
+    color: colorScheme === 'dark' ? '#888888' : '#555555',
     textAlign: 'center',
     marginBottom: 16,
     marginHorizontal: 25,
@@ -1753,15 +2273,15 @@ const styles = StyleSheet.create({
     borderRadius: 24,
   },
   placeholderContainer: {
-    width: '100%', // Adjusted to fill the parent
+    width: '100%',
     justifyContent: 'center',
     alignItems: 'center',
-    height: '100%', // Adjusted to fill the parent
+    height: '100%',
     borderRadius: 24,
-    backgroundColor: '#111',
+    backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
   },
   placeholderText: {
-    color: '#4a4a4a',
+    color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
     fontSize: 16,
     fontWeight: '400',
   },
@@ -1769,7 +2289,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-around',
     marginBottom: 16,
-    backgroundColor: '#1c1c1e',
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
     marginHorizontal: 15,
     borderRadius: 13,
     paddingVertical: 4,
@@ -1780,14 +2300,14 @@ const styles = StyleSheet.create({
   },
   activeTabButton: {
     borderBottomWidth: 2,
-    borderBottomColor: '#FFFFFF',
+    borderBottomColor: colorScheme === 'dark' ? '#FFFFFF' : '#000',
   },
   tabButtonText: {
     color: '#888888',
     fontSize: 16,
   },
   activeTabButtonText: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
     fontWeight: '400',
   },
   scrollContainer: {
@@ -1796,14 +2316,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   tabContentContainer: {
-    backgroundColor: '#1C1C1E',
+    backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
     borderRadius: 15,
     padding: 16,
     marginBottom: 16,
   },
   separator: {
     height: 4,
-    backgroundColor: '#333333',
+    backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
     marginVertical: 8,
     marginBottom: 16,
     borderRadius: 900,
@@ -1815,12 +2335,12 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   nutrientLabel: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
     fontSize: 17,
     fontWeight: '400',
   },
   nutrientValue: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
     fontSize: 16,
     fontWeight: '500',
   },
@@ -1828,7 +2348,7 @@ const styles = StyleSheet.create({
     marginBottom: 5,
   },
   ingredientName: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
     fontSize: 16,
     fontWeight: 'bold',
     marginBottom: 4,
@@ -1838,18 +2358,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
   },
   detailText: {
-    color: '#ccc',
+    color: colorScheme === 'dark' ? '#ccc' : '#555',
     fontSize: 16,
     marginBottom: 20,
   },
   detailPrepTime: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
     fontSize: 16,
     fontWeight: '500',
     marginBottom: 8,
   },
   detailServingSize: {
-    color: '#FFFFFF',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
     fontSize: 16,
     fontWeight: '500',
     marginBottom: 8,
@@ -1877,20 +2397,22 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
   },
   button: {
-    backgroundColor: '#1c1c1e',
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
     borderRadius: 20,
+    borderWidth: 2,
+    borderColor: colorScheme === 'dark' ? '#222' : '#fff',
     padding: 12,
     paddingHorizontal: 20,
-    shadowColor: '#000',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.8,
     shadowRadius: 15,
     elevation: 1,
   },
   buttonText: {
-    color: '#e9e9e9',
-    fontWeight: "600",
-    textAlign: 'center'
+    color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
+    textAlign: 'center',
+    fontSize: 16,
   },
   feedbackContainer: {
     position: 'absolute',
@@ -1899,7 +2421,6 @@ const styles = StyleSheet.create({
     right: 0,
     alignItems: 'center',
     marginBottom: 24,
-    // Removed duplicate feedbackContainer
   },
   feedbackText: {
     color: '#888888',
@@ -1911,7 +2432,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   feedbackButton: {
-    backgroundColor: '#333333',
+    backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCC',
     width: 40,
     height: 40,
     borderRadius: 20,
@@ -1921,18 +2442,18 @@ const styles = StyleSheet.create({
   },
   modalBackground: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(50, 50, 50, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
   },
   loadingTextContainer: {
-    height: 30, // Fixed height for text container
-    justifyContent: 'center', // Vertically center the text
-    alignItems: 'center', // Horizontally center the text
-    marginTop: 10, // Optional margin to add space between the spinner and text
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
   },
   loadingText: {
-    color: '#a9a9a9',
+    color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
     fontWeight: '500',
     fontSize: 16,
     textAlign: 'center',
@@ -1953,8 +2474,8 @@ const styles = StyleSheet.create({
     height: 200,
     borderRadius: 24,
     marginBottom: 16,
-    backgroundColor: '#111',
-    marginHorizontal: 20, // Moved from second definition
+    backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
+    marginHorizontal: 20,
   },
   tooltip: {
     position: 'absolute',
@@ -1963,7 +2484,7 @@ const styles = StyleSheet.create({
     padding: 10,
     top: -80,
     left: '50%',
-    transform: [{ translateX: -75 }], // Half of the tooltip width
+    transform: [{ translateX: -75 }],
     width: 180,
     alignItems: 'center',
   },

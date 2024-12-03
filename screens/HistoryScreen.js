@@ -1,12 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity,
-  Image, Modal, Alert, Dimensions, Platform, Linking
+  Image, Modal, Alert, Dimensions, Platform, Linking,
+  Appearance, RefreshControl
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Appearance } from 'react-native';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
-import { RefreshControl } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 
@@ -25,7 +24,9 @@ const isIphoneSE = () => {
   return (
     Platform.OS === 'ios' &&
     smallIphoneDimensions.some(
-      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+      dim =>
+        (width === dim.width && height === dim.height) ||
+        (width === dim.height && height === dim.width)
     )
   );
 };
@@ -172,13 +173,13 @@ const HistoryScreen = () => {
     loadHistory().then(() => setRefreshing(false));
   }, []);
 
-  function truncateString(str, num) {
+  const truncateString = (str, num) => {
     if (str.length > num) {
       return str.slice(0, num) + '...';
     } else {
       return str;
     }
-  }
+  };
 
   const clearHistory = async () => {
     Alert.alert(
@@ -245,8 +246,7 @@ const HistoryScreen = () => {
       <View style={styles.nutrientRow}>
         <Text style={styles.nutrientLabel}>{label}</Text>
         <Text style={styles.nutrientValue}>
-          {data.amount}{' '}
-          {label === 'Calories' ? 'kcal' : label === 'Sodium' ? 'mg' : 'g'} (±
+          {data.amount} {label === 'Calories' ? 'kcal' : label === 'Sodium' ? 'mg' : 'g'} (±
           {data.marginOfErrorPercent}%)
         </Text>
       </View>
@@ -292,8 +292,6 @@ const HistoryScreen = () => {
     );
   };
 
-  const renderTitleSeparator = () => <View style={styles.separatorTitle} />;
-
   const renderSubtitle = () => {
     if (history.length < 4) {
       return (
@@ -312,7 +310,7 @@ const HistoryScreen = () => {
         <SymbolView
           name="trash.slash.fill"
           size={26}
-          tintColor={colorScheme === 'dark' ? '#fff' : '#fff'}
+          tintColor="#fff"
           type="hierarchical"
           style={styles.symbol}
         />
@@ -324,7 +322,7 @@ const HistoryScreen = () => {
         <SymbolView
           name="wrench.and.screwdriver.fill"
           size={26}
-          tintColor={colorScheme === 'dark' ? '#fff' : '#fff'}
+          tintColor="#fff"
           type="hierarchical"
           style={styles.symbol}
         />
@@ -380,7 +378,7 @@ const HistoryScreen = () => {
         >
           <View style={styles.modalView}>
             <TouchableOpacity style={styles.closeButton} onPress={() => setSelectedItem(null)}>
-              <Ionicons name="close" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
+              <Ionicons name="close" size={24} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.productNameModal} numberOfLines={1}>
               {truncateString(selectedItem.productName, 20)}
@@ -455,166 +453,164 @@ const HistoryScreen = () => {
 const getDynamicStyles = (colorScheme) =>
   StyleSheet.create({
     container: {
-        flex: 1,
-        alignItems: 'center',
-        paddingTop: 20,
-        backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+      flex: 1,
+      alignItems: 'center',
+      paddingTop: 20,
+      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
     scrollContainer: {
-        width: '100%',
-        marginTop: '5%',
-        padding: '3%',
+      width: '100%',
+      marginTop: '5%',
+      padding: '3%',
     },
     card: {
-        flexDirection: 'row',
-        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
-        padding: 13,
-        marginVertical: 6,
-        borderRadius: 25,
+      flexDirection: 'row',
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
+      padding: 13,
+      marginVertical: 6,
+      borderRadius: 25,
     },
     productImage: {
-        width: 100,
-        height: 100,
-        borderRadius: 15,
+      width: 100,
+      height: 100,
+      borderRadius: 15,
     },
     info: {
-        flex: 1,
-        marginLeft: 10,
-        justifyContent: 'center',
+      flex: 1,
+      marginLeft: 10,
+      justifyContent: 'center',
     },
     productName: {
-        fontSize: 18,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
+      fontSize: 18,
+      fontWeight: 'bold',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
     },
     date: {
-        fontSize: 14,
-        color: colorScheme === 'dark' ? '#888' : '#7a7a7a',
-        marginTop: 3,
-        marginLeft: 1,
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#888' : '#7a7a7a',
+      marginTop: 3,
+      marginLeft: 1,
     },
     emptyText: {
-        marginTop: '70%',
-        fontSize: 16,
-        color: colorScheme === 'dark' ? '#AAAAAA' : '#AAAAAA',
-        textAlign: 'center',
-        marginHorizontal: '13%'
+      marginTop: '70%',
+      fontSize: 16,
+      color: '#AAAAAA',
+      textAlign: 'center',
+      marginHorizontal: '13%',
     },
     modalView: {
-        flex: 1,
-        marginTop: '14%',
-        backgroundColor: colorScheme === 'dark' ? '#111' : '#FFF',
-        borderRadius: isIphoneSE() ? 15 : 48,
-        padding: 20,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.75,
-        shadowRadius: 50,
-        elevation: 5,
+      flex: 1,
+      marginTop: '14%',
+      backgroundColor: colorScheme === 'dark' ? '#111' : '#FFF',
+      borderRadius: isIphoneSE() ? 15 : 48,
+      padding: 20,
+      alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.75,
+      shadowRadius: 50,
+      elevation: 5,
     },
     productNameModal: {
-        fontSize: 24,
-        alignSelf: 'center',
-        marginBottom: '3%',
-        fontWeight: 'bold',
-        top: '0.3%',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
+      fontSize: 24,
+      alignSelf: 'center',
+      marginBottom: '3%',
+      fontWeight: 'bold',
+      top: '0.3%',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
     },
     imagePreview: {
-        width: '100%',
-        height: isIphoneSE() ? 200 : 300,
-        borderRadius: 25,
-        marginBottom: 15,
+      width: '100%',
+      height: isIphoneSE() ? 200 : 300,
+      borderRadius: 25,
+      marginBottom: 15,
     },
     nutrientContainer: {
-        width: '100%',
+      width: '100%',
     },
     nutrientItem: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginBottom: 5,
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      marginBottom: 5,
     },
     nutrientLabel: {
-        fontWeight: '500',
-        fontSize: 17,
-        color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
+      fontWeight: '500',
+      fontSize: 17,
+      color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
     },
     nutrientValue: {
-        color: "#7a7a7a",
-        textAlign: 'right',
-        fontSize: 16,
-        fontWeight: '400',
-        color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
+      fontSize: 16,
+      fontWeight: '400',
+      color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
+      textAlign: 'right',
     },
     closeButton: {
-        backgroundColor: colorScheme === 'dark' ? '#3a3a3F' : '#000',
-        borderRadius: 100,
-        padding: 8,
-        elevation: 2,
-        position: 'absolute', // Corrected to 'absolute' for exact placement
-        right: '5%',  // 5% from the right edge of the screen
-        top: '2%',  // 20% from the top of the screen
-        zIndex: 1,  // Ensure it stays on top of other components if needed
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 2 },
-        shadowOpacity: 0.25,
-        shadowRadius: 3,
-        elevation: 5,
+      backgroundColor: colorScheme === 'dark' ? '#3a3a3F' : '#000',
+      borderRadius: 100,
+      padding: 8,
+      elevation: 2,
+      position: 'absolute',
+      right: '5%',
+      top: '2%',
+      zIndex: 1,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3,
     },
     iconButton: {
-        position: 'absolute', // Corrected to 'absolute' for exact placement
-        right: '6%',  // 6.5% from the right edge of the screen
-        top: isIphoneSE() ? '5%' : '8%',
-        padding: 10,
-        zIndex: 1,  // Ensure it stays on top of other components if needed
-        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-        borderRadius: 15,
+      position: 'absolute',
+      right: '6%',
+      top: isIphoneSE() ? '5%' : '8%',
+      padding: 10,
+      zIndex: 1,
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
+      borderRadius: 15,
     },
     historyTitle: {
-        marginTop: isIphoneSE() ? '5%' : '12%',
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        textAlign: 'center',
+      marginTop: isIphoneSE() ? '5%' : '12%',
+      fontSize: 28,
+      fontWeight: 'bold',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+      textAlign: 'center',
     },
     separatorTitle: {
-        height: 5,
-        width: 300,
-        backgroundColor: '#333',
-        marginVertical: 20,
-        borderRadius: 900,
-      },
+      height: 5,
+      width: 300,
+      backgroundColor: '#333',
+      marginVertical: 20,
+      borderRadius: 900,
+    },
     separator: {
-        height: 4,
-        backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
-        marginVertical: 8,
-        marginBottom: 16,
-        borderRadius: 900,
+      height: 4,
+      backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
+      marginVertical: 8,
+      marginBottom: 16,
+      borderRadius: 900,
     },
     deleteButton: {
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 10,
-        backgroundColor: colorScheme === 'dark' ? '#161618' : '#ddd',
-        borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 10,
+      backgroundColor: colorScheme === 'dark' ? '#161618' : '#ddd',
+      borderRadius: 15,
     },
     debugButton: {
-        position: 'absolute', // Corrected to 'absolute' for exact placement
-        right: '84%',  // 6.5% from the right edge of the screen
-        top: isIphoneSE() ? '5%' : '8%',
-        padding: 10,
-        zIndex: 1,  // Ensure it stays on top of other components if needed
-        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-        borderRadius: 15,
+      position: 'absolute',
+      right: '84%',
+      top: isIphoneSE() ? '5%' : '8%',
+      padding: 10,
+      zIndex: 1,
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
+      borderRadius: 15,
     },
     subtitle: {
-        fontSize: 16,
-        color: '#888888',
-        textAlign: 'center',
-        marginTop: 40,
-        marginBottom: 35,
-        marginHorizontal: 25,
+      fontSize: 16,
+      color: '#888888',
+      textAlign: 'center',
+      marginTop: 40,
+      marginBottom: 35,
+      marginHorizontal: 25,
     },
     tabContainer: {
       flexDirection: 'row',
@@ -655,18 +651,8 @@ const getDynamicStyles = (colorScheme) =>
       alignItems: 'center',
       paddingVertical: 2,
     },
-    nutrientLabel: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 17,
-      fontWeight: '400',
-    },
-    nutrientValue: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
-      fontWeight: '500',
-    },
     ingredientDescriptionNote: {
-      color: colorScheme === 'dark' ? '#888888' : '#888888',
+      color: '#888888',
       fontSize: 14,
       marginBottom: 10,
       textAlign: 'center',
@@ -681,7 +667,7 @@ const getDynamicStyles = (colorScheme) =>
       marginBottom: 4,
     },
     ingredientDescription: {
-      color: colorScheme === 'dark' ? '#888888' : '#888888',
+      color: '#888888',
       fontSize: 14,
     },
     detailText: {
@@ -708,11 +694,11 @@ const getDynamicStyles = (colorScheme) =>
       marginTop: 0,
     },
     dateModal: {
-        fontSize: 16,
-        color: '#888888',
-        textAlign: 'center',
-        marginBottom: '4%',
+      fontSize: 16,
+      color: '#888888',
+      textAlign: 'center',
+      marginBottom: '4%',
     },
-});
+  });
 
 export default HistoryScreen;

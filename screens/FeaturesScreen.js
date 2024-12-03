@@ -38,7 +38,7 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const DEBUG_MOCK_UNLIMITED = false;
+const DEBUG_MOCK_UNLIMITED = true;
 const { width, height } = Dimensions.get('window');
 
 const isIphoneSE = () => {
@@ -701,14 +701,11 @@ const getDynamicStyles = (colorScheme) => {
     },
     backButton: {
       backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
-      borderRadius: 14,
+      borderRadius: 140,
       padding: 10,
       // Removed marginRight
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3,
-      elevation: 5,
+      borderWidth: 2,
+      borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
     },
     title: {
       fontSize: 25,

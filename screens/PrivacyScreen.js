@@ -227,15 +227,12 @@ const getDynamicStyles = colorScheme =>
       flexShrink: 1,
     },
     backButton: {
-      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#FFFFFF',
-      borderRadius: 14,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.25,
-      shadowRadius: 3,
-      elevation: 5,
+      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
+      borderRadius: 140,
       padding: 10,
-      width: 40,
+      // Removed marginRight
+      borderWidth: 2,
+      borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
     },
   });
 

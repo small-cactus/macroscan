@@ -1,1771 +1,1433 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Alert, StyleSheet, View, Text, ScrollView, TouchableOpacity, Modal, TextInput, Image, RefreshControl, Dimensions, Platform } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useColorScheme, Linking } from 'react-native';
+// InsightsScreen.js
+
+import React, { useState, useEffect, useRef } from 'react';
+import {
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  TouchableOpacity,
+  SafeAreaView,
+  TextInput,
+  ActivityIndicator,
+  Dimensions,
+  Platform,
+  Linking,
+  Alert,
+  FlatList,
+  Animated,
+} from 'react-native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
-import { Svg, Circle, Defs, LinearGradient, Stop } from 'react-native-svg';
-import Anthropic from "@anthropic-ai/sdk";
-import { SymbolView } from 'expo-symbols';
-import SubscriptionModal from './SubscriptionModal';
-import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { LineChart } from 'react-native-chart-kit';
+import { BlurView } from 'expo-blur';
+import * as Animatable from 'react-native-animatable';
+import * as Haptics from 'expo-haptics';
+import AnimatedCenteredText from './AnimatedCenteredText';
 
 const { width, height } = Dimensions.get('window');
 
+const DEBUG_SHOW_ONBOARDING = true; // Set to true to always show onboarding
+
 const isIphoneSE = () => {
-    const smallIphoneDimensions = [
-      { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
-      { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
-      { width: 414, height: 736 }, // iPhone 8 Plus
-      { width: 360, height: 640 }, // iPhone SE (2020)
-      { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
-      { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
-    ];
-  
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 },
+    { width: 375, height: 667 },
+    { width: 414, height: 736 },
+    { width: 360, height: 640 },
+    { width: 375, height: 812 },
+    { width: 360, height: 780 },
+  ];
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      (dim) =>
+        (width === dim.width && height === dim.height) ||
+        (width === dim.height && height === dim.width)
+    )
+  );
+};
+
+const InsightsScreen = () => {
+  const navigation = useNavigation();
+  const [history, setHistory] = useState([]);
+  const [goals, setGoals] = useState(null);
+  const [trends, setTrends] = useState(null);
+  const [recommendations, setRecommendations] = useState('');
+  const [loadingRecommendations, setLoadingRecommendations] = useState(false);
+  const [repeatFoods, setRepeatFoods] = useState([]);
+  const [selectedMacro, setSelectedMacro] = useState('calories');
+
+  // Onboarding state variables
+  const [showOnboarding, setShowOnboarding] = useState(false);
+  const onboardingOpacityAnim = useRef(new Animated.Value(0)).current;
+  const [onboardingIndex, setOnboardingIndex] = useState(0);
+  const flatListRef = useRef(null);
+  const [currentOnboardingIndex, setCurrentOnboardingIndex] = useState(0);
+  const [onboardingDataCollected, setOnboardingDataCollected] = useState({
+    unit: 'imperial',
+    height: '',
+    heightFeet: '',
+    heightInches: '',
+    weight: '',
+    age: '',
+    gender: '',
+    activityLevel: '',
+    goal: 'Maintain Weight',
+  });
+  const [calculatedGoals, setCalculatedGoals] = useState(null);
+  const [goalsAdjustments, setGoalsAdjustments] = useState({
+    calories: 0,
+    proteins: 0,
+    carbohydrates: 0,
+    fats: 0,
+  });
+
+  const onboardingData = [
+    {
+      key: '1',
+      title: 'Welcome to Insights',
+      description: "Let's get to know you better to set up your personalized goals.",
+      icon: 'stats-chart',
+    },
+    {
+      key: '2',
+      title: 'What is your height?',
+      field: 'height',
+      icon: 'man-outline',
+      description: 'We use your height to calculate your BMR. We will never share this data with third parties.',
+    },
+    {
+      key: '3',
+      title: 'What is your weight?',
+      field: 'weight',
+      icon: 'barbell-outline',
+      description: 'We use your weight to calculate your BMR. This data is never shared.',
+    },
+    {
+      key: '4',
+      title: 'What is your age?',
+      field: 'age',
+      icon: 'calendar-outline',
+      description: 'We use your age to calculate your BMR. We only use this for calculating goals, it will not be used for anything else, nor will it be shared.',
+    },
+    {
+      key: '5',
+      title: 'What is your gender?',
+      options: ['Male', 'Female', 'Other'],
+      field: 'gender',
+      icon: 'transgender-outline',
+      description: 'We use your gender to calculate your BMR. This will not be shared, this is important to get correct goals.',
+    },
+    {
+      key: '6',
+      title: 'Select Your Activity Level',
+      options: [
+        {
+          name: 'Sedentary',
+          description: 'Little or no exercise',
+        },
+        {
+          name: 'Lightly Active',
+          description: 'Light exercise 1-3 days/week',
+        },
+        {
+          name: 'Moderately Active',
+          description: 'Moderate exercise 3-5 days/week',
+        },
+        {
+          name: 'Very Active',
+          description: 'Hard exercise 6-7 days/week',
+        },
+        {
+          name: 'Extra Active',
+          description: 'Very hard exercise or physical job',
+        },
+      ],
+      field: 'activityLevel',
+      icon: 'walk-outline',
+      description: 'We use your activity level to calculate your daily calorie needs.',
+    },
+    {
+      key: '7',
+      title: 'Select Your Goal',
+      options: ['Lose Weight', 'Maintain Weight', 'Gain Weight'],
+      field: 'goal',
+      icon: 'trending-up-outline',
+      description: 'Choose your desired weight management goal.',
+    },
+    {
+      key: '8',
+      title: 'Here are your suggested goals',
+      icon: 'trophy-outline',
+    },
+  ];
+
+  useEffect(() => {
+    loadHistory();
+    loadGoals();
+  }, []);
+
+  useFocusEffect(
+    React.useCallback(() => {
+      loadHistory();
+      loadGoals();
+    }, [])
+  );
+
+  const loadHistory = async () => {
+    try {
+      const storedHistoryString = await AsyncStorage.getItem('@product_history');
+      if (storedHistoryString) {
+        const storedHistory = JSON.parse(storedHistoryString);
+        setHistory(storedHistory);
+        calculateTrends(storedHistory);
+        identifyRepeatFoods(storedHistory);
+      } else {
+        setHistory([]);
+      }
+    } catch (error) {
+      console.error('Error loading history:', error);
+    }
+  };
+
+  const loadGoals = async () => {
+    try {
+      const storedGoalsString = await AsyncStorage.getItem('@user_goals');
+      if (DEBUG_SHOW_ONBOARDING || !storedGoalsString) {
+        setShowOnboarding(true);
+        Animated.timing(onboardingOpacityAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      } else {
+        const storedGoals = JSON.parse(storedGoalsString);
+        setGoals(storedGoals);
+      }
+    } catch (error) {
+      console.error('Error loading goals:', error);
+    }
+  };
+
+  useEffect(() => {
+    if (currentOnboardingIndex === 7) {
+      // Only calculate goals if we have collected all necessary data
+      if (
+        (onboardingDataCollected.unit === 'imperial' &&
+          onboardingDataCollected.heightFeet &&
+          onboardingDataCollected.heightInches &&
+          onboardingDataCollected.weight &&
+          onboardingDataCollected.age &&
+          onboardingDataCollected.gender &&
+          onboardingDataCollected.activityLevel &&
+          onboardingDataCollected.goal) ||
+        (onboardingDataCollected.unit === 'metric' &&
+          onboardingDataCollected.height &&
+          onboardingDataCollected.weight &&
+          onboardingDataCollected.age &&
+          onboardingDataCollected.gender &&
+          onboardingDataCollected.activityLevel &&
+          onboardingDataCollected.goal)
+      ) {
+        const goals = calculateGoals(onboardingDataCollected);
+        setCalculatedGoals(goals);
+      } else {
+        // Handle incomplete data
+        console.warn('Incomplete data for goal calculation');
+      }
+    }
+  }, [currentOnboardingIndex]);
+
+  const calculateTrends = (historyData) => {
+    const today = new Date();
+    const dailyData = {
+      calories: [],
+      proteins: [],
+      carbohydrates: [],
+      fats: [],
+    };
+
+    for (let i = 6; i >= 0; i--) {
+      // Create a date object in UTC for the day we're examining
+      const date = new Date(Date.UTC(
+        today.getUTCFullYear(),
+        today.getUTCMonth(),
+        today.getUTCDate() - i
+      ));
+      const dateYear = date.getUTCFullYear();
+      const dateMonth = date.getUTCMonth();
+      const dateDay = date.getUTCDate();
+
+      // Filter historyData to find items that match the date
+      const dailyItems = historyData.filter((item) => {
+        const itemDate = new Date(item.date);
+        return (
+          itemDate.getUTCFullYear() === dateYear &&
+          itemDate.getUTCMonth() === dateMonth &&
+          itemDate.getUTCDate() === dateDay
+        );
+      });
+
+      // Sum up the nutrients for the day
+      const dailyCalories = dailyItems.reduce(
+        (total, item) => total + (item.nutrients?.calories?.amount || 0),
+        0
+      );
+      const dailyProteins = dailyItems.reduce(
+        (total, item) => total + (item.nutrients?.proteins?.amount || 0),
+        0
+      );
+      const dailyCarbohydrates = dailyItems.reduce(
+        (total, item) => total + (item.nutrients?.carbohydrates?.amount || 0),
+        0
+      );
+      const dailyFats = dailyItems.reduce(
+        (total, item) => total + (item.nutrients?.fats?.amount || 0),
+        0
+      );
+
+      // Push the sums into the dailyData arrays
+      dailyData.calories.push(dailyCalories);
+      dailyData.proteins.push(dailyProteins);
+      dailyData.carbohydrates.push(dailyCarbohydrates);
+      dailyData.fats.push(dailyFats);
+    }
+
+    // Update the state with the calculated trends
+    setTrends(dailyData);
+  };
+
+  const identifyRepeatFoods = (historyData) => {
+    const foodCount = {};
+    historyData.forEach((item) => {
+      const name = item.productName;
+      if (foodCount[name]) {
+        foodCount[name]++;
+      } else {
+        foodCount[name] = 1;
+      }
+    });
+    const repeats = Object.keys(foodCount)
+      .map((name) => ({ name, count: foodCount[name] }))
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5); // Get top 5 items
+    setRepeatFoods(repeats);
+  };
+
+  const fetchRecommendations = async () => {
+    setLoadingRecommendations(true);
+    try {
+      const apiKey = await AsyncStorage.getItem('@apikey');
+      if (!apiKey) {
+        Alert.alert('API Key Missing', 'Please set your API key in the settings.');
+        setLoadingRecommendations(false);
+        return;
+      }
+
+      // Import and initialize Anthropic client
+      const Anthropic = require('@anthropic-ai/sdk');
+      const anthropic = new Anthropic({
+        apiKey: apiKey,
+      });
+
+      // Prepare the data for the API call
+      const recentHistory = history.slice(-7); // Last 7 entries
+      const prompt = `Based on the following food intake, provide personalized nutrition advice in 1 small sentence, do not include further elaboration:\n\n${recentHistory
+        .map(
+          (item) =>
+            `${item.productName} - Calories: ${item.nutrients?.calories?.amount || 0} kcal, Proteins: ${item.nutrients?.proteins?.amount || 0} g, Carbs: ${item.nutrients?.carbohydrates?.amount || 0} g, Fats: ${item.nutrients?.fats?.amount || 0} g`
+        )
+        .join('\n')}`;
+
+      const message = await anthropic.messages.create({
+        model: 'claude-3-haiku-20240307',
+        max_tokens: 3000,
+        messages: [{
+          role: 'user',
+          content: prompt
+        }]
+      });
+
+      if (message.content[0].text) {
+        setRecommendations(message.content[0].text.trim());
+      } else {
+        setRecommendations('No recommendations available at this time.');
+      }
+    } catch (error) {
+      console.error('Error fetching recommendations:', error);
+      setRecommendations('Error fetching recommendations.');
+    } finally {
+      setLoadingRecommendations(false);
+    }
+  };
+
+  // Function to convert hex color to rgba
+  const hexToRgba = (hex, opacity) => {
+    const bigint = parseInt(hex.replace('#', ''), 16);
+    const r = (bigint >> 16) & 255;
+    const g = (bigint >> 8) & 255;
+    const b = bigint & 255;
+    return `rgba(${r}, ${g}, ${b}, ${opacity})`;
+  };
+
+  // Onboarding functions
+  const calculateGoals = (data) => {
+    // Convert units if needed
+    let weightKg;
+    let heightCm;
+    if (data.unit === 'imperial') {
+      weightKg = parseFloat(data.weight) * 0.453592;
+      if (data.heightFeet && data.heightInches) {
+        heightCm =
+          (parseFloat(data.heightFeet) * 12 + parseFloat(data.heightInches)) *
+          2.54;
+      } else {
+        heightCm = 0;
+      }
+    } else {
+      weightKg = parseFloat(data.weight);
+      heightCm = parseFloat(data.height);
+    }
+    const age = parseInt(data.age);
+    const gender = data.gender;
+    // Calculate BMR using Mifflin-St Jeor Equation
+    let BMR;
+    if (gender === 'Male') {
+      BMR = 10 * weightKg + 6.25 * heightCm - 5 * age + 5;
+    } else {
+      BMR = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
+    }
+    // Activity factor
+    let activityFactor = 1.2;
+    switch (data.activityLevel) {
+      case 'Sedentary':
+        activityFactor = 1.2;
+        break;
+      case 'Lightly Active':
+        activityFactor = 1.375;
+        break;
+      case 'Moderately Active':
+        activityFactor = 1.55;
+        break;
+      case 'Very Active':
+        activityFactor = 1.725;
+        break;
+      case 'Extra Active':
+        activityFactor = 1.9;
+        break;
+    }
+    // Total Daily Energy Expenditure
+    let TDEE = BMR * activityFactor;
+
+    // Adjust TDEE based on goal
+    if (data.goal === 'Lose Weight') {
+      TDEE -= 500; // Subtract 500 calories for weight loss
+    } else if (data.goal === 'Gain Weight') {
+      TDEE += 500; // Add 500 calories for weight gain
+    }
+
+    // Ensure TDEE is not negative
+    TDEE = Math.max(TDEE, 1200); // Minimum calories
+
+    // Calculate macros based on percentages
+    const calories = Math.round(TDEE);
+    const proteins = Math.round(weightKg * 2); // 2g per kg of body weight
+    const fats = Math.round((calories * 0.25) / 9); // 25% of calories from fat
+    const carbohydrates = Math.round(
+      (calories - proteins * 4 - fats * 9) / 4
+    );
+    return {
+      calories,
+      proteins,
+      carbohydrates,
+      fats,
+    };
+  };
+
+  const adjustGoal = (macro, percentage) => {
+    setGoalsAdjustments((prevAdjustments) => ({
+      ...prevAdjustments,
+      [macro]: prevAdjustments[macro] + percentage,
+    }));
+  };
+
+  const handleSaveGoalsFromOnboarding = async () => {
+    try {
+      const finalGoals = {};
+      ['calories', 'proteins', 'carbohydrates', 'fats'].forEach((macro) => {
+        finalGoals[macro] = Math.round(
+          calculatedGoals[macro] * (1 + goalsAdjustments[macro] / 100)
+        );
+      });
+      await AsyncStorage.setItem('@user_goals', JSON.stringify(finalGoals));
+      setGoals(finalGoals);
+      setShowOnboarding(false);
+      setCalculatedGoals(null);
+      setOnboardingIndex(0);
+      setCurrentOnboardingIndex(0);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    } catch (error) {
+      console.error('Error saving goals:', error);
+    }
+  };
+
+  const renderOnboardingItem = ({ item, index }) => {
     return (
-      Platform.OS === 'ios' &&
-      smallIphoneDimensions.some(
-        dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
-      )
+      <View style={styles.onboardingPage}>
+        <View style={styles.onboardingInnerContent}>
+          <View style={styles.onboardingIconContainer}>
+            <BlurView intensity={30} style={styles.onboardingIcon}>
+              <Ionicons name={item.icon} size={80} color="#fff" />
+            </BlurView>
+          </View>
+          <Text style={styles.onboardingTitle}>{item.title}</Text>
+
+          {/* Input Fields or Options */}
+          {item.field === 'height' ? (
+            <>
+              <View style={styles.unitToggleContainer}>
+                <TouchableOpacity
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      unit: 'imperial',
+                      height: '',
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.unit === 'imperial'
+                      ? styles.unitToggleSelected
+                      : styles.unitToggle
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.unit === 'imperial'
+                        ? styles.unitToggleTextSelected
+                        : styles.unitToggleText
+                    }
+                  >
+                    Imperial (ft/in)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      unit: 'metric',
+                      heightFeet: '',
+                      heightInches: '',
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.unit === 'metric'
+                      ? styles.unitToggleSelected
+                      : styles.unitToggle
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.unit === 'metric'
+                        ? styles.unitToggleTextSelected
+                        : styles.unitToggleText
+                    }
+                  >
+                    Metric (cm)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              {onboardingDataCollected.unit === 'imperial' ? (
+                <View style={styles.inputRow}>
+                  <TextInput
+                    placeholder="Feet"
+                    placeholderTextColor="#999"
+                    keyboardType="numeric"
+                    style={styles.inputSmall}
+                    value={onboardingDataCollected.heightFeet}
+                    onChangeText={(value) =>
+                      setOnboardingDataCollected({
+                        ...onboardingDataCollected,
+                        heightFeet: value,
+                      })
+                    }
+                  />
+                  <TextInput
+                    placeholder="Inches"
+                    placeholderTextColor="#999"
+                    keyboardType="numeric"
+                    style={styles.inputSmall}
+                    value={onboardingDataCollected.heightInches}
+                    onChangeText={(value) =>
+                      setOnboardingDataCollected({
+                        ...onboardingDataCollected,
+                        heightInches: value,
+                      })
+                    }
+                  />
+                </View>
+              ) : (
+                <TextInput
+                  placeholder="Centimeters"
+                  placeholderTextColor="#999"
+                  keyboardType="numeric"
+                  style={styles.input}
+                  value={onboardingDataCollected.height}
+                  onChangeText={(value) =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      height: value,
+                    })
+                  }
+                />
+              )}
+            </>
+          ) : item.field === 'weight' ? (
+            <>
+              <View style={styles.unitToggleContainer}>
+                <TouchableOpacity
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      unit: 'imperial',
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.unit === 'imperial'
+                      ? styles.unitToggleSelected
+                      : styles.unitToggle
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.unit === 'imperial'
+                        ? styles.unitToggleTextSelected
+                        : styles.unitToggleText
+                    }
+                  >
+                    Imperial (lbs)
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      unit: 'metric',
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.unit === 'metric'
+                      ? styles.unitToggleSelected
+                      : styles.unitToggle
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.unit === 'metric'
+                        ? styles.unitToggleTextSelected
+                        : styles.unitToggleText
+                    }
+                  >
+                    Metric (kg)
+                  </Text>
+                </TouchableOpacity>
+              </View>
+              <TextInput
+                placeholder={
+                  onboardingDataCollected.unit === 'imperial' ? 'Pounds' : 'Kilograms'
+                }
+                placeholderTextColor="#999"
+                keyboardType="numeric"
+                style={styles.input}
+                value={onboardingDataCollected.weight}
+                onChangeText={(value) =>
+                  setOnboardingDataCollected({
+                    ...onboardingDataCollected,
+                    weight: value,
+                  })
+                }
+              />
+            </>
+          ) : item.field === 'age' ? (
+            <TextInput
+              placeholder="Age"
+              placeholderTextColor="#999"
+              keyboardType="numeric"
+              style={styles.input}
+              value={onboardingDataCollected.age}
+              onChangeText={(value) =>
+                setOnboardingDataCollected({
+                  ...onboardingDataCollected,
+                  age: value,
+                })
+              }
+            />
+          ) : item.field === 'gender' ? (
+            <View style={styles.optionsContainer}>
+              {item.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      gender: option,
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.gender === option
+                      ? styles.optionSelected
+                      : styles.option
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.gender === option
+                        ? styles.optionTextSelected
+                        : styles.optionText
+                    }
+                  >
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : item.field === 'activityLevel' ? (
+            <ScrollView
+              style={styles.optionsContainerScroll}
+              contentContainerStyle={styles.optionsContainer}
+            >
+              {item.options.map((option) => (
+                <TouchableOpacity
+                  key={option.name}
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      activityLevel: option.name,
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.activityLevel === option.name
+                      ? styles.optionSelectedLarge
+                      : styles.optionLarge
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.activityLevel === option.name
+                        ? styles.optionTextSelected
+                        : styles.optionText
+                    }
+                  >
+                    {option.name}
+                  </Text>
+                  <Text style={styles.optionDescription}>
+                    {option.description}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : item.field === 'goal' ? (
+            <View style={styles.optionsContainer}>
+              {item.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() =>
+                    setOnboardingDataCollected({
+                      ...onboardingDataCollected,
+                      goal: option,
+                    })
+                  }
+                  style={
+                    onboardingDataCollected.goal === option
+                      ? styles.optionSelected
+                      : styles.option
+                  }
+                >
+                  <Text
+                    style={
+                      onboardingDataCollected.goal === option
+                        ? styles.optionTextSelected
+                        : styles.optionText
+                    }
+                  >
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+          ) : index === 7 && calculatedGoals ? (
+            <View style={styles.goalsContainer}>
+              <View style={styles.goalCard}>
+                <Text style={styles.goalValue}>{calculatedGoals.calories} kcal</Text>
+                <Text style={styles.goalLabel}>Calories</Text>
+              </View>
+              <View style={styles.goalCard}>
+                <Text style={styles.goalValue}>{calculatedGoals.proteins} g</Text>
+                <Text style={styles.goalLabel}>Proteins</Text>
+              </View>
+              <View style={styles.goalCard}>
+                <Text style={styles.goalValue}>{calculatedGoals.carbohydrates} g</Text>
+                <Text style={styles.goalLabel}>Carbs</Text>
+              </View>
+              <View style={styles.goalCard}>
+                <Text style={styles.goalValue}>{calculatedGoals.fats} g</Text>
+                <Text style={styles.goalLabel}>Fats</Text>
+              </View>
+              <TouchableOpacity
+                style={styles.saveGoalsButton}
+                onPress={handleSaveGoalsFromOnboarding}
+              >
+                <Text style={styles.saveGoalsButtonText}>Finish</Text>
+              </TouchableOpacity>
+            </View>
+          ) : null}
+        </View>
+        {item.description && (
+          <AnimatedCenteredText
+            text={item.description}
+            colorScheme={'dark'}
+            visible={currentOnboardingIndex === index}
+          />
+        )}
+      </View>
     );
   };
 
-let previousHistory = [];
-let previousGoals = {};
-let lastAPICallTime = 0;
-
-const InsightsScreen = () => {
-    const { width, height } = Dimensions.get('window');
-    const fontSize = width * 0.080;
-    const [history, setHistory] = useState([]);
-    const [nutrientData, setNutrientData] = useState({ goal: { calories: 0, sodium: 0, carbohydrates: 0, proteins: 0, fats: 0, fiber: 0, sugars: 0 } });
-    const [goalModalVisible, setGoalModalVisible] = useState(false);
-    const [newGoal, setNewGoal] = useState({ calories: '', sodium: '', carbohydrates: '', proteins: '', fats: '', fiber: '', sugars: '' });
-    const [userInfo, setUserInfo] = useState({ height: '', age: '', weight: '', gender: '', activityLevel: '' });
-    const [estimatedCalories, setEstimatedCalories] = useState(null);
-    const [userName, setUserName] = useState('');
-    const [step, setStep] = useState(1);
-    const [trends, setTrends] = useState({});
-    const colorScheme = useColorScheme();
-    const styles = getDynamicStyles(colorScheme);
-    const [refreshing, setRefreshing] = useState(false);
-    const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
-    const [smartCoachContent, setSmartCoachContent] = useState(null);
-    const [historyLoaded, setHistoryLoaded] = useState(false);
-    const [nutrientDataLoaded, setNutrientDataLoaded] = useState(false);
-    const hasRunRef = useRef(false);
-
-    const initializeData = async () => {
-        await loadUserName();
-        await loadHistory();
-        await loadLastUsedTime();
-        await loadNutrientData();
-        await loadUserInfo();
-        await loadSelectedModel();
-        await loadSmartCoachContent(); // Load AI response
-        await loadLastAPICallTime(); // Load last API call time
-        await loadPreviousData(); // Load previous history and goals
-    
-        // Save initial state if not already saved
-        const storedHistoryString = await AsyncStorage.getItem('previousHistory');
-        const storedGoalsString = await AsyncStorage.getItem('previousGoals');
-    
-        if (!storedHistoryString) {
-            await AsyncStorage.setItem('previousHistory', JSON.stringify(history));
-        }
-        if (!storedGoalsString) {
-            await AsyncStorage.setItem('previousGoals', JSON.stringify(nutrientData.goal));
-        }
-    };
-    
-    useEffect(() => {
-        initializeData();
-    }, []);
-
-    const loadLastAPICallTime = async () => {
-        try {
-            const storedLastAPICallTime = await AsyncStorage.getItem('lastAPICallTime');
-            if (storedLastAPICallTime) {
-                lastAPICallTime = parseInt(storedLastAPICallTime, 10);
-            }
-        } catch (error) {
-            console.error("Error loading last API call time from storage", error);
-        }
-    };
-    
-    const loadSelectedModel = async () => {
-        try {
-            const storedModel = await AsyncStorage.getItem('selectedModel');
-            if (storedModel) {
-                setSelectedModel(storedModel);
-            }
-        } catch (error) {
-            console.error("Error loading selected model from storage", error);
-        }
-    };
-
-    const loadSmartCoachContent = async () => {
-        try {
-            const storedSmartCoachContent = await AsyncStorage.getItem('smartCoachContent');
-            if (storedSmartCoachContent) {
-                setSmartCoachContent(storedSmartCoachContent); // Set AI response as string
-            }
-        } catch (error) {
-            console.error("Error loading Smart Coach content from storage", error);
-            await AsyncStorage.removeItem('smartCoachContent');
-        }
-    };
-
-    useFocusEffect(
-        useCallback(() => {
-            const refreshScreen = async () => {
-                setRefreshing(true);
-                await loadHistory();
-                checkAndUpdateSmartCoach();
-                setRefreshing(false);
-            };
-            
-            refreshScreen();
-        }, [])
-    );
-
-    const onRefresh = useCallback(() => {
-        setRefreshing(true);
-        loadHistory().then(() => setRefreshing(false));
-    }, []);
-    
-    const checkAndUpdateSmartCoach = useCallback(async () => {
-        if (!historyLoaded || !nutrientDataLoaded) {
-            return;
-        }
-    
-        await loadPreviousData();
-    
-        // console.log("Checking Smart Coach updates...");
-        // console.log("Current history:", history);
-        // console.log("Current nutrient data:", nutrientData);
-    
-        const currentTime = Date.now();
-        const currentHistoryString = JSON.stringify(history);
-        const currentGoalsString = JSON.stringify(nutrientData.goal);
-    
-        if (
-            previousHistory !== currentHistoryString ||
-            previousGoals !== currentGoalsString
-        ) {
-            previousHistory = currentHistoryString;
-            previousGoals = currentGoalsString;
-    
-            await AsyncStorage.setItem('previousHistory', currentHistoryString);
-            await AsyncStorage.setItem('previousGoals', currentGoalsString);
-    
-            if (history.length === 0 || Object.keys(nutrientData.goal).length === 0) {
-                setSmartCoachContent("Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!");
-            } else {
-                if (currentTime - lastAPICallTime >= 15 * 60 * 1000) {
-                    const insights = generateUserInsights(userName, nutrientData.goal, history);
-                    const aiResponse = await sendInsightsToAnthropic(insights);
-    
-                    setSmartCoachContent(aiResponse);
-                    await AsyncStorage.setItem('smartCoachContent', JSON.stringify(aiResponse)); // Save AI response as string
-                    lastAPICallTime = currentTime;
-                    await AsyncStorage.setItem('lastAPICallTime', currentTime.toString()); // Save last API call time
-                } else {
-                    console.log("Skipping API call due to rate limit.");
-                }
-            }
-        }
-    }, [history, nutrientData, historyLoaded, nutrientDataLoaded]);
-    
-    
-    useEffect(() => {
-        const intervalId = setInterval(() => {
-            const currentTime = Date.now();
-            const timeLeft = 15 * 60 * 1000 - (currentTime - lastAPICallTime);
-            
-            if (timeLeft > 0) {
-                //console.log(`Time left until next Smart Coach activation: ${Math.floor(timeLeft / 1000)} seconds`);
-            }
-    
-            if (currentTime - lastAPICallTime >= 15 * 60 * 1000) {
-                checkAndUpdateSmartCoach();
-            }
-        }, 1000); // Check every second
-    
-        return () => clearInterval(intervalId); // Cleanup interval on component unmount
-    }, [checkAndUpdateSmartCoach]);
-
-    useEffect(() => {
-        if (goalModalVisible) {
-            setNewGoal(newGoal); // Trigger re-render with updated newGoal
-        }
-    }, [goalModalVisible, newGoal]);
-
-    useEffect(() => {
-        loadUserName();
-        loadHistory();
-        loadLastUsedTime();
-        loadNutrientData();
-        loadUserInfo();
-        loadSelectedModel();
-        loadSmartCoachContent(); // Load AI response
-    }, []);
-
-    useEffect(() => {
-        saveDataToStorage();
-    }, [history, nutrientData, userInfo, userName, selectedModel]);
-
-    const saveDataToStorage = async () => {
-        try {
-            await AsyncStorage.setItem('history', JSON.stringify(history));
-            await AsyncStorage.setItem('nutrientData', JSON.stringify(nutrientData));
-            await AsyncStorage.setItem('userInfo', JSON.stringify(userInfo));
-            await AsyncStorage.setItem('lastUsedTime', new Date().toISOString());
-            await AsyncStorage.setItem('selectedModel', selectedModel);
-    
-            if (!await AsyncStorage.getItem('previousHistory')) {
-                await AsyncStorage.setItem('previousHistory', JSON.stringify(history));
-            }
-            if (!await AsyncStorage.getItem('previousGoals')) {
-                await AsyncStorage.setItem('previousGoals', JSON.stringify(nutrientData.goal));
-            }
-        } catch (error) {
-            console.error("Error saving data to storage", error);
-        }
-    };
-
-    const loadPreviousData = async () => {
-        try {
-            const storedPreviousHistory = await AsyncStorage.getItem('previousHistory');
-            const storedPreviousGoals = await AsyncStorage.getItem('previousGoals');
-    
-            if (storedPreviousHistory) {
-                previousHistory = storedPreviousHistory;
-            }
-    
-            if (storedPreviousGoals) {
-                previousGoals = storedPreviousGoals;
-            }
-        } catch (error) {
-            console.error("Error loading previous data from storage", error);
-        }
-    };
-
-    const loadNutrientData = async () => {
-        try {
-            const storedNutrientData = await AsyncStorage.getItem('nutrientData');
-            if (storedNutrientData) {
-                const parsedNutrientData = JSON.parse(storedNutrientData);
-                //console.log("Loaded nutrient data:", parsedNutrientData);
-                setNutrientData(parsedNutrientData);
-            } else {
-                //console.log("No nutrient data found in storage.");
-            }
-        } catch (error) {
-            console.error("Error loading nutrient data from storage", error);
-        } finally {
-            setNutrientDataLoaded(true);
-        }
-    };
-
-    const loadUserInfo = async () => {
-        try {
-            const storedUserInfo = await AsyncStorage.getItem('userInfo');
-            if (storedUserInfo) {
-                setUserInfo(JSON.parse(storedUserInfo));
-            }
-        } catch (error) {
-            console.error("Error loading user info from storage", error);
-        }
-    };
-
-    const loadLastUsedTime = async () => {
-        try {
-            const lastUsedTime = await AsyncStorage.getItem('lastUsedTime');
-            if (lastUsedTime) {
-                //console.log("Last used time:", lastUsedTime);
-            }
-        } catch (error) {
-            console.error("Error loading last used time from storage", error);
-        }
-    };
-
-    useEffect(() => {
-        const loadSmartCoachContent = async () => {
-            try {
-                const storedSmartCoachContent = await AsyncStorage.getItem('smartCoachContent');
-                if (storedSmartCoachContent) {
-                    setSmartCoachContent(storedSmartCoachContent); // Set AI response as string
-                }
-            } catch (error) {
-                console.error("Error loading Smart Coach content from storage", error);
-                await AsyncStorage.removeItem('smartCoachContent');
-            }
-        };
-    
-        const initializeData = async () => {
-            await loadUserName();
-            await loadHistory();
-            await loadLastUsedTime();
-            await loadNutrientData();
-            await loadUserInfo();
-            await loadSelectedModel();
-            await loadSmartCoachContent(); // Load AI response
-            await loadLastAPICallTime(); // Load last API call time
-            await loadPreviousData(); // Load previous history and goals
-        };
-    
-        initializeData();
-    }, []);
-
-    const loadUserName = async () => {
-        try {
-            const name = await AsyncStorage.getItem('userName');
-            if (name) {
-                setUserName(name.split(" ")[0]);
-            }
-        } catch (e) {
-            console.error("Error loading user name: ", e);
-        }
-    };
-
-    useEffect(() => {
-        const fetchGoals = async () => {
-            const goals = await AsyncStorage.getItem('@user_goals');
-            if (goals) {
-                const parsedGoals = JSON.parse(goals);
-                setNewGoal(parsedGoals);
-            }
-        };
-
-        if (goalModalVisible) {
-            fetchGoals();
-        }
-    }, [goalModalVisible]);
-
-    const loadHistory = async () => {
-        try {
-            // Load history data from AsyncStorage
-            const historyData = await AsyncStorage.getItem('@product_history');
-            if (historyData) {
-                const parsedHistory = JSON.parse(historyData);
-                const today = new Date();
-                const todayString = today.toISOString().split('T')[0]; // Get today's date string
-    
-                // Filter history entries to include only those from today
-                const filteredHistory = parsedHistory.filter(item => {
-                    const entryDate = new Date(item.date);
-                    return entryDate.getFullYear() === today.getFullYear() &&
-                           entryDate.getMonth() === today.getMonth() &&
-                           entryDate.getDate() === today.getDate();
-                });
-    
-                setHistory(filteredHistory);
-                calculateTrends(filteredHistory);
-    
-                // Save the filtered history
-                await AsyncStorage.setItem('filteredHistory', JSON.stringify(filteredHistory));
-    
-                // Log the number of items from today
-                console.log(`Number of items from today: ${filteredHistory.length}`);
-    
-                if (filteredHistory.length === 0) {
-                    const unavailableMessage = "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
-                    setSmartCoachContent(unavailableMessage);
-                    await AsyncStorage.setItem('smartCoachContent', unavailableMessage);
-                }
-            } else {
-                // If no history data found, set history to an empty array
-                setHistory([]);
-                console.log('No history data found in storage.');
-                const unavailableMessage = "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
-                setSmartCoachContent(unavailableMessage);
-                await AsyncStorage.setItem('smartCoachContent', unavailableMessage);
-            }
-        } catch (e) {
-            console.error("Error loading history:", e);
-        } finally {
-            setHistoryLoaded(true);
-        }
-    };
-
-    const shouldShowCard = (current, goal) => {
-        const percent = getCompletionPercent(current, goal);
-        // Adjust the threshold values here
-        const lowerThreshold = 80; // 90% of the goal is acceptable
-        const upperThreshold = 120; // Up to 110% of the goal is acceptable
-        return percent < lowerThreshold || percent > upperThreshold;
-    };
-
-    const calculateTrends = (data) => {
-        if (data.length === 0) {
-            console.log("No data available to calculate trends.");
-            setTrends({});
-            return;
-        }
-    
-        let totalCalories = 0;
-        let totalSodium = 0;
-        let totalCarbohydrates = 0;
-        let totalProteins = 0;
-        let totalFats = 0;
-        let totalFiber = 0;
-        let totalSugars = 0;
-    
-        data.forEach(item => {
-            totalCalories += parseInt(item.nutrients['Total Calories']) || 0;
-            totalSodium += parseInt(item.nutrients.Sodium) || 0;
-            totalCarbohydrates += parseInt(item.nutrients.Carbohydrates) || 0;
-            totalProteins += parseInt(item.nutrients.Proteins) || 0;
-            totalFats += parseInt(item.nutrients.Fats) || 0;
-            totalFiber += parseInt(item.nutrients['Dietary Fiber']) || 0;
-            totalSugars += parseInt(item.nutrients.Sugars) || 0;
-        });
-    
-        setTrends({
-            avgCalories: totalCalories,
-            avgSodium: totalSodium,
-            avgCarbohydrates: totalCarbohydrates,
-            avgProteins: totalProteins,
-            avgFats: totalFats,
-            avgFiber: totalFiber,
-            avgSugars: totalSugars,
-        });
-    };
-    
-
-    const showSmartCoachAlert = () => {
-        const alertMessage = `Smart Coach is waiting on:
-        - Nutrient Data: ${JSON.stringify(nutrientData.goal)}
-        - History Data: ${history.length} items`;
-
-        Alert.alert("Smart Coach Status", alertMessage, [{ text: "OK" }]);
-    };
-
-    // Function to generate insights
-    const generateUserInsights = (userName, goals, history) => {
-        if (!userName || !goals || history.length === 0) {
-            return "No sufficient data to generate insights.";
-        }
-    
-        const { calories, sodium, carbohydrates, proteins, fats, fiber, sugars } = goals;
-    
-        const totalCalories = history.reduce((sum, item) => sum + parseInt(item.nutrients['Total Calories'] || 0), 0);
-        const totalSodium = history.reduce((sum, item) => sum + parseInt(item.nutrients.Sodium || 0), 0);
-        const totalCarbohydrates = history.reduce((sum, item) => sum + parseInt(item.nutrients.Carbohydrates || 0), 0);
-        const totalProteins = history.reduce((sum, item) => sum + parseInt(item.nutrients.Proteins || 0), 0);
-        const totalFats = history.reduce((sum, item) => sum + parseInt(item.nutrients.Fats || 0), 0);
-        const totalFiber = history.reduce((sum, item) => sum + parseInt(item.nutrients['Dietary Fiber'] || 0), 0);
-        const totalSugars = history.reduce((sum, item) => sum + parseInt(item.nutrients.Sugars || 0), 0);
-    
-        const generateComparison = (goal, actual, nutrientName) => {
-            const percent = ((actual / goal) * 100).toFixed(2);
-            return `${percent}% of their ${nutrientName} goal (${actual} / ${goal})`;
-        };
-    
-        const recommendAction = (goal, actual, nutrientName) => {
-            if (actual > goal) {
-                if (nutrientName === 'sodium') {
-                    return `It's recommended to drink more water to balance sodium levels.`;
-                } else {
-                    return `Consider a workout to bring down ${nutrientName} levels.`;
-                }
-            } else if (actual < goal) {
-                if (nutrientName === 'calories') {
-                    return `Consider eating foods rich in healthy fats and proteins to meet your calorie goal.`;
-                } else if (nutrientName === 'proteins') {
-                    return `Eat foods like chicken, beans, or tofu to increase protein intake.`;
-                } else if (nutrientName === 'carbohydrates') {
-                    return `Include more whole grains and fruits in your diet to reach your carbohydrate goal.`;
-                } else {
-                    return `Try to include more ${nutrientName}-rich foods in your diet.`;
-                }
-            } else {
-                return `Great job! You've met your ${nutrientName} goal.`;
-            }
-        };
-    
-        const insights = `
-            The user's name is ${userName}.
-    
-            Their goals for today are:
-            1. Calories: ${calories} cal
-            2. Sodium: ${sodium} mg
-            3. Carbohydrates: ${carbohydrates} g
-            4. Proteins: ${proteins} g
-            5. Fats: ${fats} g
-            6. Fiber: ${fiber} g
-            7. Sugars: ${sugars} g
-    
-            Here is the percentage they are to each goal:
-            1. Calories: ${generateComparison(calories, totalCalories, 'calories')}
-               - ${recommendAction(calories, totalCalories, 'calories')}
-            2. Sodium: ${generateComparison(sodium, totalSodium, 'sodium')}
-               - ${recommendAction(sodium, totalSodium, 'sodium')}
-            3. Carbohydrates: ${generateComparison(carbohydrates, totalCarbohydrates, 'carbohydrates')}
-               - ${recommendAction(carbohydrates, totalCarbohydrates, 'carbohydrates')}
-            4. Proteins: ${generateComparison(proteins, totalProteins, 'proteins')}
-               - ${recommendAction(proteins, totalProteins, 'proteins')}
-            5. Fats: ${generateComparison(fats, totalFats, 'fats')}
-               - ${recommendAction(fats, totalFats, 'fats')}
-            6. Fiber: ${generateComparison(fiber, totalFiber, 'fiber')}
-               - ${recommendAction(fiber, totalFiber, 'fiber')}
-            7. Sugars: ${generateComparison(sugars, totalSugars, 'sugars')}
-               - ${recommendAction(sugars, totalSugars, 'sugars')}
-    
-            Today, they consumed a total of ${history.length} items.
-        `;
-    
-        return insights.trim();
-    };
-
-// Function to send data to Anthropic API
-const sendInsightsToAnthropic = async (insights) => {
-    try {
-        console.log("Trying to use API for smart coach.")
-        const apiKey = await AsyncStorage.getItem('@apikey');
-        const model = await AsyncStorage.getItem('selectedModel');
-    
-        if (!apiKey || !model) {
-            console.error('API key or model not found');
-            return "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
-        }
-
-        const anthropic = new Anthropic({
-            apiKey: apiKey,
-        });
-
-        const msg = await anthropic.messages.create({
-            model: model,  // Use the model from AsyncStorage
-            max_tokens: 4096,
-            temperature: 0.7,
-            system: `Your task is to generate a VERY concise summary of what the user needs to do based on this data.
-
-You are a tool, your reply should just be a 1 or 2 small sentence summary with no greeting or introduction.
-
-Guidelines:
-1. Summarize the key points from the provided insights.
-2. Offer clear and actionable recommendations for the user.
-3. If the user exceeds their goals, suggest ways to bring the levels down (e.g., exercise, drinking water).
-4. If the user is below their goals, recommend specific foods or workouts to help them meet their targets, including amounts where applicable.
-5. Suggest specific workouts based on your own knowledge of what they help with.
-6. Keep the summary concise and focused on practical advice.
-
-Do nots:
-1. Do not suggest generic terms like "exercise"; instead, suggest specific activities such as a 20-minute jog or 30-minute strength training.
-2. Do not engage in conversational language; provide direct, actionable recommendations.
-
-Example Response (DO NOT COPY):
-Hi Anthony! You exceeded your sodium intake goal by 100 mg. Drink more water and do a 30-minute cardio session. You're 200 calories short of your calorie goal. Eat 1 avocado or 30g of almonds and do strength training for 20 minutes.
-
-References:
-1. For every 500 calories over the goal, recommend {number of hours} hour of intense workout (e.g., running, HIIT).
-2. For every 100 mg of sodium over the goal, recommend drinking 2 extra glasses of water.
-3. To increase protein intake, suggest high-protein foods like chicken breast, Greek yogurt, or legumes.
-4. To increase fiber intake, suggest high-fiber foods like apples, broccoli, or whole grains.
-5. For every 100 calories below the goal, recommend foods like bananas, nuts, or peanut butter.
-
-Make it make sense, eg recommending a workout to increase calorie intake makes no sense.
-
-Insights:
-${insights}
-
-IMPORTANT: If it is physically impossible to work off the calories or other nutrient amounts given, let the user know and tell them that it's impossible and reccomend something else.`,
-            messages: [{
-                role: "user",
-                content: `Your task is to generate a VERY concise summary of what the user needs to do based on this data.
-
-You are a tool, your reply should just be a 1 or 2 small sentence summary with no greeting or introduction.
-
-Guidelines:
-1. Summarize the key points from the provided insights.
-2. Offer clear and actionable recommendations for the user.
-3. If the user exceeds their goals, suggest ways to bring the levels down (e.g., exercise, drinking water).
-4. If the user is below their goals, recommend specific foods or workouts to help them meet their targets, including amounts where applicable.
-5. Suggest specific workouts based on your own knowledge of what they help with.
-6. Keep the summary concise and focused on practical advice.
-
-Do nots:
-1. Do not suggest generic terms like "exercise"; instead, suggest specific activities such as a 20-minute jog or 30-minute strength training.
-2. Do not engage in conversational language; provide direct, actionable recommendations.
-
-Example Response (DO NOT COPY):
-Hi Anthony! You exceeded your sodium intake goal by 100 mg. Drink more water and do a 30-minute cardio session. You're 200 calories short of your calorie goal. Eat 1 avocado or 30g of almonds and do strength training for 20 minutes.
-
-References:
-1. For every 500 calories over the goal, recommend 1 hour of intense workout (e.g., running, HIIT).
-2. For every 100 mg of sodium over the goal, recommend drinking 2 extra glasses of water.
-3. To increase protein intake, suggest high-protein foods like chicken breast, Greek yogurt, or legumes.
-4. To increase fiber intake, suggest high-fiber foods like apples, broccoli, or whole grains.
-5. For every 100 calories below the goal, recommend foods like bananas, nuts, or peanut butter.
-
-Make it make sense, eg recommending a workout to increase calorie intake makes no sense.
-
-Insights:
-${insights}
-
-IMPORTANT: If it is physically impossible to work off the calories or other nutrient amounts given, let the user know and tell them that it's impossible and reccomend something else.`
-            }]
-        });
-
-        const responseContent = msg.content;
-        console.log("API Response:", responseContent);
-
-        if (responseContent && Array.isArray(responseContent) && responseContent[0] && responseContent[0].text) {
-            return responseContent[0].text;
-        } else {
-            return "Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!";
-        }
-    } catch (error) {
-        console.error("Error sending message to Anthropic API:", error);
-        Alert.alert("High Demand", `We're experiencing extremely high demand, try again in 1 minute.`);
-        return "Smart Coach insights are unavailable right now, scan some items and try later.";
+  const onViewableItemsChanged = useRef(({ viewableItems }) => {
+    if (viewableItems.length > 0) {
+      const index = viewableItems[0].index;
+      if (index !== null && index !== undefined) {
+        setCurrentOnboardingIndex(index);
+      }
     }
-};
+  }).current;
 
-const calculateCalorieIntake = async () => {
-    const { height, weight, age, gender, activityLevel, goal } = userInfo;
+  const viewabilityConfig = {
+    itemVisiblePercentThreshold: 50,
+  };
 
-    const weightInKg = parseFloat(weight);
-    const heightInCm = parseFloat(height);
-    const ageInYears = parseFloat(age);
+  // Chart colors for macros and background gradients
+  const macroColors = {
+    calories: '#4CFF50', // Green for calories
+    proteins: '#21FFFF', // Blue
+    carbohydrates: '#FFcc00', // Orange
+    fats: '#ff88B0', // Purple
+  };
 
-    if (isNaN(weightInKg) || isNaN(heightInCm) || isNaN(ageInYears)) {
-        Alert.alert("Invalid input", "Please enter valid numeric values for height, weight, and age.");
-        return;
-    }
+  const chartGradientColors = {
+    calories: ['#003f00', '#001100'], // Green shades
+    proteins: ['#0d47a1', '#000022'], // Blue shades
+    carbohydrates: ['#b55100', '#110000'], // Orange shades
+    fats: ['#4a148c', '#110011'], // Purple shades
+  };
 
-    const activityMultiplier = {
-        sedentary: 1.2,
-        lightly: 1.375,
-        moderately: 1.55,
-        very: 1.725,
-        extra: 1.9
-    };
-
-    let BMR;
-    if (gender === 'male') {
-        BMR = 10 * weightInKg + 6.25 * heightInCm - 5 * ageInYears + 5;
-    } else if (gender === 'female') {
-        BMR = 10 * weightInKg + 6.25 * heightInCm - 5 * ageInYears - 161;
-    } else {
-        BMR = 10 * weightInKg + 6.25 * heightInCm - 5 * ageInYears - 78;
-    }
-
-    const TDEE = BMR * activityMultiplier[activityLevel];
-
-    let adjustedCalories = TDEE; // Default to maintain
-
-    if (goal === 'lose') {
-        adjustedCalories -= 500;
-    } else if (goal === 'gain') {
-        adjustedCalories += 500;
-    }
-
-    setEstimatedCalories(adjustedCalories);
-
-    const calculatedGoal = {
-        calories: adjustedCalories.toFixed(0),
-        sodium: 1700,
-        carbohydrates: ((adjustedCalories * 0.5) / 4).toFixed(0),
-        proteins: ((adjustedCalories * 0.2) / 4).toFixed(0),
-        fats: ((adjustedCalories * 0.3) / 9).toFixed(0),
-        fiber: 26,
-        sugars: 20
-    };
-
-    setNewGoal(calculatedGoal);
-    setStep(step + 1);
-};
-
-
-    const handleSaveGoal = async () => {
-        await AsyncStorage.setItem('@user_goals', JSON.stringify(newGoal));
-        await AsyncStorage.setItem('@user_info', JSON.stringify(userInfo)); // Save user info
-        setNutrientData({ goal: newGoal });
-        setGoalModalVisible(false);
-    };
-
-    const handleNextStep = () => {
-        if (step === 4) {
-            calculateCalorieIntake();
-        } else {
-            setStep(step + 1);
-        }
-    };
-
-    const convertHeight = (height) => {
-        const [feet, inches] = height.split("'").map(part => parseInt(part.trim(), 10));
-        return feet * 30.48 + inches * 2.54; // convert feet to cm and inches to cm
-    };
-
-    const convertWeight = (weight) => {
-        return weight * 0.453592; // convert pounds to kg
-    };
-
-    const renderStepContent = () => {
-        switch (step) {
-            case 1:
-                return (
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputModalTitle}>Enter your height, weight, and gender.</Text>
-                        <Text style={styles.inputLabel}>Height (ft'in)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Height (ft'in)"
-                            value={userInfo.height}
-                            onChangeText={(text) => setUserInfo({ ...userInfo, height: text })}
-                        />
-                        <Text style={styles.inputLabel}>Weight (lbs)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Weight (lbs)"
-                            keyboardType="numeric"
-                            value={userInfo.weight}
-                            onChangeText={(text) => setUserInfo({ ...userInfo, weight: text })}
-                        />
-                        <Text style={styles.inputLabel}>Gender</Text>
-                        <View style={styles.genderSelection}>
-                            <View style={styles.genderRow}>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.genderButton,
-                                        userInfo.gender === 'male' && styles.selectedGenderButton
-                                    ]}
-                                    onPress={() => setUserInfo({ ...userInfo, gender: 'male' })}
-                                >
-                                    <Text style={styles.genderButtonText}>Male</Text>
-                                </TouchableOpacity>
-                                <TouchableOpacity
-                                    style={[
-                                        styles.genderButton,
-                                        userInfo.gender === 'female' && styles.selectedGenderButton
-                                    ]}
-                                    onPress={() => setUserInfo({ ...userInfo, gender: 'female' })}
-                                >
-                                    <Text style={styles.genderButtonText}>Female</Text>
-                                </TouchableOpacity>
-                            </View>
-                        </View>
-                        <TouchableOpacity
-                            style={[
-                                styles.genderButtonNoSay,
-                                userInfo.gender === 'prefer_not_to_say' && styles.selectedGenderButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, gender: 'prefer_not_to_say' })}
-                        >
-                            <Text style={styles.genderButtonText}>Prefer not to say</Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalDescription}>We don't share any of your personal data with 3rd parties.</Text>
-                    </View>
-                );
-            case 2:
-                return (
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputModalTitle}>Enter your age.</Text>
-                        <Text style={styles.inputLabel}>Age (years)</Text>
-                        <TextInput
-                            style={styles.input}
-                            placeholder="Age (years)"
-                            keyboardType="numeric"
-                            value={userInfo.age}
-                            onChangeText={(text) => setUserInfo({ ...userInfo, age: text })}
-                        />
-<Text style={styles.modalDescription}>We only use your age to calculate automatic goals. We won’t share it, save it in our cloud services, or send it to any third parties.</Text>
-</View>
-                );
-            case 3:
-                return (
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputModalTitle}> Select your Activity Level</Text>
-                        <TouchableOpacity
-                            style={[
-                                styles.activityButton,
-                                userInfo.activityLevel === 'sedentary' && styles.selectedActivityButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, activityLevel: 'sedentary' })}
-                        >
-                            <Text style={styles.activityButtonText}>
-                                Sedentary{'\n'}<Text style={styles.activityDescription}>Little or no exercise</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.activityButton,
-                                userInfo.activityLevel === 'lightly' && styles.selectedActivityButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, activityLevel: 'lightly' })}
-                        >
-                            <Text style={styles.activityButtonText}>
-                                Lightly Active{'\n'}<Text style={styles.activityDescription}>Light exercise 1-3 days a week</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.activityButton,
-                                userInfo.activityLevel === 'moderately' && styles.selectedActivityButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, activityLevel: 'moderately' })}
-                        >
-                            <Text style={styles.activityButtonText}>
-                                Moderately Active{'\n'}<Text style={styles.activityDescription}>Exercise 3-5 days a week</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.activityButton,
-                                userInfo.activityLevel === 'very' && styles.selectedActivityButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, activityLevel: 'very' })}
-                        >
-                            <Text style={styles.activityButtonText}>
-                                Very Active{'\n'}<Text style={styles.activityDescription}>Hard exercise 6-7 days a week</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.activityButton,
-                                userInfo.activityLevel === 'extra' && styles.selectedActivityButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, activityLevel: 'extra' })}
-                        >
-                            <Text style={styles.activityButtonText}>
-                                Extra Active{'\n'}<Text style={styles.activityDescription}>Very hard exercise or a physical job</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalDescription}>We use advanced calculations to find the best values to help you achieve your goals.</Text>
-                    </View>
-                );
-            case 4:
-                return (
-                    <View style={styles.inputContainer}>
-                        <Text style={styles.inputModalTitle}>Select Your Goal</Text>
-                        <TouchableOpacity
-                            style={[
-                                styles.goalButton,
-                                userInfo.goal === 'maintain' && styles.selectedGoalButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, goal: 'maintain' })}
-                        >
-                            <Text style={styles.goalButtonText}>
-                                Maintain Weight{'\n'}<Text style={styles.goalDescription}>Keep your current weight</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.goalButton,
-                                userInfo.goal === 'lose' && styles.selectedGoalButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, goal: 'lose' })}
-                        >
-                            <Text style={styles.goalButtonText}>
-                                Lose Weight{'\n'}<Text style={styles.goalDescription}>Reduce your weight</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                            style={[
-                                styles.goalButton,
-                                userInfo.goal === 'gain' && styles.selectedGoalButton
-                            ]}
-                            onPress={() => setUserInfo({ ...userInfo, goal: 'gain' })}
-                        >
-                            <Text style={styles.goalButtonText}>
-                                Gain Weight{'\n'}<Text style={styles.goalDescription}>Increase your weight</Text>
-                            </Text>
-                        </TouchableOpacity>
-                        <Text style={styles.modalDescription}>We use advanced calculations to find the best values to help you achieve your goals.</Text>
-                        </View>
-                );
-                case 5:
-                    return (
-                      <View style={styles.inputContainer}>
-                        <Text style={styles.inputModalTitleSmartCoach}>
-                          Smart Coach autofilled your goals. Feel free to edit them.
-                        </Text>
-                        {['calories', 'sodium', 'carbohydrates', 'proteins', 'fats', 'fiber', 'sugars'].map((field) => (
-                          <View key={field}>
-                            <Text style={styles.inputLabel}>{field.charAt(0).toUpperCase() + field.slice(1)} Per Day {field !== 'sodium' ? '(g)' : '(mg)'}</Text>
-                            <View style={styles.inputRow}>
-                              <TouchableOpacity
-                                style={styles.inputButton}
-                                onPress={() => setNewGoal({ ...newGoal, [field]: Math.round(newGoal[field] * 0.9) })}
-                              >
-                                <Text style={styles.inputButtonText}>-10%</Text>
-                              </TouchableOpacity>
-                              <TextInput
-                                style={styles.input}
-                                placeholder={field.charAt(0).toUpperCase() + field.slice(1)}
-                                keyboardType="numeric"
-                                value={newGoal[field].toString()}
-                                onChangeText={(text) => setNewGoal({ ...newGoal, [field]: text })}
-                              />
-                              <TouchableOpacity
-                                style={styles.inputButton}
-                                onPress={() => setNewGoal({ ...newGoal, [field]: Math.round(newGoal[field] * 1.1) })}
-                              >
-                                <Text style={styles.inputButtonText}>+10%</Text>
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    );
-                  default:
-                    return null;
-        }
-    };
-    
-
-    const renderCircle = (percent, color, lightColor, darkColor, overGoal, borderColor) => {
-        const adjustedPercent = Math.min(100, percent);
-        const strokeDasharray = `${adjustedPercent * 3.14} ${314 - adjustedPercent * 3.14}`;
-        const overlapPercent = percent - 100;
-
-        return (
-            <Svg height="70" width="70" viewBox="0 0 120 120">
-                <Defs>
-                    <LinearGradient id="grad" x1="0%" y1="50%" x2="200%" y2="50%">
-                        <Stop offset="0%" stopColor={lightColor} />
-                        <Stop offset="50%" stopColor={darkColor} />
-                        <Stop offset="100%" stopColor={lightColor} />
-                    </LinearGradient>
-                </Defs>
-                <Circle
-                    cx="60"
-                    cy="60"
-                    r="52"
-                    stroke={borderColor}
-                    strokeWidth="4"
-                    fill="none"
-                    transform="rotate(-90 60 60)"
-                />
-                <Circle
-                    cx="60"
-                    cy="60"
-                    r="50"
-                    stroke="url(#grad)"
-                    strokeWidth="14"
-                    strokeDasharray={strokeDasharray}
-                    strokeLinecap="round"
-                    fill="none"
-                    transform="rotate(-90 60 60)"
-                />
-                {overGoal && (
-                    <Circle
-                        cx="60"
-                        cy="60"
-                        r="50"
-                        stroke={darkColor}
-                        strokeWidth="14"
-                        strokeDasharray={`${overlapPercent * 3.14} ${314 - overlapPercent * 3.14}`}
-                        strokeLinecap="round"
-                        fill="none"
-                        transform={`rotate(${(adjustedPercent * 3.6) - 90} 60 60)`}
-                    />
-                )}
-            </Svg>
-        );
-    };
-
-    const renderCalorieCard = () => {
-        const calorieDifference = nutrientData.goal.calories - trends.avgCalories;
-        const isGoalMet = Math.abs(calorieDifference) <= 75;
-        const caloriePercent = getCompletionPercent(trends.avgCalories, nutrientData.goal.calories);
-        const overGoal = caloriePercent > 100;
-        const borderColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
-
-        return (
-            <View style={styles.card}>
-                <Text style={styles.IntroduceUserTitle}>Hi {userName},</Text>
-                <Text style={styles.cardText}>
-                    {isGoalMet
-                        ? "You've completed your goals, time to relax!"
-                        : calorieDifference > 0
-                            ? `You need ${calorieDifference.toFixed(0)} more calories to meet your goal.`
-                            : `You have gone past your calorie goal by ${Math.abs(calorieDifference).toFixed(0)} calories. Check Smart Coach for advice.`}
-                </Text>
-                <View style={styles.circleContainer}>
-                    {renderCircle(caloriePercent, 'orange', '#FFEDD5', 'orange', overGoal, borderColor)}
-                    <Ionicons
-                        name={calorieDifference > 0 ? "arrow-up-circle" : "arrow-down-circle"}
-                        size={fontSize}
-                        color="orange"
-                        style={styles.arrowIconInsideCircle}
-                    />
-                </View>
+  const styles = getDynamicStyles();
+  return (
+    <SafeAreaView style={styles.safeArea}>
+      {showOnboarding && (
+        <Animated.View
+          style={[styles.onboardingOverlay, { opacity: onboardingOpacityAnim }]}
+        >
+          <BlurView intensity={50} style={StyleSheet.absoluteFill} />
+          <View style={styles.onboardingContainer}>
+            <View style={styles.onboardingContent}>
+              <FlatList
+                data={onboardingData}
+                renderItem={renderOnboardingItem}
+                horizontal
+                pagingEnabled
+                showsHorizontalScrollIndicator={false}
+                keyExtractor={(item) => item.key}
+                scrollEnabled={true} // Enable swiping
+                extraData={onboardingIndex}
+                ref={flatListRef}
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
+              />
             </View>
-        );
-    };
-
-    const renderSodiumCard = () => {
-        const sodiumDifference = nutrientData.goal.sodium - trends.avgSodium;
-        const sodiumPercent = getCompletionPercent(trends.avgSodium, nutrientData.goal.sodium);
-        const overGoal = sodiumPercent > 100;
-        const borderColor = colorScheme === 'dark' ? '#ffffff' : '#000000';
-
-        return (
-            <View style={styles.card}>
-                <Text style={styles.cardTitle}>Decrease sodium intake,</Text>
-                <Text style={styles.cardText}>
-                    Your sodium intake is {Math.abs(sodiumDifference).toFixed(2)}% {sodiumDifference > 0 ? "higher" : "lower"} than your goal.
-                </Text>
-                <View style={styles.circleContainer}>
-                    {renderCircle(sodiumPercent, 'lightblue', '#fff', 'lightblue', overGoal, borderColor)}
-                    <Ionicons
-                        name={sodiumDifference > 0 ? "arrow-down-circle" : "arrow-up-circle"}
-                        size={24}
-                        color="lightblue"
-                        style={styles.arrowIconInsideCircle}
-                    />
-                </View>
+            <View style={styles.onboardingFooter}>
+              <View style={styles.pagination}>
+                {onboardingData.map((_, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.paginationDot,
+                      currentOnboardingIndex === index
+                        ? styles.paginationDotActive
+                        : styles.paginationDotInactive,
+                    ]}
+                  />
+                ))}
+              </View>
+              {currentOnboardingIndex < onboardingData.length - 1 ? (
+                <TouchableOpacity
+                  style={styles.onboardingNextButton}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    if (currentOnboardingIndex < onboardingData.length - 1) {
+                      const nextIndex = currentOnboardingIndex + 1;
+                      setOnboardingIndex(nextIndex);
+                      flatListRef.current.scrollToIndex({ index: nextIndex });
+                    }
+                  }}
+                >
+                  <Text style={styles.onboardingButtonText}>Next</Text>
+                </TouchableOpacity>
+              ) : null}
             </View>
-        );
-    };
-
-    const renderDynamicCards = () => {
-        const nutrientTypes = [
-            { 
-                name: 'Calories', 
-                key: 'calories', 
-                unit: 'cal', 
-                color: 'orange', 
-                lightColor: '#FFEDD5', 
-                darkColor: 'orange', 
-                phrases: {
-                    needMore: "You need to consume {amount} more calories to reach your goal.",
-                    overGoal: "Oops! You're {amount} calories over your goal."
-                }
-            },
-            { 
-                name: 'Sodium', 
-                key: 'sodium', 
-                unit: 'mg', 
-                color: 'lightblue', 
-                lightColor: '#E0F7FA', 
-                darkColor: 'lightblue', 
-                phrases: {
-                    needMore: "Increase your sodium intake by {amount} mg to reach your goal.",
-                    overGoal: "Careful! You're {amount} mg over your sodium goal."
-                }
-            },
-            { 
-                name: 'Carbohydrates', 
-                key: 'carbohydrates', 
-                unit: 'g', 
-                color: 'green', 
-                lightColor: '#E8F5E9', 
-                darkColor: 'green', 
-                phrases: {
-                    needMore: "You need to eat {amount} grams more carbohydrates to reach your goal.",
-                    overGoal: "Whoa! You're {amount} grams over your carb goal."
-                }
-            },
-            { 
-                name: 'Proteins', 
-                key: 'proteins', 
-                unit: 'g', 
-                color: 'purple', 
-                lightColor: '#F3E5F5', 
-                darkColor: 'purple', 
-                phrases: {
-                    needMore: "You have to consume {amount} grams of protein to meet your goal.",
-                    overGoal: "Heads up! You're {amount} grams over your protein goal."
-                }
-            },
-            { 
-                name: 'Fats', 
-                key: 'fats', 
-                unit: 'g', 
-                color: 'red', 
-                lightColor: '#FFEBEE', 
-                darkColor: 'red', 
-                phrases: {
-                    needMore: "You need {amount} more grams of fats to hit your goal.",
-                    overGoal: "Uh-oh! You're {amount} grams over your fat goal."
-                }
-            },
-            { 
-                name: 'Fiber', 
-                key: 'fiber', 
-                unit: 'g', 
-                color: 'brown', 
-                lightColor: '#EFEBE9', 
-                darkColor: 'brown', 
-                phrases: {
-                    needMore: "Increase your fiber intake by {amount} grams to meet your goal.",
-                    overGoal: "Uh-oh! You're {amount} grams over your fiber goal."
-                }
-            },
-            { 
-                name: 'Sugars', 
-                key: 'sugars', 
-                unit: 'g', 
-                color: 'pink', 
-                lightColor: '#FCE4EC', 
-                darkColor: 'pink', 
-                phrases: {
-                    needMore: "You have to consume {amount} grams more sugars to meet your goal.",
-                    overGoal: "Oops! You're {amount} grams over your sugar goal."
-                }
-            }
-        ];        
-    
-        const sortedNutrientTypes = nutrientTypes
-            .map(nutrient => {
-                const goalValue = nutrientData.goal[nutrient.key];
-                const avgValue = trends[`avg${nutrient.name}`];
-                const percent = getCompletionPercent(avgValue, goalValue);
-                return { ...nutrient, goalValue, avgValue, percent, deviation: Math.abs(percent - 100) };
-            })
-            .filter(nutrient => nutrient.goalValue > 0 && nutrient.avgValue !== undefined)
-            .sort((a, b) => b.deviation - a.deviation);
-    
-        return sortedNutrientTypes.map(nutrient => {
-            if (!shouldShowCard(nutrient.avgValue, nutrient.goalValue)) {
-                return null;
-            }
-    
-            const difference = nutrient.goalValue - nutrient.avgValue;
-            const overGoal = nutrient.percent > 100;
-            const borderColor = colorScheme === 'dark' ? '#ffffff' : '#bbb';
-            const amount = Math.abs(difference).toFixed(0);
-            const message = difference > 0 
-                ? nutrient.phrases.needMore.replace('{amount}', amount) 
-                : nutrient.phrases.overGoal.replace('{amount}', amount);
-    
-            return (
-                <View key={nutrient.key} style={styles.card}>
-                    <Text style={styles.cardTitle}>{nutrient.name}</Text>
-                    <Text style={styles.cardText}>{message}</Text>
-                    <View style={styles.circleContainer}>
-                        {renderCircle(nutrient.percent, nutrient.color, nutrient.lightColor, nutrient.darkColor, overGoal, borderColor)}
-                        <Ionicons
-                            name={difference > 0 ? "arrow-up-circle" : "arrow-down-circle"}
-                            size={34}
-                            color={nutrient.color}
-                            style={styles.arrowIconInsideCircle}
-                        />
-                    </View>
-                </View>
-            );
-        });
-    };
-
-    useEffect(() => {
-        loadUserName();
-        loadHistory();
-        checkGoals(); // Check goals when component mounts
-    }, []);
-
-    useEffect(() => {
-        const checkGoals = async () => {
-            const goals = await AsyncStorage.getItem('@user_goals');
-            const userInfoData = await AsyncStorage.getItem('@user_info'); // Load user info
-        
-            if (!goals) {
-                // Show modal with default values if no goals are found
-                setNewGoal({
-                    calories: '',
-                    sodium: '',
-                    carbohydrates: '',
-                    proteins: '',
-                    fats: '',
-                    fiber: '',
-                    sugars: ''
-                });
-                setGoalModalVisible(true);
-            } else {
-                const parsedGoals = JSON.parse(goals);
-                setNutrientData({ goal: parsedGoals });
-                setNewGoal(parsedGoals); // Set newGoal with the existing goals
-            }
-        
-            if (userInfoData) {
-                setUserInfo(JSON.parse(userInfoData)); // Set user info with the existing data
-            }
-        };
-
-        checkGoals();
-    }, []);
-
-    const checkGoals = async () => {
-        const goals = await AsyncStorage.getItem('@user_goals');
-        const userInfoData = await AsyncStorage.getItem('@user_info'); // Load user info
-    
-        if (!goals) {
-            // Show modal with default values if no goals are found
-            setNewGoal({
-                calories: '',
-                sodium: '',
-                carbohydrates: '',
-                proteins: '',
-                fats: '',
-                fiber: '',
-                sugars: ''
-            });
-            setGoalModalVisible(true);
-        } else {
-            const parsedGoals = JSON.parse(goals);
-            setNutrientData({ goal: parsedGoals });
-            setNewGoal(parsedGoals); // Set newGoal with the existing goals
-        }
-    
-        if (userInfoData) {
-            setUserInfo(JSON.parse(userInfoData)); // Set user info with the existing data
-        }
-    };
-
-    const handleCheckSmartCoach = async () => {
-        console.log("Starting handleCheckSmartCoach");
-    
-        if (!historyLoaded || !nutrientDataLoaded) {
-            Alert.alert("Data not loaded", "Please wait for data to load and try again.");
-            console.log("Data not loaded: historyLoaded =", historyLoaded, "nutrientDataLoaded =", nutrientDataLoaded);
-            return;
-        }
-    
-        await loadPreviousData();
-    
-        const currentHistoryString = JSON.stringify(history);
-        const currentGoalsString = JSON.stringify(nutrientData.goal);
-    
-        try {
-            const storedHistoryString = await AsyncStorage.getItem('previousHistory');
-            const storedGoalsString = await AsyncStorage.getItem('previousGoals');
-    
-            console.log("Stored history string:", storedHistoryString);
-            console.log("Stored goals string:", storedGoalsString);
-            console.log("Current history string:", currentHistoryString);
-            console.log("Current goals string:", currentGoalsString);
-    
-            if (storedHistoryString === currentHistoryString && storedGoalsString === currentGoalsString) {
-                Alert.alert("No Changes Detected", "It looks like you haven't scanned anything or updated your goals yet. Once you do, Smart Coach will automatically update.");
-                console.log("No changes detected, skipping API call.");
-                return;
-            }
-    
-            previousHistory = currentHistoryString;
-            previousGoals = currentGoalsString;
-    
-            await AsyncStorage.setItem('previousHistory', currentHistoryString);
-            await AsyncStorage.setItem('previousGoals', currentGoalsString);
-    
-            if (history.length === 0 || Object.keys(nutrientData.goal).length === 0) {
-                setSmartCoachContent("Hi, I'm Smart Coach, I see you haven't scanned anything yet. Get to scanning and I'll work on a plan for you!");
-                console.log("No history or goal data available.");
-            } else {
-                const insights = generateUserInsights(userName, nutrientData.goal, history);
-                console.log("Generated insights:", insights);
-                const aiResponse = await sendInsightsToAnthropic(insights);
-    
-                if (aiResponse && typeof aiResponse === 'string') {
-                    setSmartCoachContent(aiResponse);
-                    await AsyncStorage.setItem('smartCoachContent', aiResponse); // Save AI response as string
-                    lastAPICallTime = Date.now();
-                    await AsyncStorage.setItem('lastAPICallTime', lastAPICallTime.toString()); // Save last API call time
-                    console.log("API response received and saved.");
-                } else {
-                    setSmartCoachContent("Smart Coach insights are unavailable right now, scan some items and try later.");
-                    console.log("API response unavailable.");
-                }
-            }
-        } catch (error) {
-            console.error("Error handling Smart Coach check:", error);
-        }
-    };
-
-    const imageSource = colorScheme === 'dark' 
-        ? require('../assets/AI coach-light.png') 
-        : require('../assets/AI coach-dark.png');
-
-    return (
-        <View style={styles.container}>
-                    <SubscriptionModal />
-            <Text style={styles.insightsTitle}>Insights</Text>
-
-            <TouchableOpacity style={styles.iconButton} onPress={() => {
-                setNewGoal(nutrientData.goal); // Set newGoal with existing nutrient data before opening modal
-                setGoalModalVisible(true);
-            }}>
-                <SymbolView 
-        name="gearshape.fill" // SF Symbol name for 'close'
-        size={26} 
-        tintColor={colorScheme === 'dark' ? '#fff' : '#fff'} 
-        type="hierarchical" // or other types like 'monochrome', 'palette', etc.
-        style={styles.symbol}
-      />
-            </TouchableOpacity>
-            <ScrollView
-    style={styles.scrollContainer}
-    refreshControl={
-        <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
-    }
->
-    <Text style={styles.TopDescriptionText}>
-    Set your daily goals, track trends, and optimize your progress. Goals you complete will dissappear automatically.
-    </Text>
-    <Text style={styles.cardTitle}>Hi {userName},</Text>
-    <View style={styles.card}>
-        <View style={styles.smartCoachHeader}>
-            <Image source={imageSource} style={styles.icon} />
-            <Text style={styles.cardTitleSmartCoach}>Smart Coach says,</Text>
-            <TouchableOpacity style={styles.checkButton} onPress={handleCheckSmartCoach}>
-                <Ionicons name="refresh" size={24} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
-            </TouchableOpacity>
-        </View>
-        <Text style={styles.cardText}>
-            {typeof smartCoachContent === 'string' ? smartCoachContent : "Insights are unavailable right now, scan some items and try later."}
-        </Text>
-    </View>
-    {history.length > 0 && renderDynamicCards()}
-    <Text style={styles.BottomDescriptionText}>
-        Smart Coach uses AI to suggest diets and workouts based on your trends. Goal cards are dynamically prioritized for importance automatically. To see how your goals were predicted, click the links below:
-        
-        <TouchableOpacity onPress={() => Linking.openURL("https://en.wikipedia.org/wiki/Energy_expenditure")}>
-            <Text style={styles.linkText}>Energy Expenditure | </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => Linking.openURL("https://www.thecalculatorsite.com/articles/health/bmr-formula.php")}>
-            <Text style={styles.linkText}>BMR Formula | </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity onPress={() => Linking.openURL("https://en.wikipedia.org/wiki/Harris–Benedict_equation")}>
-            <Text style={styles.linkText}>Harris–Benedict Equation | </Text>
-        </TouchableOpacity>
-    </Text>
-</ScrollView>
-            <Modal
-                animationType="slide"
-                transparent={true}
-                visible={goalModalVisible}
-                onRequestClose={() => setGoalModalVisible(false)}
+          </View>
+        </Animated.View>
+      )}
+      <View style={styles.header}>
+        {/* Removed the back button */}
+        <Text style={styles.title}>Insights</Text>
+      </View>
+      <ScrollView style={styles.container}>
+        {!goals && !showOnboarding && (
+          <View style={styles.noGoalsContainer}>
+            <Text style={styles.noGoalsText}>
+              Please set your goals to start tracking your insights.
+            </Text>
+            <TouchableOpacity
+              style={styles.setGoalsButton}
+              onPress={() => {
+                setShowOnboarding(true);
+                Animated.timing(onboardingOpacityAnim, {
+                  toValue: 1,
+                  duration: 500,
+                  useNativeDriver: true,
+                }).start();
+              }}
             >
-                <View style={styles.modalContainer}>
-                    <View style={styles.inputModalView}>
-                    <TouchableOpacity style={styles.closeButton} onPress={() => setGoalModalVisible(false)}>
-                <Ionicons name="close" size={26} color={colorScheme === 'dark' ? '#fff' : '#fff'} />
+              <Text style={styles.setGoalsButtonText}>Set Goals</Text>
             </TouchableOpacity>
-                        <Text style={styles.inputModalText}>{step === 5 ? 'Set Your Goals' : 'Personal Details'}</Text>
-                        <View style={styles.progressContainer}>
-                            <View style={[styles.progressBar, { width: `${(step / 5) * 100}%` }]} />
-                        </View>
-                        <ScrollView contentContainerStyle={styles.inputContainer}>
-                            {renderStepContent()}
-                        </ScrollView>
-                        <View style={styles.buttonContainer}>
-                            {step > 1 && (
-                                <TouchableOpacity
-                                    style={[styles.inputModalButton, styles.arrowButtons]}
-                                    onPress={() => setStep(step - 1)}
-                                >
-                                    <Ionicons name="arrow-back" size={24} color="#fff" />
-                                </TouchableOpacity>
-                            )}
-                            {step < 5 && (
-                                <TouchableOpacity
-                                    style={[styles.inputModalButton, styles.arrowButtons]}
-                                    onPress={handleNextStep}
-                                >
-                                    <Ionicons name="arrow-forward" size={24} color="#fff" />
-                                </TouchableOpacity>
-                            )}
-                            {step === 5 && (
-                                <TouchableOpacity
-                                    style={styles.inputModalButton}
-                                    onPress={handleSaveGoal}
-                                >
-                                    <Text style={styles.inputModalButtonText}>Save</Text>
-                                </TouchableOpacity>
-                            )}
-                        </View>
-                    </View>
-                </View>
-            </Modal>
+          </View>
+        )}
+        {goals && (
+          <>
+            <View style={styles.trendContainer}>
+              <Text style={styles.sectionTitle}>
+                {selectedMacro.charAt(0).toUpperCase() +
+                  selectedMacro.slice(1)}{' '}
+                Intake (Last 7 Days)
+              </Text>
+              {trends && (
+                <LineChart
+                  data={{
+                    labels: ['6d', '5d', '4d', '3d', '2d', '1d', 'Today'],
+                    datasets: [
+                      {
+                        data: trends[selectedMacro],
+                        color: (opacity = 1) =>
+                          hexToRgba(macroColors[selectedMacro], opacity),
+                      },
+                    ],
+                  }}
+                  width={Dimensions.get('window').width - 40}
+                  height={220}
+                  chartConfig={{
+                    backgroundGradientFrom:
+                      chartGradientColors[selectedMacro][0],
+                    backgroundGradientTo: chartGradientColors[selectedMacro][1],
+                    decimalPlaces: 0,
+                    color: (opacity = 1) => hexToRgba(macroColors[selectedMacro], opacity),
+                    labelColor: (opacity = 1) => hexToRgba(macroColors[selectedMacro], opacity),
+                    style: {
+                      borderRadius: 16,
+                    },
+                    propsForDots: {
+                      r: '5',
+                      strokeWidth: '2',
+                      stroke: macroColors[selectedMacro],
+                    },
+                  }}
+                  bezier
+                  style={styles.chartStyle}
+                />
+              )}
+            </View>
+            <View style={styles.chartSelectorContainer}>
+                {['calories', 'proteins', 'carbohydrates', 'fats'].map((macro) => (
+                  <TouchableOpacity
+                    key={macro}
+                    onPress={() => setSelectedMacro(macro)}
+                    style={
+                      selectedMacro === macro
+                        ? styles.selectedMacroButton
+                        : styles.macroButton
+                    }
+                  >
+                    <Text
+                      style={
+                        selectedMacro === macro
+                          ? styles.macroButtonTextSelected
+                          : styles.macroButtonText
+                      }
+                    >
+                      {macro.charAt(0).toUpperCase() + macro.slice(1)}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            <View style={styles.adviceContainer}>
+              <Text style={styles.sectionTitle}>Personalized Advice</Text>
+              {loadingRecommendations ? (
+                <ActivityIndicator size="large" color="#fff" />
+              ) : (
+                <Text style={styles.adviceText}>{recommendations}</Text>
+              )}
+              <TouchableOpacity
+                style={styles.refreshButton}
+                onPress={fetchRecommendations}
+              >
+                <Ionicons name="refresh" size={24} color="#FFF" />
+              </TouchableOpacity>
+            </View>
+            {repeatFoods.length > 0 && (
+              <View style={styles.repeatFoodsContainer}>
+                <Text style={styles.sectionTitle}>Frequently Consumed Foods</Text>
+                {repeatFoods.map((food, index) => (
+                  <Animatable.View
+                    key={index}
+                    animation="fadeInUp"
+                    delay={index * 100}
+                    style={styles.foodItem}
+                  >
+                    <Text style={styles.foodName}>{food.name}</Text>
+                    <Text style={styles.foodCount}>
+                      Consumed {food.count} times
+                    </Text>
+                    <Ionicons
+                      name="thumbs-up"
+                      size={24}
+                      color="#4CAF50"
+                      style={styles.foodIcon}
+                    />
+                  </Animatable.View>
+                ))}
+              </View>
+            )}
+          </>
+        )}
+        <View style={styles.disclaimerContainer}>
+          <Text style={styles.disclaimerText}>
+            Your data is stored locally and is not shared. Learn more about how
+            BMI is calculated{' '}
+            <Text
+              style={styles.linkText}
+              onPress={() =>
+                Linking.openURL('https://en.wikipedia.org/wiki/Body_mass_index')
+              }
+            >
+              here
+            </Text>
+            .
+          </Text>
         </View>
-    );
+      </ScrollView>
+    </SafeAreaView>
+  );
 };
 
-const getDynamicStyles = (colorScheme) => StyleSheet.create({
-    container: {
-        flex: 1,
-        alignItems: 'center',
-        paddingTop: 20,
-        backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+const getDynamicStyles = () =>
+  StyleSheet.create({
+    // Onboarding styles
+    onboardingOverlay: {
+      ...StyleSheet.absoluteFillObject,
+      backgroundColor: 'transparent',
+      zIndex: 8,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    scrollContainer: {
-        width: '100%',
-        marginTop: '5%',
-        padding: '3%',
+    onboardingContainer: {
+      width: '100%',
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
     },
-    IntroduceUserTitle: {
-        fontSize: 28,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        marginTop: -200,
-        marginLeft: '1%',
+    onboardingContent: {
+      height: '65%',
     },
-    card: {
-        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#eee',
-        padding: '4%',
-        marginVertical: '2%',
-        borderRadius: 25,
+    onboardingPage: {
+      width: width,
+      alignItems: 'center',
+      justifyContent: 'center',
+      paddingHorizontal: 20,
     },
-    cardTitle: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        marginBottom: '3%',
-        marginLeft: '1%',
+    onboardingInnerContent: {
+      alignItems: 'center',
+      width: '100%',
     },
-    cardText: {
-        fontSize: 17,
-        color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
-        marginBottom: '5%',
-        marginLeft: '1%',
+    onboardingIconContainer: {
+      marginBottom: 20,
     },
-    insightsTitle: {
-        marginTop: isIphoneSE() ? '5%' : '12%',  // 20% from the top of the screen
-        fontSize: 24,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        textAlign: 'center',
+    onboardingIcon: {
+      borderRadius: 40,
+      padding: 20,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: '#555',
+      backgroundColor: 'rgba(255, 255, 255, 0.1)',
     },
-    circleContainer: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginTop: '2%',
-        paddingLeft: '3%',
+    onboardingTitle: {
+      fontSize: 24,
+      fontWeight: 'bold',
+      color: '#fff',
+      textAlign: 'center',
+      marginBottom: 10,
     },
-    arrowIconInsideCircle: {
-        position: 'absolute',
-        left: isIphoneSE() ? 28 : 29,  // 20% from the top of the screen
-        top: 18.5,
+    unitToggleContainer: {
+      flexDirection: 'row',
+      marginBottom: 20,
+      justifyContent: 'center',
+      width: '100%',
     },
-    cardTitleSmartCoach: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        marginBottom: 10,
-        marginLeft: '1%',
-        marginTop: '1%',
+    unitToggle: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 20,
+      backgroundColor: '#2a2a2d',
+      marginHorizontal: 5,
     },
-    smartCoachHeader: {
-        flexDirection: 'row',
-        alignItems: 'center',
-        marginBottom: 10,
+    unitToggleSelected: {
+      paddingVertical: 10,
+      paddingHorizontal: 20,
+      borderRadius: 20,
+      backgroundColor: '#fff',
+      marginHorizontal: 5,
     },
-    icon: {
-        width: 50,
-        height: 50,
-        marginRight: 8,
+    unitToggleText: {
+      color: '#fff',
     },
-    iconButton: {
-        position: 'absolute',
-        right: '5%',
-        top: isIphoneSE() ? '5%' : '8%',  // 20% from the top of the screen
-        padding: 10,
-        zIndex: 1,
-        backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-        borderRadius: 15,
-    },
-    modalContainer: {
-        flex: 1,
-        justifyContent: 'center',
-        alignItems: 'center',
-    },
-    inputModalView: {
-        backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
-        borderRadius: 40,
-        padding: 20,
-        alignItems: 'center',
-        shadowColor: '#000',
-        shadowOffset: {
-            width: 0,
-            height: 1
-        },
-        shadowOpacity: 100,
-        shadowRadius: 90,
-        elevation: 100,
-        width: '90%',
-        height: '80%',
+    unitToggleTextSelected: {
+      color: '#000',
     },
     input: {
-        height: 50,
-        margin: 12,
-        borderWidth: 2,
-        padding: 15,
-        width: 160,
-        borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#bbb',
-        color: colorScheme === 'dark' ? '#c5c5c5' : '#000',
-        borderRadius: 15,
-        fontSize: 17,
-        textAlign: 'center'
-    },
-    inputModalButton: {
-        backgroundColor: colorScheme === 'dark' ? '#2d2d2d' : '#000',
-        borderRadius: 18,
-        padding: '4%',
-        paddingHorizontal: '6%',
-        elevation: 2,
-        marginTop: '0%',
-        marginHorizontal: '3%',
-    },
-    inputModalButtonText: {
-        color: "white",
-        fontSize: 18,
-        fontWeight: "500",
-        textAlign: "center"
-    },
-    inputModalText: {
-        marginBottom: '2%',
-        textAlign: "center",
-        fontSize: 26,
-        fontWeight: "600",
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
-    },
-    inputDescription: {
-        marginBottom: '9%',
-        textAlign: "center",
-        fontSize: 20,
-        fontWeight: '700',
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
-    },
-    inputContainer: {
-        alignItems: 'center',
-        width: '100%'
-    },
-    genderSelection: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        width: '80%',
-    },
-    genderButton: {
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
-        alignItems: 'center',
-        marginHorizontal: '3.5%',
-        marginTop: '6%',
-        padding: 15,
-        borderRadius: 15,
-        borderColor: 'transparent',
-        width: 100,
-        borderWidth: 1,
-    },
-    genderButtonNoSay: {
-        alignSelf: 'center',
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
-        alignItems: 'center',
-        marginTop: '6%',
-        padding: 15,
-        borderRadius: 15,
-        borderColor: 'transparent',
-        width: 160,
-        borderWidth: 1,
-    },
-    selectedGenderButton: {
-        borderColor: '#AAA',
-        borderWidth: 2,
-    },
-    genderButtonText: {
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        fontSize: 16,
-    },
-    resultText: {
-        fontSize: 22,
-        fontWeight: 'bold',
-        color: colorScheme === 'dark' ? '#fff' : '#000',
-        marginBottom: 10,
-        textAlign: 'center',
-    },
-    resultDescription: {
-        fontSize: 17,
-        color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
-        textAlign: 'center',
-        marginBottom: 20,
-    },
-    activityLevelText: {
-        fontSize: 18,
-        textAlign: 'center',
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
-        marginVertical: 10,
-    },
-    inputLabel: {
-        fontSize: 18,
-        fontWeight: '500',
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
-        textAlign: 'center',
-    },
-    inputDescription: {
-        fontSize: 14,
-        color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
-        textAlign: 'center',
-        marginBottom: 10,
-    },
-    activityButton: {
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
-        borderColor: 'transparent',
-        width: isIphoneSE() ? 250 : 300,  // 20% from the top of the screen
-        alignItems: 'center',
-        padding: '3.8%',
-        borderRadius: 17,
-        marginBottom: '3%',
-        borderWidth: 2,
-    },
-    selectedActivityButton: {
-        borderColor: colorScheme === 'dark' ? '#fff' : '#000',
-        padding: '3.8%',
-        borderRadius: 17,
-        marginBottom: '3%',
-        borderWidth: 2,
-    },
-    activityButtonText: {
-        fontSize: 18,
-        color: colorScheme === 'dark' ? '#FFF' : '#000',
-        textAlign: 'center',
-    },
-    activityDescription: {
-        fontSize: 14,
-        color: colorScheme === 'dark' ? '#CCC' : '#333',
-        textAlign: 'center',
-        marginTop: 5,
-    },
-    progressContainer: {
-        width: '100%',
-        height: 10,
-        backgroundColor: colorScheme === 'dark' ? '#4a4a4a' : '#e0e0e0',
-        borderRadius: 5,
-        marginTop: 15,
-        marginBottom: 20,
-    },
-    progressBar: {
-        height: '100%',
-        backgroundColor: colorScheme === 'dark' ? '#d1d1d1' : '#333',
-        borderRadius: 5,
-    },
-    goalContainer: {
-        marginBottom: 15,
-    },
-    goalLabel: {
-        fontSize: 16,
-        color: colorScheme === 'dark' ? '#e9e9e9' : '#000',
-        marginBottom: 5,
-    },
-    buttonContainer: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        width: '100%',
-        marginTop: 20,
-    },
-    arrowButtons: {
-        // empty for now
-    },
-    inputModalTitle: {
-        marginBottom: '5%',
-        textAlign: "center",
-        fontSize: 22,
-        fontWeight: "bold",
-        color: colorScheme === 'dark' ? '#d0d0d0' : '#000',
-    },
-    inputModalTitleSmartCoach: {
-        marginBottom: '5%',
-        textAlign: "center",
-        fontSize: 17,
-        color: colorScheme === 'dark' ? '#9b9b9b' : '#000',
-    },
-    checkButton: {
-        position: 'absolute',
-        right: '0%',
-        top: '0%',
-        padding: 10,
-        zIndex: 90,
-        backgroundColor: colorScheme === 'dark' ? '#161618' : '#000',
-        borderRadius: 16,
-    },
-    genderRow: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        marginTop: 10,
-    },
-    modalDescription: {
-        fontSize: 14,
-        color: colorScheme === 'dark' ? '#AAA' : '#555',
-        textAlign: 'center',
-        paddingHorizontal: '2%',
-        marginTop: '4.6%',
-      },
-      TopDescriptionText: {
-        fontSize: 16,
-        color: colorScheme === 'dark' ? '#888' : '#555',
-        textAlign: 'center',
-        paddingHorizontal: '4%',
-        marginTop: '-1%',
-        marginBottom: '4%'
-      },
-      BottomDescriptionText: {
-        fontSize: 15.5,
-        color: colorScheme === 'dark' ? '#AAA' : '#555',
-        textAlign: 'center',
-        paddingHorizontal: '2%',
-        marginTop: '5.5%',
-        marginBottom: '16%'
-      },
-      goalButton: {
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
-        borderColor: 'transparent',
-        width: isIphoneSE() ? 250 : 300,  // 20% from the top of the screen
-        alignItems: 'center',
-        padding: '3.8%',
-        borderRadius: 17,
-        marginBottom: '3%',
-        borderWidth: 2,
-    },
-    selectedGoalButton: {
-        borderColor: colorScheme === 'dark' ? '#fff' : '#000',
-        padding: '3.8%',
-        borderRadius: 17,
-        marginBottom: '3%',
-        borderWidth: 2,
-    },
-    goalButtonText: {
-        fontSize: 18,
-        color: colorScheme === 'dark' ? '#FFF' : '#000',
-        textAlign: 'center',
-    },
-    goalDescription: {
-        fontSize: 14,
-        color: colorScheme === 'dark' ? '#CCC' : '#333',
-        textAlign: 'center',
-        marginTop: 5,
-    },
-    closeButton: {
-        position: 'absolute',
-        borderRadius: 100,
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',
-        padding: 6,
-        top: 20,
-        right: 20,
-        zIndex: 1,
-    },
-    linkText: {
-        color: colorScheme === 'dark' ? '#AAA' : '#555',
-        textDecorationLine: 'underline'
+      backgroundColor: '#2a2a2d',
+      color: '#FFF',
+      padding: 15,
+      borderRadius: 20,
+      width: '80%',
+      marginBottom: 10,
+      textAlign: 'center',
+      fontSize: 18,
     },
     inputRow: {
       flexDirection: 'row',
+      justifyContent: 'space-between',
+      width: '80%',
+      borderRadius: 20,
+    },
+    inputSmall: {
+      backgroundColor: '#2a2a2d',
+      color: '#FFF',
+      padding: 15,
+      borderRadius: 15,
+      width: '48%',
+      marginBottom: 10,
+      textAlign: 'center',
+      fontSize: 18,
+    },
+    optionsContainer: {
+      width: '100%',
       alignItems: 'center',
-      marginBottom: 15,
+      marginTop: 10,
     },
-    inputButton: {
-        backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
-      paddingVertical: 10,
-      paddingHorizontal: '3%',
-      borderRadius: 12,
+    optionsContainerScroll: {
+      width: '100%',
+      maxHeight: '50%',
+      alignSelf: 'center',
     },
-    inputButtonText: {
-        color: colorScheme === 'dark' ? '#FFF' : '#000',
+    option: {
+      backgroundColor: '#2a2a2d',
+      padding: 15,
+      borderRadius: 15,
+      marginBottom: 10,
+      width: '80%',
+      alignItems: 'center',
+    },
+    optionSelected: {
+      backgroundColor: '#fff',
+      padding: 15,
+      borderRadius: 15,
+      marginBottom: 10,
+      width: '80%',
+      alignItems: 'center',
+    },
+    optionLarge: {
+      backgroundColor: '#2a2a2d',
+      padding: 15,
+      borderRadius: 15,
+      marginBottom: 10,
+      width: '90%',
+    },
+    optionSelectedLarge: {
+      backgroundColor: '#fff',
+      padding: 15,
+      borderRadius: 15,
+      marginBottom: 10,
+      width: '90%',
+    },
+    optionText: {
+      color: '#fff',
       fontSize: 16,
-      fontWeight: '500',
+      textAlign: 'center',
     },
-});
-
-const getCompletionPercent = (current, goal) => (current / goal) * 100;
+    optionTextSelected: {
+      color: '#000',
+      fontSize: 16,
+      textAlign: 'center',
+    },
+    optionDescription: {
+      color: '#aaa',
+      fontSize: 14,
+      textAlign: 'center',
+      marginTop: 5,
+    },
+    goalsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      justifyContent: 'center',
+      marginTop: 20,
+    },
+    goalCard: {
+      backgroundColor: '#2a2a2d',
+      padding: 20,
+      borderRadius: 15,
+      margin: 10,
+      width: '40%',
+      alignItems: 'center',
+    },
+    goalValue: {
+      color: '#fff',
+      fontSize: 22,
+      fontWeight: 'bold',
+    },
+    goalLabel: {
+      color: '#aaa',
+      fontSize: 16,
+      marginTop: 5,
+    },
+    adjustGoalContainer: {
+      marginBottom: 20,
+      alignItems: 'center',
+    },
+    goalText: {
+      color: '#fff',
+      fontSize: 18,
+      marginBottom: 5,
+    },
+    adjustedGoalValue: {
+      color: '#fff',
+      fontSize: 22,
+      fontWeight: 'bold',
+      marginBottom: 10,
+    },
+    adjustButtonsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+    },
+    adjustButton: {
+      backgroundColor: '#2a2a2d',
+      padding: 10,
+      borderRadius: 10,
+      marginHorizontal: 10,
+      width: 80,
+      alignItems: 'center',
+    },
+    adjustButtonText: {
+      color: '#fff',
+      fontSize: 16,
+    },
+    saveGoalsButton: {
+      backgroundColor: '#fff',
+      padding: 15,
+      borderRadius: 15,
+      marginTop: 20,
+      width: '80%',
+      alignItems: 'center',
+      alignSelf: 'center',
+    },
+    saveGoalsButtonText: {
+      color: '#000',
+      fontSize: 16,
+    },
+    onboardingFooter: {
+      width: '100%',
+      alignItems: 'center',
+      marginBottom: 20,
+    },
+    onboardingNextButton: {
+      backgroundColor: '#fff',
+      paddingVertical: 12,
+      paddingHorizontal: 40,
+      borderRadius: 25,
+      marginTop: 10,
+    },
+    onboardingButtonText: {
+      color: '#000',
+      fontSize: 18,
+      fontWeight: 'bold',
+    },
+    pagination: {
+      flexDirection: 'row',
+      marginTop: 10,
+    },
+    paginationDot: {
+      width: 10,
+      height: 10,
+      borderRadius: 5,
+      marginHorizontal: 5,
+    },
+    paginationDotActive: {
+      backgroundColor: '#fff',
+    },
+    paginationDotInactive: {
+      backgroundColor: '#777',
+      width: 8,
+      height: 8,
+      borderRadius: 4,
+    },
+    // Existing styles...
+    safeArea: {
+      flex: 1,
+      backgroundColor: '#000',
+    },
+    header: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center', // Center align the title
+      paddingTop: isIphoneSE() ? 12 : 16,
+      paddingBottom: 8,
+      paddingHorizontal: '5%',
+      backgroundColor: '#000',
+    },
+    title: {
+      fontSize: 32,
+      fontWeight: 'bold',
+      color: '#FFF',
+      textAlign: 'center',
+    },
+    container: {
+      flex: 1,
+      padding: 20,
+    },
+    noGoalsContainer: {
+      alignItems: 'center',
+      marginTop: 50,
+    },
+    noGoalsText: {
+      fontSize: 18,
+      color: '#FFF',
+      textAlign: 'center',
+      marginBottom: 20,
+    },
+    setGoalsButton: {
+      backgroundColor: '#1C1C1E',
+      padding: 15,
+      borderRadius: 15,
+    },
+    setGoalsButtonText: {
+      color: '#FFF',
+      fontSize: 16,
+    },
+    trendContainer: {
+      marginBottom: 30,
+    },
+    sectionTitle: {
+      fontSize: 18,
+      color: '#fff',
+      marginBottom: 10,
+      fontWeight: '400',
+      textAlign: 'center',
+    },
+    chartSelectorContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      marginBottom: 10,
+    },
+    macroButton: {
+      backgroundColor: 'transparent',
+      paddingVertical: 8,
+      paddingHorizontal: 15,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#2a2a2d',
+      marginHorizontal: 5,
+    },
+    selectedMacroButton: {
+      backgroundColor: '#2a2a2d',
+      paddingVertical: 8,
+      paddingHorizontal: 15,
+      borderRadius: 20,
+      borderWidth: 1,
+      borderColor: '#fff',
+      marginHorizontal: 5,
+    },
+    macroButtonText: {
+      color: '#fff',
+      fontSize: 16,
+    },
+    macroButtonTextSelected: {
+      color: '#fff',
+      fontSize: 16,
+    },
+    chartStyle: {
+      borderRadius: 16,
+    },
+    adviceContainer: {
+      marginBottom: 30,
+      position: 'relative',
+    },
+    adviceText: {
+      fontSize: 18,
+      color: '#FFF',
+      marginBottom: 10,
+    },
+    refreshButton: {
+      position: 'absolute',
+      top: 0,
+      right: 0,
+      backgroundColor: '#1C1C1E',
+      padding: 10,
+      borderRadius: 15,
+    },
+    repeatFoodsContainer: {
+      marginBottom: 30,
+    },
+    foodItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: '#1C1C1E',
+      padding: 15,
+      borderRadius: 15,
+      marginBottom: 10,
+    },
+    foodName: {
+      color: '#FFF',
+      fontSize: 16,
+      flex: 1,
+    },
+    foodCount: {
+      color: '#AAA',
+      fontSize: 14,
+    },
+    foodIcon: {
+      marginLeft: 10,
+    },
+    disclaimerContainer: {
+      marginTop: 20,
+    },
+    disclaimerText: {
+      color: '#AAA',
+      fontSize: 14,
+      textAlign: 'center',
+    },
+    linkText: {
+      color: '#007AFF',
+      textDecorationLine: 'underline',
+    },
+  });
 
 export default InsightsScreen;

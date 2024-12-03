@@ -281,13 +281,12 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontWeight: 'bold',
   },
   backButton: {
-    position: 'absolute',
-    left: '5%',
-    top: '5%',
-    zIndex: 10,
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
-    borderRadius: 14,
+    borderRadius: 140,
     padding: 10,
+    // Removed marginRight
+    borderWidth: 2,
+    borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
   },
   button: {
     backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#000',

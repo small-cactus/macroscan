@@ -342,6 +342,7 @@ useEffect(() => {
             try {
               const keysToRemove = [
                 '@user',
+                '@user_goals',
                 'userImageUri',
                 'userName',
                 '@user_logged_in',
@@ -349,7 +350,9 @@ useEffect(() => {
                 'selectedModel',
                 'dailyScanCount',
                 'firstUseDate',
-                'dateLastUsed'
+                'dateLastUsed',
+                'hasViewedTutorial',
+                'hasViewedFeaturesTutorial',
               ];
   
               for (const key of keysToRemove) {

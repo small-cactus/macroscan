@@ -51,6 +51,7 @@ import OnBoardingScreen from './screens/OnBoardingScreen';
 import FoodScanScreen from './screens/FoodScanScreen';
 import DebugScreen from './screens/DebugScreen';
 import CameraScreen from './screens/CameraScreen';
+import ChatWithImageTest from './screens/ChatWithImageTest';
 
 const { width, height } = Dimensions.get('window');
 
@@ -335,6 +336,11 @@ function App() {
                 component={DebugScreen}
                 options={{ headerShown: false }}
               />
+              <Stack.Screen
+                name="ChatWithImageTest"
+                component={ChatWithImageTest}
+                options={{ headerShown: false }}
+              />
             </Stack.Navigator>
             <StatusBar
               style={theme === 'dark' ? 'light-content' : 'dark-content'}
@@ -356,7 +362,7 @@ const getDynamicStyles = (colorScheme) =>
     },
     tabBarStyle: {
       backgroundColor: colorScheme === 'dark' ? '#000' : '#fff',
-      borderTopColor: colorScheme === 'dark' ? '#5a5a5a' : '#e0e0e0',
+      borderTopColor: colorScheme === 'dark' ? '#3a3a3a' : '#e0e0e0',
       paddingBottom: isIphoneSE() ? 8 : 30, // 20% from the top of the screen
       paddingTop: isIphoneSE() ? 3 : 10, // 20% from the top of the screen
     },

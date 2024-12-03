@@ -321,7 +321,7 @@ if (!permission.granted) {
 
       Animated.timing(checkmarkOpacityAnim, {
         toValue: 1,
-        duration: 700,
+        duration: 500,
         useNativeDriver: true,
       }).start(() => {
         setTimeout(() => {
@@ -330,7 +330,7 @@ if (!permission.granted) {
           blurOpacityAnim.setValue(0);
           checkmarkOpacityAnim.setValue(0);
           setIsBlurring(false);
-        }, 1000);
+        }, 200);
       });
     } else {
       Alert.alert('Error', 'Failed to take picture. Please try again.');
