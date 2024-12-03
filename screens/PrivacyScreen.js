@@ -169,7 +169,7 @@ const getDynamicStyles = colorScheme =>
     },
     title: {
       flex: 1,
-      fontSize: 32,
+      fontSize: 25,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
       textAlign: 'center',

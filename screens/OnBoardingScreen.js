@@ -97,7 +97,7 @@ const ONBOARDING_STEPS = [
   {
     id: '4',
     title: 'Endless Possibilities',
-    description: 'Track any food with precise nutrition data',
+    description: "Unlike most apps, you can scan any food, even brand-new creations, with accurate results",
     showCarousel: true,
     bottomDescription: 'From simple ingredients to complex meals, we have you covered',
   },

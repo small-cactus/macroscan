@@ -187,7 +187,7 @@ const getDynamicStyles = colorScheme =>
     },
     title: {
       flex: 1,
-      fontSize: 32, // Updated to match AboutScreen's title size
+      fontSize: 25, // Updated to match AboutScreen's title size
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
       textAlign: 'center',

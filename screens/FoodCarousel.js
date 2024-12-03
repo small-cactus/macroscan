@@ -10,26 +10,56 @@ const CARD_WIDTH = (width - 40 - CARD_MARGIN_HORIZONTAL * 2 * 3) / 3;
 const CARD_HEIGHT = 150;
 
 const SAMPLE_FOODS = [
-  { id: '1', name: 'Grilled Chicken', emoji: '🍗', protein: 32, carbs: 0, fat: 3.6 },
-  { id: '2', name: 'Sweet Potato', emoji: '🍠', protein: 2, carbs: 27, fat: 0.1 },
-  { id: '3', name: 'Salmon Fillet', emoji: '🐟', protein: 25, carbs: 0, fat: 15 },
-  { id: '4', name: 'Quinoa Bowl', emoji: '🥣', protein: 8, carbs: 39, fat: 4 },
-  { id: '5', name: 'Greek Yogurt', emoji: '🥛', protein: 17, carbs: 6, fat: 0.4 },
-  { id: '6', name: 'Avocado Toast', emoji: '🥑🍞', protein: 4, carbs: 18, fat: 15 },
-  { id: '7', name: 'Protein Smoothie', emoji: '🥤', protein: 20, carbs: 30, fat: 5 },
-  { id: '8', name: 'Oatmeal', emoji: '🥣', protein: 6, carbs: 32, fat: 3 },
-  { id: '9', name: 'Chicken Salad', emoji: '🥗', protein: 28, carbs: 10, fat: 8 },
-  { id: '10', name: 'Rice Bowl', emoji: '🍚', protein: 5, carbs: 45, fat: 1 },
-  { id: '11', name: 'Beef Steak', emoji: '🥩', protein: 26, carbs: 0, fat: 20 },
-  { id: '12', name: 'Pasta Primavera', emoji: '🍝', protein: 12, carbs: 60, fat: 10 },
-  { id: '13', name: 'Tofu Stir Fry', emoji: '🍲', protein: 15, carbs: 20, fat: 8 },
-  { id: '14', name: 'Egg Benedict', emoji: '🍳', protein: 18, carbs: 24, fat: 12 },
-  { id: '16', name: 'Turkey Sandwich', emoji: '🥪', protein: 22, carbs: 30, fat: 5 },
-  { id: '17', name: 'Veggie Burger', emoji: '🍔', protein: 14, carbs: 35, fat: 10 },
-  { id: '18', name: 'Shrimp Tacos', emoji: '🌮', protein: 20, carbs: 28, fat: 6 },
-  { id: '19', name: 'Lentil Soup', emoji: '🍜', protein: 12, carbs: 35, fat: 2 },
-  { id: '15', name: 'Fruit Salad', emoji: '🍉🍇', carbs: 25, fat: 0.5, sugar: 20 },
-  { id: '20', name: 'Blueberry Muffin', emoji: '🧁', carbs: 40, fat: 12, sugar: 22 },
+  { id: '1', name: 'Coconut Bliss Bowl', emoji: '🥥', protein: 4, carbs: 20, fat: 18 },
+  { id: '2', name: 'Beef Steak', emoji: '🥩', protein: 26, carbs: 0, fat: 20 },
+  { id: '3', name: 'Tomato Bruschetta', emoji: '🍅🍞', protein: 3, carbs: 22, fat: 4 },
+  { id: '4', name: 'Apple Slices', emoji: '🍎', carbs: 22, fat: 0.1, sugar: 18 },
+  { id: '5', name: 'Sweet Corn', emoji: '🌽', protein: 4, carbs: 19, fat: 1 },
+  { id: '6', name: 'Pumpkin Pancake', emoji: '🥞', protein: 6, carbs: 25, fat: 3 },
+  { id: '7', name: 'Blueberry Muffin', emoji: '🧁', carbs: 40, fat: 12, sugar: 22 },
+  { id: '8', name: 'Pasta Primavera', emoji: '🍝', protein: 12, carbs: 60, fat: 10 },
+  { id: '9', name: 'Egg Benedict', emoji: '🍳', protein: 18, carbs: 24, fat: 12 },
+  { id: '10', name: 'Zucchini Fries', emoji: '🍟', protein: 3, carbs: 15, fat: 4 },
+  { id: '11', name: 'Avocado Toast', emoji: '🥑🍞', protein: 4, carbs: 18, fat: 15 },
+  { id: '12', name: 'Cheese Platter', emoji: '🧀', protein: 15, carbs: 2, fat: 20 },
+  { id: '13', name: 'Honeydew Sorbet', emoji: '🍈', carbs: 22, fat: 0.1, sugar: 18 },
+  { id: '14', name: 'Tofu Stir Fry', emoji: '🍲', protein: 15, carbs: 20, fat: 8 },
+  { id: '15', name: 'Peach Yogurt', emoji: '🍑🥛', protein: 12, carbs: 15, fat: 3 },
+  { id: '16', name: 'Spinach Wrap', emoji: '🌯', protein: 8, carbs: 20, fat: 4 },
+  { id: '17', name: 'Carrot Soup', emoji: '🥕', protein: 4, carbs: 16, fat: 2 },
+  { id: '18', name: 'Broccoli Stir Fry', emoji: '🥦', protein: 5, carbs: 12, fat: 4 },
+  { id: '19', name: 'Almond Butter Toast', emoji: '🫓', protein: 7, carbs: 16, fat: 12 },
+  { id: '20', name: 'Baked Pear', emoji: '🍐', carbs: 28, fat: 0.2, sugar: 18 },
+  { id: '21', name: 'Grilled Chicken', emoji: '🍗', protein: 32, carbs: 0, fat: 3.6 },
+  { id: '22', name: 'Cherry Sorbet', emoji: '🍒', carbs: 20, fat: 0.2, sugar: 18 },
+  { id: '23', name: 'Lentil Soup', emoji: '🍜', protein: 12, carbs: 35, fat: 2 },
+  { id: '24', name: 'Pineapple Spears', emoji: '🍍', carbs: 28, fat: 0.2, sugar: 24 },
+  { id: '25', name: 'Sweet Potato', emoji: '🍠', protein: 2, carbs: 27, fat: 0.1 },
+  { id: '26', name: 'Eggplant Chips', emoji: '🍆', protein: 1, carbs: 10, fat: 2 },
+  { id: '27', name: 'Radish Salad', emoji: '🥗', protein: 2, carbs: 10, fat: 0.5 },
+  { id: '28', name: 'Veggie Burger', emoji: '🍔', protein: 14, carbs: 35, fat: 10 },
+  { id: '29', name: 'Seaweed Salad', emoji: '🍙', protein: 3, carbs: 10, fat: 0.5 },
+  { id: '30', name: 'Protein Smoothie', emoji: '🥤', protein: 20, carbs: 30, fat: 5 },
+  { id: '31', name: 'Chicken Salad', emoji: '🥗', protein: 28, carbs: 10, fat: 8 },
+  { id: '32', name: 'Tomato Bruschetta', emoji: '🍅🍞', protein: 3, carbs: 22, fat: 4 },
+  { id: '33', name: 'Tofu Stir Fry', emoji: '🍲', protein: 15, carbs: 20, fat: 8 },
+  { id: '34', name: 'Beet Salad', emoji: '🍠🥗', protein: 3, carbs: 18, fat: 2 },
+  { id: '35', name: 'Avocado Smoothie', emoji: '🥑🥤', protein: 5, carbs: 15, fat: 10 },
+  { id: '36', name: 'Crispy Chickpeas', emoji: '🧆', protein: 8, carbs: 19, fat: 6 },
+  { id: '37', name: 'Walnut Bread', emoji: '🍞🌰', protein: 7, carbs: 28, fat: 8 },
+  { id: '38', name: 'Kimchi Wrap', emoji: '🌯', protein: 4, carbs: 15, fat: 2 },
+  { id: '39', name: 'Oatmeal', emoji: '🥣', protein: 6, carbs: 32, fat: 3 },
+  { id: '40', name: 'Quinoa Bowl', emoji: '🥣', protein: 8, carbs: 39, fat: 4 },
+  { id: '41', name: 'Mushroom Risotto', emoji: '🍄', protein: 9, carbs: 32, fat: 8 },
+  { id: '42', name: 'Rice Bowl', emoji: '🍚', protein: 5, carbs: 45, fat: 1 },
+  { id: '43', name: 'Egg Benedict', emoji: '🍳', protein: 18, carbs: 24, fat: 12 },
+  { id: '44', name: 'Cucumber Salad', emoji: '🥒', protein: 1, carbs: 5, fat: 0.2 },
+  { id: '45', name: 'Shrimp Tacos', emoji: '🌮', protein: 20, carbs: 28, fat: 6 },
+  { id: '46', name: 'Greek Yogurt', emoji: '🥛', protein: 17, carbs: 6, fat: 0.4 },
+  { id: '47', name: 'Banana Pancake', emoji: '🍌🥞', protein: 8, carbs: 30, fat: 6 },
+  { id: '48', name: 'Stuffed Bell Pepper', emoji: '🌶️', protein: 10, carbs: 25, fat: 6 },
+  { id: '49', name: 'Blueberry Muffin', emoji: '🧁', carbs: 40, fat: 12, sugar: 22 },
+  { id: '50', name: 'Fruit Salad', emoji: '🍉🍇', carbs: 25, fat: 0.5, sugar: 20 },
 ];
 
 const FoodCard = ({ food, isDark }) => {
@@ -179,9 +209,9 @@ const FoodCarousel = ({ isDark }) => {
       animate();
     };
 
-    createInfiniteLoop(scrollY1, 50000, false);  // First column down
-    createInfiniteLoop(scrollY2, 45000, true);   // Middle column up
-    createInfiniteLoop(scrollY3, 55000, false);  // Last column down
+    createInfiniteLoop(scrollY1, 100000, false);  // First column down
+    createInfiniteLoop(scrollY2, 95000, true);   // Middle column up
+    createInfiniteLoop(scrollY3, 105000, false);  // Last column down
 
     return () => {
       scrollY1.stopAnimation();

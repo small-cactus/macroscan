@@ -125,7 +125,7 @@ const AboutScreen = () => {
           <View style={styles.infoSection}>
             <Text style={styles.version}>Version 1.5.0 (70)</Text>
             <View style={styles.betaContainer}>
-              <Text style={styles.betaTag}>BETA</Text>
+              {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>
           </View>
 
@@ -191,7 +191,7 @@ const getDynamicStyles = colorScheme =>
     },
     title: {
       flex: 1,
-      fontSize: 32,
+      fontSize: 25,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
       textAlign: 'center',

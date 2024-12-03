@@ -95,7 +95,7 @@ const ImageAnalyzer = () => {
       const apiKey = await AsyncStorage.getItem('@openai_api_key');
       
       if (!apiKey) {
-        Alert.alert('Configuration Required', 'Please set up your OpenAI API key in settings');
+        Alert.alert('Configuration Required', 'Please store an OpenAI key at @openai_api_key in async storage and try again.');
         return;
       }
 
