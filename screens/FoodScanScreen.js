@@ -601,8 +601,8 @@ const stopLoadingAnimation = () => {
     if (isFirstDayUnlimited || isSubscribed) {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false,
+        aspect: [9, 16],
         quality: 1,
       });
 
@@ -619,8 +619,8 @@ const stopLoadingAnimation = () => {
     } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
       let result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
+        allowsEditing: false,
+        aspect: [9, 16],
         quality: 1,
       });
 
