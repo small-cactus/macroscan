@@ -28,7 +28,7 @@ import AnimatedCenteredText from './AnimatedCenteredText';
 
 const { width, height } = Dimensions.get('window');
 
-const DEBUG_SHOW_ONBOARDING = false; // Set to true to always show onboarding
+const DEBUG_SHOW_ONBOARDING = true; // Set to true to always show onboarding
 
 const isIphoneSE = () => {
   const smallIphoneDimensions = [
@@ -742,41 +742,40 @@ const goalColors = {
                 </TouchableOpacity>
               ))}
             </View>
-          ) : item.field === 'activityLevel' ? (
-            <ScrollView
-              style={styles.optionsContainerScroll}
-              contentContainerStyle={styles.optionsContainer}
-            >
-              {item.options.map((option) => (
-                <TouchableOpacity
-                  key={option.name}
-                  onPress={() =>
-                    setOnboardingDataCollected({
-                      ...onboardingDataCollected,
-                      activityLevel: option.name,
-                    })
-                  }
+         ) : item.field === 'activityLevel' ? (
+          <View style={styles.activityOptionsContainer}>
+            {item.options.map((option) => (
+              <TouchableOpacity
+                key={option.name}
+                onPress={() =>
+                  setOnboardingDataCollected({
+                    ...onboardingDataCollected,
+                    activityLevel: option.name,
+                  })
+                }
+                style={
+                  onboardingDataCollected.activityLevel === option.name
+                    ? styles.activityOptionLargeSelected
+                    : styles.activityOptionLarge
+                }
+              >
+                <Text
                   style={
                     onboardingDataCollected.activityLevel === option.name
-                      ? styles.optionSelectedLarge
-                      : styles.optionLarge
+                      ? styles.activityOptionTextSelected
+                      : styles.activityOptionText
                   }
                 >
-                  <Text
-                    style={
-                      onboardingDataCollected.activityLevel === option.name
-                        ? styles.optionTextSelected
-                        : styles.optionText
-                    }
-                  >
-                    {option.name}
-                  </Text>
-                  <Text style={styles.optionDescription}>
-                    {option.description}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
+                  {option.name}
+                </Text>
+                <Text style={styles.activityOptionDescription}>
+                  {option.description}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+        
           ) : item.field === 'goal' ? (
             <View style={styles.optionsContainer}>
               {item.options.map((option) => (
@@ -1230,6 +1229,69 @@ const goalColors = {
           textAlign: 'center',
           marginTop: 5,
         },
+        activityOptionsContainer: {
+          width: '100%',
+          alignItems: 'center',
+          marginTop: 10,
+          height : '50%',
+          flexDirection: 'row',
+          flexWrap: 'wrap',
+          justifyContent: 'center',
+        },
+        activityOption: {
+          backgroundColor: '#2a2a2d',
+          padding: 15,
+          borderRadius: 15,
+          marginBottom: 10,
+          width: '80%',
+          alignItems: 'center',
+        },
+        activityOptionSelected: {
+          backgroundColor: '#fff',
+          padding: 15,
+          borderRadius: 15,
+          marginBottom: 10,
+          width: '80%',
+          alignItems: 'center',
+        },
+        activityOptionLarge: {
+          backgroundColor: '#2a2a2d',
+          padding: 12,
+          borderRadius: 15,
+          marginBottom: 10,
+          width: '90%',
+          height: '19%',
+          alignContent: 'center',
+        },
+        activityOptionLargeSelected: {
+          backgroundColor: '#fff',
+          padding: 12,
+          borderRadius: 15,
+          marginBottom: 10,
+          width: '90%',
+          height: '19%',
+          alignContent: 'center',
+        },
+        activityOptionText: {
+          color: '#fff',
+          fontSize: 15,
+          textAlign: 'center',
+          lineHeight: 14,
+          marginTop: 2,
+        },
+        activityOptionTextSelected: {
+          color: '#000',
+          fontSize: 15,
+          textAlign: 'center',
+          lineHeight: 15,
+        },
+        activityOptionDescription: {
+          color: '#aaa',
+          fontSize: 13,
+          textAlign: 'center',
+          marginTop: 1,
+          lineHeight: 12.5
+        },        
         goalsContainer: {
           flexDirection: 'row',
           flexWrap: 'wrap',
