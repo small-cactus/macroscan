@@ -52,6 +52,7 @@ import FoodScanScreen from './screens/FoodScanScreen';
 import DebugScreen from './screens/DebugScreen';
 import CameraScreen from './screens/CameraScreen';
 import ChatWithImageTest from './screens/ChatWithImageTest';
+import LandscapeCarouselScreen from './screens/LandscapeCarouselScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -334,6 +335,11 @@ function App() {
               <Stack.Screen
                 name="DebugScreen"
                 component={DebugScreen}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="LandscapeCarouselScreen"
+                component={LandscapeCarouselScreen}
                 options={{ headerShown: false }}
               />
               <Stack.Screen

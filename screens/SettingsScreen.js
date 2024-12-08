@@ -72,6 +72,10 @@ const SettingsScreen = () => {
       title: "Image chat test",
       navigateTo: "ChatWithImageTest",
     },
+    {
+      title: "Landscape carousel screen",
+      navigateTo: "LandscapeCarouselScreen",
+    },
   ];
 
   const handleSettingPress = async (navigateTo) => {
