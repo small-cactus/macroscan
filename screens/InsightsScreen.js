@@ -1,6 +1,7 @@
 // InsightsScreen.js
 
 import React, { useState, useEffect, useRef } from 'react';
+import { LinearGradient } from 'expo-linear-gradient';
 import {
   StyleSheet,
   View,
@@ -94,6 +95,30 @@ const InsightsScreen = () => {
     fats: 0,
   });
 
+  // Pale versions of macro colors
+const fullColors = {
+  calories: '#003f00',       // Pale Green
+  proteins: '#0d47a1',       // Pale Blue
+  carbohydrates: '#923100',  // Pale Orange
+  fats: '#4a148c',            // Pale Pink
+};
+
+// Full saturation macro colors
+const paleColors = {
+  calories: '#001100',       // Green
+  proteins: '#000022',       // Blue
+  carbohydrates: '#110000',  // Orange
+  fats: '#110011',            // Magenta
+};
+
+
+// const chartGradientColors = {
+//   calories: ['#003f00', '#001100'], // Green shades
+//   proteins: ['#0d47a1', '#000022'], // Blue shades
+//   carbohydrates: ['#b55100', '#110000'], // Orange shades
+//   fats: ['#4a148c', '#110011'], // Purple shades
+// };
+
   const onboardingData = [
     {
       key: '1',
@@ -174,6 +199,94 @@ const InsightsScreen = () => {
       description: 'These goals were calculated based on published scientific papers and real data. Nothing was guessed or made up.',
     },
   ];
+
+
+  const calculateCompletionPercentages = () => {
+    if (!goals) return {};
+  
+    // Get today's date in UTC (to match how dates are handled in calculateTrends)
+    const today = new Date();
+    const todayYear = today.getUTCFullYear();
+    const todayMonth = today.getUTCMonth();
+    const todayDate = today.getUTCDate();
+  
+    // Filter history to include only today's entries
+    const todaysHistory = history.filter((item) => {
+      const itemDate = new Date(item.date);
+      return (
+        itemDate.getUTCFullYear() === todayYear &&
+        itemDate.getUTCMonth() === todayMonth &&
+        itemDate.getUTCDate() === todayDate
+      );
+    });
+  
+    // Sum up today's nutrients
+    const totalIntake = {
+      calories: todaysHistory.reduce(
+        (total, item) => total + (item.nutrients?.calories?.amount || 0),
+        0
+      ),
+      proteins: todaysHistory.reduce(
+        (total, item) => total + (item.nutrients?.proteins?.amount || 0),
+        0
+      ),
+      carbohydrates: todaysHistory.reduce(
+        (total, item) => total + (item.nutrients?.carbohydrates?.amount || 0),
+        0
+      ),
+      fats: todaysHistory.reduce(
+        (total, item) => total + (item.nutrients?.fats?.amount || 0),
+        0
+      ),
+    };
+  
+    // Calculate percentages based on today's intake
+    const percentages = {
+      calories: (totalIntake.calories / goals.calories) * 100,
+      proteins: (totalIntake.proteins / goals.proteins) * 100,
+      carbohydrates: (totalIntake.carbohydrates / goals.carbohydrates) * 100,
+      fats: (totalIntake.fats / goals.fats) * 100,
+    };
+  
+    console.log('Todays Intake:', totalIntake);
+    console.log('Completion Percentages:', percentages);
+  
+    return percentages;
+  };
+
+  const getClosestAndFurthestMacros = (percentages) => {
+    const macros = ['calories', 'proteins', 'carbohydrates', 'fats'];
+    let closestMacro = macros[0];
+    let furthestMacro = macros[0];
+  
+    macros.forEach((macro) => {
+      if (percentages[macro] >= percentages[closestMacro]) {
+        closestMacro = macro;
+      }
+      if (percentages[macro] <= percentages[furthestMacro]) {
+        furthestMacro = macro;
+      }
+    });
+  
+    return { closestMacro, furthestMacro };
+  };
+
+  const percentages = calculateCompletionPercentages();
+
+// Function to determine color based on macro
+const getProgressBarColor = (macro) => {
+  if (macro === closestMacro) return 'green';
+  if (macro === furthestMacro) return 'red';
+  return 'yellow';
+};
+
+// Function to interpolate colors
+const interpolateColor = (percentage) => {
+  // Simple interpolation between red (0%) and green (100%)
+  const red = percentage < 50 ? 255 : Math.floor(255 - (percentage - 50) * 5.1);
+  const green = percentage > 50 ? 255 : Math.floor(percentage * 5.1);
+  return `rgb(${red},${green},0)`;
+};
 
   useEffect(() => {
     loadHistory();
@@ -837,6 +950,33 @@ const goalColors = {
       </View>
   )};
 
+  const ProgressBar = ({ value, color }) => {
+    const animatedWidth = useRef(new Animated.Value(0)).current;
+  
+    useEffect(() => {
+      Animated.spring(animatedWidth, {
+        toValue: value,
+        useNativeDriver: false,
+        tension: 20,
+        friction: 7,
+      }).start();
+    }, [value]);
+  
+    return (
+      <Animated.View
+        style={[
+          styles.progressBarFill,
+          {
+            width: animatedWidth.interpolate({
+              inputRange: [0, 100],
+              outputRange: ['0%', '100%'],
+            }),
+          },
+        ]}
+      />
+    );
+  };
+
     const onViewableItemsChanged = useRef(({ viewableItems }) => {
       if (viewableItems.length > 0) {
         const index = viewableItems[0].index;
@@ -1012,6 +1152,46 @@ const goalColors = {
               </TouchableOpacity>
             ))}
           </View>
+            {/* Goal Completion Forecasting */}
+{goals && history.length > 0 && (
+  <View style={styles.forecastingContainer}>
+    <Text style={styles.sectionTitle}>Goal Completion Forecasting</Text>
+    <View style={styles.progressBarContainer}>
+      {['calories', 'proteins', 'carbohydrates', 'fats'].map((macro) => {
+        // Ensure the percentage does not exceed 100%
+        const progress = Math.min(percentages[macro], 100);
+        return (
+          <View key={macro} style={styles.progressBarRow}>
+            <Text style={styles.progressBarLabel}>
+              {macro.charAt(0).toUpperCase() + macro.slice(1)}
+            </Text>
+            <View
+              style={[
+                styles.progressBarBackground,
+                { borderColor: fullColors[macro] }, // Dynamic border color
+              ]}
+            >
+              <LinearGradient
+                colors={[fullColors[macro], macroColors[macro]]}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+                style={[
+                  styles.progressBarFill,
+                  {
+                    width: `${progress}%`,
+                  },
+                ]}
+              />
+            </View>
+            <Text style={styles.progressBarPercentage}>
+              {Math.round(percentages[macro])}%
+            </Text>
+          </View>
+        );
+      })}
+    </View>
+  </View>
+)}
           {/* Personalized Advice */}
           {goals && (
             <View style={styles.adviceContainer}>
@@ -1522,6 +1702,7 @@ const goalColors = {
         },
         disclaimerContainer: {
           marginTop: 20,
+          marginBottom: 50,
         },
         disclaimerText: {
           color: '#AAA',
@@ -1531,6 +1712,36 @@ const goalColors = {
         linkText: {
           color: '#007AFF',
           textDecorationLine: 'underline',
+        },
+        progressBarContainer: {
+          marginVertical: 20,
+        },
+        progressBarRow: {
+          flexDirection: 'row',
+          alignItems: 'center',
+          marginBottom: 10,
+        },
+        progressBarLabel: {
+          width: 100,
+          color: '#fff',
+        },
+        progressBarBackground: {
+          flex: 1,
+          height: 15,
+          backgroundColor: '#2a2a2d',
+          borderRadius: 900,
+          overflow: 'hidden',
+          marginHorizontal: 10,
+          borderWidth: 2,
+        },
+        progressBarFill: {
+          height: '100%',
+          borderRadius: 900,
+        },
+        progressBarPercentage: {
+          width: 50,
+          textAlign: 'right',
+          color: '#fff',
         },
       });
 
