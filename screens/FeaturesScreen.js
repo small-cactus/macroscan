@@ -26,6 +26,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { useUser } from '../userContext';
+import * as RNIap from 'react-native-iap';
+import { useIAP } from '../IAPContext';
 import { BlurView } from 'expo-blur';
 import * as Linking from 'expo-linking';
 import AnimatedCenteredText from './AnimatedCenteredText';
@@ -38,7 +40,7 @@ if (
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
-const DEBUG_MOCK_UNLIMITED = true;
+const DEBUG_MOCK_UNLIMITED = false;
 const { width, height } = Dimensions.get('window');
 
 const isIphoneSE = () => {
@@ -66,12 +68,12 @@ const FeaturesScreen = () => {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const { user } = useUser();
+  const { isIAPEnabled } = useIAP(); // Get isIAPEnabled from IAPContext
 
   const models = {
     'claude-3-5-sonnet-20240620': 'Complex Processing',
     'claude-3-haiku-20240307': 'Default Processing',
   };
-
   const [selectedModel, setSelectedModel] = useState(
     'claude-3-haiku-20240307'
   );
@@ -92,6 +94,7 @@ const FeaturesScreen = () => {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
   };
+
   const buttonBorderColors = {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
@@ -100,7 +103,6 @@ const FeaturesScreen = () => {
   // Tutorial state variables
   const [showTutorial, setShowTutorial] = useState(false);
   const [debugShowTutorialAlways, setDebugShowTutorialAlways] = useState(false);
-
   const tutorialOpacityAnim = useRef(new Animated.Value(0)).current;
   const tutorialData = [
     {
@@ -133,10 +135,8 @@ const FeaturesScreen = () => {
       icon: 'settings',
     },
   ];
-
   const [tutorialIndex, setTutorialIndex] = useState(0);
   const flatListRef = useRef(null);
-
   // New state to track the currently visible tutorial index
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
 
@@ -155,17 +155,24 @@ const FeaturesScreen = () => {
     }
   }).current;
 
+  // Define your subscription IDs
+  const SUBSCRIPTION_IDS = [
+    'macroscan_plusplus',
+    'macroscan_plusplus_yearly',
+    'macroscan_unlimited',
+  ];
+
   useEffect(() => {
     checkUnlockStatus();
     loadSettings();
-  }, [debugUnlocked]);
+  }, [debugUnlocked, user, isIAPEnabled]); // Added 'user' and 'isIAPEnabled' as dependencies
 
   useEffect(() => {
     // Animate initial button states
     Object.keys(buttonBackgroundColors).forEach((mode) => {
       animateButtonSelection(mode, mode === selectedMode);
     });
-  }, [selectedMode]);
+  }, [selectedMode, colorScheme]);
 
   useEffect(() => {
     checkTutorial();
@@ -195,7 +202,6 @@ const FeaturesScreen = () => {
     } catch (error) {
       console.error('Error setting tutorial status:', error);
     }
-
     // Start fade-out animation
     Animated.timing(tutorialOpacityAnim, {
       toValue: 0,
@@ -209,9 +215,54 @@ const FeaturesScreen = () => {
   };
 
   const checkUnlockStatus = async () => {
-    const status =
-      debugUnlocked || (user ? user.hasUnlimitedAccess : false);
-    setIsUnlocked(status);
+    if (isIAPEnabled) {
+      try {
+        let isUnlockedStatus = false;
+
+        const purchases = await RNIap.getAvailablePurchases();
+
+        console.log(`Available purchases: ${JSON.stringify(purchases)}`);
+
+        const currentDate = new Date();
+
+        purchases.forEach((purchase) => {
+          // Get the expiration date based on the platform
+          let expirationDate;
+
+          if (Platform.OS === 'ios') {
+            // 'expiresDateMs' is a string timestamp in milliseconds for iOS
+            expirationDate = purchase.expiresDateMs
+              ? new Date(parseInt(purchase.expiresDateMs, 10))
+              : null;
+          } else if (Platform.OS === 'android') {
+            // 'expiryTimeMillis' is a string timestamp in milliseconds for Android
+            expirationDate = purchase.expiryTimeMillis
+              ? new Date(parseInt(purchase.expiryTimeMillis, 10))
+              : null;
+          }
+
+          // Check if the subscription is active (not expired)
+          if (
+            SUBSCRIPTION_IDS.includes(purchase.productId) &&
+            expirationDate &&
+            expirationDate > currentDate
+          ) {
+            isUnlockedStatus = true;
+          }
+        });
+
+        setIsUnlocked(isUnlockedStatus);
+      } catch (err) {
+        console.error('Failed to check subscriptions:', err);
+        setIsUnlocked(false);
+      }
+    } else {
+      // If IAP is not enabled, rely on user context
+      const status =
+        debugUnlocked ||
+        (user ? user.subscriptionStatus === 'macroscan_unlimited' : false);
+      setIsUnlocked(status);
+    }
   };
 
   const loadSettings = async () => {
@@ -228,9 +279,9 @@ const FeaturesScreen = () => {
   const showBetaAlert = () => {
     Alert.alert(
       'Beta Feature',
-      `Accurate mode is a beta feature, while most of the time it can be more accurate, sometimes it can be extremely wrong, up to 50% wrong.`
+      `Accurate mode is a beta feature. While it can be more accurate, sometimes it may produce incorrect results.`
     );
-  }
+  };
 
   const handleTitlePress = () => {
     setShowTutorial(true);
@@ -249,7 +300,6 @@ const FeaturesScreen = () => {
       );
       return;
     }
-
     try {
       await AsyncStorage.setItem('selectedModel', model);
       setSelectedModel(model);
@@ -260,6 +310,14 @@ const FeaturesScreen = () => {
   };
 
   const handleModeChange = async (mode) => {
+    // Added condition to show alert for free users selecting 'accurate' mode
+    if (mode === 'accurate' && !isUnlocked) {
+      Alert.alert(
+        'Limited Access',
+        'You only get 1 accurate scan a day on the free plan, make it count!'
+      );
+      // Removed 'return;' to allow mode change
+    }
     try {
       await AsyncStorage.setItem('selectedMode', mode);
       setSelectedMode(mode);
@@ -276,7 +334,6 @@ const FeaturesScreen = () => {
         title: value,
         locked: !isUnlocked && key !== 'claude-3-haiku-20240307',
       }));
-
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: [
@@ -292,7 +349,6 @@ const FeaturesScreen = () => {
         (buttonIndex) => {
           if (buttonIndex === 0) return;
           const selectedOption = options[buttonIndex - 1];
-
           if (selectedOption.locked) {
             Alert.alert(
               'Unlock Required',
@@ -300,7 +356,6 @@ const FeaturesScreen = () => {
             );
             return;
           }
-
           handleModelChange(selectedOption.key);
         }
       );
@@ -311,14 +366,12 @@ const FeaturesScreen = () => {
 
   const animateButtonSelection = (mode, selected) => {
     const duration = 200;
-
     // Animate background color
     Animated.timing(buttonBackgroundColors[mode], {
       toValue: selected ? 1 : 0,
       duration,
       useNativeDriver: false,
     }).start();
-
     // Animate border color
     Animated.timing(buttonBorderColors[mode], {
       toValue: selected ? 1 : 0,
@@ -334,7 +387,6 @@ const FeaturesScreen = () => {
 
   const renderScanModeButton = (mode, icon, title, description) => {
     const scaleValue = scaleValues[mode];
-
     const backgroundColor = buttonBackgroundColors[mode].interpolate({
       inputRange: [0, 1],
       outputRange: [
@@ -342,7 +394,6 @@ const FeaturesScreen = () => {
         colorScheme === 'dark' ? '#2c2c2e' : '#e5e5e5',
       ],
     });
-
     const borderColor = buttonBorderColors[mode].interpolate({
       inputRange: [0, 1],
       outputRange: [
@@ -350,7 +401,6 @@ const FeaturesScreen = () => {
         colorScheme === 'dark' ? '#5c5c5e' : '#d5d5d5',
       ],
     });
-
     const handlePressIn = () => {
       Animated.spring(scaleValue, {
         toValue: 0.97,
@@ -358,7 +408,6 @@ const FeaturesScreen = () => {
       }).start();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
-
     const handlePressOut = () => {
       Animated.spring(scaleValue, {
         toValue: 1,
@@ -366,13 +415,11 @@ const FeaturesScreen = () => {
         tension: 40,
         useNativeDriver: false,
       }).start();
-
       handleModeChange(mode);
       Object.keys(buttonBackgroundColors).forEach((m) => {
         animateButtonSelection(m, m === mode);
       });
     };
-
     return (
       <TouchableWithoutFeedback
         key={mode}
@@ -462,9 +509,7 @@ const FeaturesScreen = () => {
             {Object.entries(models).map(([key, value]) => (
               <Picker.Item
                 key={key}
-                label={`${
-                  value
-                }${
+                label={`${value}${
                   !isUnlocked && key !== 'claude-3-haiku-20240307'
                     ? ' (Locked)'
                     : ''
@@ -494,10 +539,10 @@ const FeaturesScreen = () => {
         <Text style={styles.tutorialTitle}>{item.title}</Text>
         {item.isBeta && (
           <TouchableOpacity onPress={showBetaAlert}>
-          <View style={styles.betaContainer}>
-            <Text style={styles.betaTag}>BETA</Text>
-          </View>
-        </TouchableOpacity>
+            <View style={styles.betaContainer}>
+              <Text style={styles.betaTag}>BETA</Text>
+            </View>
+          </TouchableOpacity>
         )}
         <AnimatedCenteredText
           text={item.description}
@@ -540,8 +585,8 @@ const FeaturesScreen = () => {
                 ref={flatListRef}
                 style={styles.flatList}
                 contentContainerStyle={styles.flatListContent}
-                onViewableItemsChanged={onViewableItemsChanged} // Add this prop
-                viewabilityConfig={viewabilityConfig} // Add this prop
+                onViewableItemsChanged={onViewableItemsChanged}
+                viewabilityConfig={viewabilityConfig}
               />
             </View>
             <View style={styles.tutorialFooter}>
@@ -582,7 +627,6 @@ const FeaturesScreen = () => {
           </View>
         </Animated.View>
       )}
-
       {/* Header with Back Button and Title */}
       <View style={styles.header}>
         {/* Left Section */}
@@ -598,26 +642,20 @@ const FeaturesScreen = () => {
             />
           </TouchableOpacity>
         </View>
-
         {/* Center Section */}
         <View style={styles.headerCenter}>
           <TouchableOpacity onPress={handleTitlePress}>
             <Text style={styles.title}>Scanner Settings</Text>
           </TouchableOpacity>
         </View>
-
         {/* Right Section (Empty Placeholder) */}
         <View style={styles.headerRight} />
       </View>
-
       <ScrollView style={styles.container}>
-        {/* Remove Scan Mode Title */}
-        {/* <Text style={styles.sectionTitle}>Scan Mode</Text> */}
         <Text style={styles.sectionDescription}>
           Choose between quick results or detailed analysis. Switch anytime
           based on your needs!
         </Text>
-
         <View style={styles.modeButtonsContainer}>
           {renderScanModeButton(
             'fast',
@@ -632,9 +670,7 @@ const FeaturesScreen = () => {
             'Detailed analysis • Best for homemade meals • Highly accurate'
           )}
         </View>
-
         <View style={styles.separator} />
-
         {/* Processing Model Section */}
         <TouchableOpacity
           style={styles.modelSelectorButton}
@@ -656,7 +692,6 @@ const FeaturesScreen = () => {
             />
           </View>
         </TouchableOpacity>
-
         {/* Tip Description moved closer */}
         <Text style={styles.bottomNote}>
           💡 Tip: Default Mode provides quick results for common foods. Use Accurate
@@ -664,7 +699,6 @@ const FeaturesScreen = () => {
           information.
         </Text>
       </ScrollView>
-
       {Platform.OS === 'android' && <AndroidPickerModal />}
     </SafeAreaView>
   );
@@ -927,7 +961,6 @@ const getDynamicStyles = (colorScheme) => {
       paddingVertical: 4,
     },
   });
-
   return baseStyles;
 };
 

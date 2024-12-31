@@ -40,10 +40,10 @@ const SettingsScreen = () => {
       title: "Features",
       navigateTo: "FeaturesScreen",
     },
-    {
-      title: "Notification Preferences",
-      navigateTo: "NotificationSettingsScreen",
-    },
+    // {
+    //   title: "Notification Preferences",
+    //   navigateTo: "NotificationSettingsScreen",
+    // },
     {
       title: "Privacy and Security",
       navigateTo: "PrivacyScreen",
@@ -52,35 +52,51 @@ const SettingsScreen = () => {
       title: "About MacroScan",
       navigateTo: "AboutScreen",
     },
-    {
-      title: "Developer",
-      navigateTo: "DebuggingScreen",
-    },
+    // {
+    //   title: "Developer",
+    //   navigateTo: "DebuggingScreen",
+    // },
     {
       title: "Help and Support",
       navigateTo: "SupportScreen",
     },
-    {
-      title: "Fullscreen Camera Test (Beta)",
-      navigateTo: "CameraScreen",
-    },
-    {
-      title: "On Boarding Test",
-      navigateTo: "OnBoardingScreen",
-    },
-    {
-      title: "Image chat test",
-      navigateTo: "ChatWithImageTest",
-    },
-    {
-      title: "Landscape carousel screen",
-      navigateTo: "LandscapeCarouselScreen",
-    },
+    // {
+    //   title: "Loading Screen Test",
+    //   navigateTo: "LoadingScreen",
+    // },
+    // {
+    //   title: "Goodbye Screen Test",
+    //   navigateTo: "Goodbye",
+    // },
+    // {
+    //   title: "No Internet Screen Test",
+    //   navigateTo: "NoInternet",
+    // },
+    // {
+    //   title: "Fullscreen Camera Test (Beta)",
+    //   navigateTo: "CameraScreen",
+    // },
+    // {
+    //   title: "On Boarding Test",
+    //   navigateTo: "OnBoardingScreen",
+    // },
+    // {
+    //   title: "Image chat test",
+    //   navigateTo: "ChatWithImageTest",
+    // },
+    // {
+    //   title: "Landscape carousel screen",
+    //   navigateTo: "LandscapeCarouselScreen",
+    // },
+    // {
+    //   title: "InsightsV2 Testing",
+    //   navigateTo: "InsightsV2",
+    // },
   ];
 
   const handleSettingPress = async (navigateTo) => {
     // Example: Clearing a specific AsyncStorage item (uncomment if needed)
-    // await AsyncStorage.removeItem('@user_goals');
+    // await AsyncStorage.removeItem('freeAccurateScansUsed');
     // await AsyncStorage.setItem('@openai_api_key', 'OPENAI_API_KEY_REMOVED');
     navigation.navigate(navigateTo);
   };
@@ -127,57 +143,6 @@ const SettingsScreen = () => {
             </TouchableOpacity>
           ))}
 
-          {/* Gray Separator */}
-          <View style={styles.separator} />
-
-          {/* Enhanced Premium Button */}
-          <TouchableOpacity
-            style={styles.purchaseButton}
-            onPress={handlePurchasePress}
-            activeOpacity={0.9}
-          >
-            {/* Premium Badge */}
-            <View style={styles.premiumBadge}>
-              <Ionicons name="star" size={16} color={colorScheme === 'dark' ? '#000' : '#fff'} />
-              <Text style={styles.premiumBadgeText}>PREMIUM</Text>
-            </View>
-
-            {/* Main Content */}
-            <View style={styles.purchaseContent}>
-              {/* Upgrade Text */}
-              <Text style={styles.purchaseTitle}>Upgrade Your Food Journey</Text>
-
-              {/* Food Carousel */}
-              <View style={styles.carouselContainer}>
-                <FoodCarousel isDark={currentColorScheme === 'dark'} />
-              </View>
-
-              {/* Feature List */}
-              <View style={styles.featuresList}>
-                <PremiumFeatureItem
-                  icon="infinite"
-                  text="Scan unlimited meals & recipes"
-                />
-                <PremiumFeatureItem
-                  icon="flash"
-                  text="Get more accurate results instantly"
-                />
-                <PremiumFeatureItem
-                  icon="bulb"
-                  text="Access to MacroScan intelligence features like Smart Coach"
-                />
-              </View>
-
-              {/* CTA Button */}
-              <View style={styles.ctaContainer}>
-                <Text style={styles.ctaText}>Buy once, get lifetime access</Text>
-                <View style={styles.ctaButton}>
-                  <Text style={styles.ctaButtonText}>Unlock All Features</Text>
-                  <Ionicons name="arrow-forward" size={20} color={colorScheme === 'dark' ? '#000' : '#fff'} />
-                </View>
-              </View>
-            </View>
-          </TouchableOpacity>
         </View>
       </ScrollView>
     </SafeAreaView>

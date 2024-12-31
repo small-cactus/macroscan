@@ -2,14 +2,14 @@ import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   View,
-  Text,
   ActivityIndicator,
-  Animated,
   Appearance,
   SafeAreaView,
   Dimensions,
   Platform,
+  Animated,
 } from 'react-native';
+import AnimatedTextLoading from './AnimatedTextLoading'; // Adjust the path as necessary
 
 const { width, height } = Dimensions.get('window');
 
@@ -46,7 +46,6 @@ const LoadingScreen = () => {
     'Finalizing flavors',
   ];
 
-
   useEffect(() => {
     const changePhrase = () => {
       Animated.timing(fadeAnim, {
@@ -72,11 +71,17 @@ const LoadingScreen = () => {
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={styles.container}>
-        <Text style={styles.title}>Loading</Text>
-        <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#FFF' : '#000'} style={styles.loadingIndicator} />
-        <Animated.Text style={[styles.subText, { opacity: fadeAnim }]}>
-          {currentPhrase}
-        </Animated.Text>
+        {/* Replace the Text component with AnimatedTextLoading */}
+        <AnimatedTextLoading
+          text="Setting up MacroScan"
+          colorScheme={colorScheme}
+          style={styles.title}
+        />
+        <ActivityIndicator
+          size="large"
+          color={colorScheme === 'dark' ? '#FFF' : '#000'}
+          style={styles.loadingIndicator}
+        />
       </View>
     </SafeAreaView>
   );
@@ -85,7 +90,7 @@ const LoadingScreen = () => {
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
+    backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
   },
   container: {
     flex: 1,

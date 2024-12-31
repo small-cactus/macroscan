@@ -179,9 +179,9 @@ const FoodCarousel = ({ isDark }) => {
       animate();
     };
 
-    createInfiniteLoop(scrollY1, 50000, false);  // First column down
-    createInfiniteLoop(scrollY2, 45000, true);   // Middle column up
-    createInfiniteLoop(scrollY3, 55000, false);  // Last column down
+    createInfiniteLoop(scrollY1, 50000, false);  // First column up
+    createInfiniteLoop(scrollY2, 45000, true);   // Middle column down
+    createInfiniteLoop(scrollY3, 55000, false);  // Last column up
 
     return () => {
       scrollY1.stopAnimation();

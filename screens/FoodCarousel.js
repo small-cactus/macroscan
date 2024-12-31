@@ -2,9 +2,9 @@ import React, { useEffect, useRef } from 'react';
 import { Animated, View, Text, Dimensions, Easing } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const { width } = Dimensions.get('window');
+const { width, height } = Dimensions.get('window');
 
-const CARD_MARGIN_HORIZONTAL = 8;
+const CARD_MARGIN_HORIZONTAL = 5;
 const CARD_MARGIN_VERTICAL = 8;
 const CARD_WIDTH = (width - 40 - CARD_MARGIN_HORIZONTAL * 2 * 3) / 3;
 const CARD_HEIGHT = 150;
@@ -190,7 +190,7 @@ const FoodCarousel = ({ isDark }) => {
     const createInfiniteLoop = (scrollY, duration, isReverse = false) => {
       const startPosition = isReverse ? -totalHeight : 0;
       const endPosition = isReverse ? 0 : -totalHeight;
-      
+
       const animate = () => {
         scrollY.setValue(startPosition);
         Animated.timing(scrollY, {
@@ -209,9 +209,9 @@ const FoodCarousel = ({ isDark }) => {
       animate();
     };
 
-    createInfiniteLoop(scrollY1, 100000, false);  // First column down
-    createInfiniteLoop(scrollY2, 95000, true);   // Middle column up
-    createInfiniteLoop(scrollY3, 105000, false);  // Last column down
+    createInfiniteLoop(scrollY1, 100000, false); // First column down
+    createInfiniteLoop(scrollY2, 95000, true); // Middle column up
+    createInfiniteLoop(scrollY3, 105000, false); // Last column down
 
     return () => {
       scrollY1.stopAnimation();
@@ -220,10 +220,13 @@ const FoodCarousel = ({ isDark }) => {
     };
   }, [scrollY1, scrollY2, scrollY3, totalHeight]);
 
+  // Adjust the height multiplier based on device screen size
+  const heightMultiplier = height >= 926 ? 0.55 : 0.45;
+
   return (
     <View
       style={{
-        height: itemHeight * 3,
+        height: height * heightMultiplier,
         overflow: 'hidden',
         width: width - 0,
         flexDirection: 'row',
@@ -241,7 +244,6 @@ const FoodCarousel = ({ isDark }) => {
           <FoodCard key={`col1-food-${index}-${food.id}`} food={food} isDark={isDark} />
         ))}
       </Animated.View>
-
       <Animated.View
         style={{
           transform: [{ translateY: scrollY2 }],
@@ -252,7 +254,6 @@ const FoodCarousel = ({ isDark }) => {
           <FoodCard key={`col2-food-${index}-${food.id}`} food={food} isDark={isDark} />
         ))}
       </Animated.View>
-
       <Animated.View
         style={{
           transform: [{ translateY: scrollY3 }],
@@ -263,7 +264,6 @@ const FoodCarousel = ({ isDark }) => {
           <FoodCard key={`col3-food-${index}-${food.id}`} food={food} isDark={isDark} />
         ))}
       </Animated.View>
-
       <LinearGradient
         colors={
           isDark

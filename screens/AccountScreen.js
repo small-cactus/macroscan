@@ -1,56 +1,72 @@
+// AccountScreen.js
 import React, { useState, useEffect, useRef } from 'react';
-import { StyleSheet, View, Text, ScrollView, Image, TouchableOpacity, TextInput, Alert, Dimensions, Platform, Switch } from 'react-native';
+import {
+  Platform,
+  StyleSheet,
+  View,
+  Text,
+  ScrollView,
+  Image,
+  TouchableOpacity,
+  TextInput,
+  Alert,
+  Dimensions,
+  Appearance,
+  ActivityIndicator, // Added ActivityIndicator
+} from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { Appearance } from 'react-native';
+import { FontAwesome6, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import * as RNIap from 'react-native-iap';
 import { useIAP } from '../IAPContext';
 import { useUser } from '../userContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
-const itemSkus = Platform.select({
-  ios: ['macroscan_plusplus', 'macroscan_plus', 'macroscan_plusplus_yearly'],
-});
-
-const { width, height } = Dimensions.get('window');
-const fontSize = width * 0.045;
-const logoSize = width * 0.1;
-const subcriptionFeatureSize = width * 0.037;
-const priceTextSize = width * 0.037;
+const { width } = Dimensions.get('window');
+const avatarSize = width * 0.3;
+// Define all active subscription SKUs
+const SUBSCRIPTION_IDS = [
+  'macroscan_plusplus',
+  'macroscan_plusplus_yearly',
+  'macroscan_plus',
+  'macroscan_unlimited',
+];
 
 export default function AccountScreen() {
+  // State
   const [imageUri, setImageUri] = useState(null);
   const [name, setName] = useState('');
-  const [loadError, setLoadError] = useState(false);
   const [showLogs, setShowLogs] = useState(false);
+  const [isSubscribedUnlimited, setIsSubscribedUnlimited] = useState(false);
+  const [currentSubscription, setCurrentSubscription] = useState(null);
+  const [debugUnlocked, setDebugUnlocked] = useState(false);
+  const [debugTapCount, setDebugTapCount] = useState(0);
+  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+  const [isPurchasing, setIsPurchasing] = useState(false); // Added isPurchasing state
   const colorScheme = Appearance.getColorScheme();
-  const styles = getDynamicStyles(colorScheme);
-  const navigation = useNavigation();
-  const [products, setProducts] = useState([]);
-  const [isSubscribedPlusPlus, setIsSubscribedPlusPlus] = useState(false);
-  const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
-  const [hasPurchasedAdsRemoval, setHasPurchasedAdsRemoval] = useState(false);
-  const { isIAPEnabled, toggleIAP } = useIAP();
-  const { user, setUser, deleteUser, updateUser } = useUser();
-  const intervalRef = useRef(null);
-  const lastFetchTimeRef = useRef(Date.now());
+  const c = colorScheme === 'dark' ? darkColors : lightColors;
 
+  // Hooks & Context
+  const navigation = useNavigation();
+  const { isIAPEnabled } = useIAP();
+  const { user, setUser, updateUser } = useUser();
+
+  // Refs to prevent multiple subscription checks and processing
+  const hasCheckedSubscription = useRef(false);
+  const processingPurchase = useRef(false);
+
+  // Logging helpers
   const log = (message) => {
-    if (showLogs) {
-      Alert.alert('Log', message);
-    }
+    if (showLogs) Alert.alert('Log', message);
     console.log(message);
   };
-
   const logError = (message, error) => {
-    if (showLogs) {
-      Alert.alert('Error', `${message}: ${error}`);
-    }
+    if (showLogs) Alert.alert('Error', `${message}: ${error}`);
     console.error(message, error);
   };
 
+  // Initialize IAP connection and check subscription once
   useEffect(() => {
     if (!isIAPEnabled) return;
 
@@ -60,269 +76,283 @@ export default function AccountScreen() {
         await RNIap.initConnection();
         log('IAP Connection initialized');
 
-        if (itemSkus && itemSkus.length > 0) {
-          const prods = await RNIap.getProducts({ skus: itemSkus });
-          log(`Products fetched: ${JSON.stringify(prods)}`);
-          setProducts(prods);
-        } else {
-          logError('SKUs not found');
+        // Fetch available subscriptions to verify connection
+        const products = await getAvailableSubscriptions();
+        log(`Available subscriptions: ${JSON.stringify(products)}`);
+
+        // Check subscription status once after initialization
+        if (!hasCheckedSubscription.current) {
+          await checkSubscription();
+          hasCheckedSubscription.current = true;
         }
       } catch (error) {
         logError('Failed to initialize IAP', error);
       }
-
-      return () => {
-        log('Ending IAP connection...');
-        RNIap.endConnection();
-      };
     };
 
     initIAP();
+
+    // Proper cleanup
+    return () => {
+      log('Ending IAP connection...');
+      RNIap.endConnection();
+    };
   }, [isIAPEnabled]);
 
-  const handlePurchase = async (productId) => {
-    log(`Attempting to purchase SKU: ${productId}`);
-    try {
-      const purchase = await RNIap.requestPurchase({ sku: productId });
-      log(`Purchase completed for: ${productId}, ${JSON.stringify(purchase)}`);
-      
-      // New logic to update subscription states
-      if (productId === 'macroscan_plusplus' || productId === 'macroscan_plusplus_yearly') {
-        setIsSubscribedPlusPlus(true);
-        setIsSubscribedPlus(false); // Cancel lower subscription
-        await updateUserSubscription('macroscan_plusplus');
-        log('Updated user subscription to MacroScan++');
-      } else if (productId === 'macroscan_plus') {
-        setIsSubscribedPlus(true);
-        setIsSubscribedPlusPlus(false); // Cancel higher subscription
-        await updateUserSubscription('macroscan_plus');
-        log('Updated user subscription to MacroScan+');
-      }
-  
-      unlockFeatures(productId);
-    } catch (error) {
-      logError(`Purchase failed for: ${productId}`, error);
-      if (error.code === 'E_USER_CANCELLED') {
-        Alert.alert('Purchase Cancelled', 'You cancelled the purchase.');
-      } else if (error.code === 'E_ALREADY_OWNED') {
-        Alert.alert('Already Purchased', 'You have already purchased this item.');
-      } else if (error.code === 'E_ITEM_UNAVAILABLE') {
-        Alert.alert('Item Unavailable', 'The requested item is unavailable.');
-      } else if (error.code === 'E_REMOTE_ERROR') {
-        Alert.alert('Server Error', 'An error occurred on the server. Please try again later.');
-      } else if (error.code === 'E_NETWORK_ERROR') {
-        Alert.alert('Network Error', 'A network error occurred. Please check your internet connection and try again.');
-      } else if (error.code === 'E_SERVICE_ERROR') {
-        Alert.alert('Service Error', 'An error occurred with the payment service. Please try again later.');
-      } else {
-        Alert.alert('Purchase Error', error);
-      }
-    }
-  };
-
-  const updateUserSubscription = async (subscription) => {
-    if (!user) return;
-    const updates = { subscriptionStatus: subscription };
-    await updateUser(updates);
-  };
-
-  const checkSubscription = async () => {
-    try {
-      let subscribedPlusPlus = false;
-      let subscribedPlus = false;
-      let purchasedAdsRemoval = false;
-  
-      if (isIAPEnabled) {
-        // Check App Store or Google Play Store purchases if IAP is enabled
-        const purchases = await RNIap.getAvailablePurchases();
-        console.log(`Available purchases: ${JSON.stringify(purchases)}`);
-  
-        // Current date to compare with expiration dates
-        const currentDate = new Date();
-  
-        purchases.forEach(purchase => {
-          const expirationDate = new Date(purchase.expirationDate);
-          // Check if the purchase is still valid
-          if (expirationDate > currentDate || purchase.expirationDate === undefined) {
-            switch (purchase.productId) {
-              case 'macroscan_plusplus':
-                subscribedPlusPlus = true;
-                break;
-              case 'macroscan_plusplus_yearly':
-                subscribedPlusPlus = true;
-                break;
-              case 'macroscan_plus':
-                subscribedPlus = true;
-                break;
-              case 'remove_ads_one_time':
-                purchasedAdsRemoval = true;
-                break;
-            }
-          }
-        });
-      } else {
-        // Check stored user data if IAP is disabled
-        const storedUser = await AsyncStorage.getItem('@user');
-        if (storedUser) {
-          const parsedUser = JSON.parse(storedUser);
-          if (parsedUser.subscriptionStatus) {
-            const expirationDate = new Date(parsedUser.subscriptionExpirationDate);
-            const currentDate = new Date();
-            if (expirationDate > currentDate || parsedUser.subscriptionExpirationDate === undefined) {
-              switch (parsedUser.subscriptionStatus) {
-                case 'plusplus':
-                  subscribedPlusPlus = true;
-                  break;
-                case 'plus':
-                  subscribedPlus = true;
-                  break;
-                case 'remove_ads_one_time':
-                  purchasedAdsRemoval = true;
-                  break;
-              }
-            }
-          }
-        }
-      }
-  
-      // Update state based on the results
-      setIsSubscribedPlusPlus(subscribedPlusPlus);
-      setIsSubscribedPlus(subscribedPlus);
-      setHasPurchasedAdsRemoval(purchasedAdsRemoval);
-  
-      // Update user subscription status in storage and context
-      const newStatus = subscribedPlusPlus ? 'plusplus' :
-                        subscribedPlus ? 'plus' :
-                        purchasedAdsRemoval ? 'remove_ads_one_time' : 'free';
-  
-      await updateUserSubscription(newStatus);
-  
-      console.log('Updated subscription status:', newStatus);
-  
-    } catch (error) {
-      console.error('Failed to check subscription status:', error);
-      Alert.alert('Subscription Check Error', 'Failed to verify subscription status. Please try again later.');
-    }
-  };
-
+  // Listen for purchase updates and errors
   useEffect(() => {
-    if (isIAPEnabled) {
-      checkSubscription();
-
-      intervalRef.current = setInterval(() => {
-        checkSubscription();
-      }, 30 * 60 * 1000); // 30 minutes in milliseconds
-
-      return () => {
-        clearInterval(intervalRef.current);
-      };
-    }
-  }, [isIAPEnabled]);
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      if (!isIAPEnabled) {
-        checkSubscription();
-      }
-    });
-
-    return unsubscribe;
-  }, [navigation, isIAPEnabled]);
-
-  useEffect(() => {
-    const unsubscribe = navigation.addListener('focus', () => {
-      const now = Date.now();
-      if (isIAPEnabled && now - lastFetchTimeRef.current >= 30 * 60 * 1000) {
-        checkSubscription();
-        lastFetchTimeRef.current = now;
-      }
-    });
-
-    return unsubscribe;
-  }, [navigation, isIAPEnabled]);
-
-  useEffect(() => {
-    if (!isIAPEnabled) return;
+    if (!isIAPEnabled) return undefined;
 
     const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
+      // Prevent processing multiple purchases simultaneously
+      if (processingPurchase.current) {
+        log('Already processing a purchase.');
+        return;
+      }
+      processingPurchase.current = true;
       log(`Purchase updated: ${JSON.stringify(purchase)}`);
-      const receipt = purchase.transactionReceipt ? purchase.transactionReceipt : purchase.originalJson;
+
+      if (!purchase || typeof purchase !== 'object') {
+        logError('Invalid purchase object', purchase);
+        processingPurchase.current = false;
+        setIsPurchasing(false); // Ensure purchasing state is reset
+        return;
+      }
+
+      // Log all properties of the purchase object
+      Object.keys(purchase).forEach((key) => {
+        log(`Purchase property - ${key}: ${purchase[key]}`);
+      });
+
+      // **Modification Start**
+      // Proceed only if transactionId exists (iOS)
+      if (Platform.OS === 'ios' && !purchase.transactionId) {
+        logError('Transaction ID is missing in purchase object', purchase);
+        processingPurchase.current = false;
+        setIsPurchasing(false); // Reset purchasing state
+        return;
+      }
+      // **Modification End**
+
+      const receipt = purchase.transactionReceipt || purchase.originalJson;
+
       if (receipt) {
         try {
-          await RNIap.finishTransaction(purchase, true);
-          log(`Transaction finished: ${JSON.stringify(purchase)}`);
-    
-          if (purchase.productId === 'macroscan_plusplus' || purchase.productId === 'macroscan_plusplus_yearly') {
-            setIsSubscribedPlusPlus(true);
-            await updateUserSubscription('macroscan_plusplus');
-          } else if (purchase.productId === 'macroscan_plus') {
-            setIsSubscribedPlus(true);
-            await updateUserSubscription('macroscan_plus');
-          } else if (purchase.productId === 'remove_ads_one_time') {
-            setHasPurchasedAdsRemoval(true);
-            await updateUserSubscription('remove_ads_one_time');
+          // **Modification Start**
+          // Ensure purchase object has necessary properties before finishing the transaction
+          if (!purchase.transactionId && Platform.OS === 'ios') {
+            throw new Error('Missing transactionId in purchase object');
           }
-    
-          unlockFeatures(purchase.productId);
-        } catch (error) {
-          logError('Finish transaction error', error);
+          // **Modification End**
+
+          // Finish the transaction using the unified method
+          await RNIap.finishTransaction(purchase, false);
+          log(`Transaction finished: ${JSON.stringify(purchase)}`);
+
+          if (SUBSCRIPTION_IDS.includes(purchase.productId)) {
+            setIsSubscribedUnlimited(true);
+            setCurrentSubscription(purchase.productId);
+            await updateUserSubscription(purchase.productId);
+            unlockFeatures(purchase.productId);
+
+            // Add a slight delay before checking subscription
+            setTimeout(async () => {
+              await checkSubscription();
+            }, 2000); // 2-second delay
+          }
+        } catch (err) {
+          logError('Finish transaction error', err);
         }
       }
+
+      processingPurchase.current = false;
+      setIsPurchasing(false); // Reset purchasing state after processing
+    });
+
+    const purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
+      if (error.code === 'E_USER_CANCELLED') {
+        console.log('Purchase cancelled by user.');
+      } else {
+        logError(`Purchase error: ${error.code}`, error.message);
+        Alert.alert('Purchase Error', error.message || 'An unknown error occurred during the purchase.');
+      }
+      setIsPurchasing(false); // Reset purchasing state on error
+      processingPurchase.current = false;
     });
 
     return () => {
       if (purchaseUpdateSubscription) {
         purchaseUpdateSubscription.remove();
+        log('Purchase update listener removed');
+      }
+      if (purchaseErrorSubscription) {
+        purchaseErrorSubscription.remove();
+        log('Purchase error listener removed');
       }
     };
   }, [isIAPEnabled]);
 
-  const unlockFeatures = (productId) => {
-    switch (productId) {
-      case 'macroscan_plusplus_yearly':
-        log("Features for MacroScan++ Unlocked!");
-        break;
-      case 'macroscan_plusplus':
-        log("Features for MacroScan++ Unlocked!");
-        break;
-      case 'macroscan_plus':
-        log("Features for MacroScan+ Unlocked!");
-        break;
-      case 'remove_ads_one_time':
-        log("Ads Removed!");
-        break;
-      default:
-        log("Unknown product ID");
-        break;
+  // Load saved profile info
+  useEffect(() => {
+    async function loadProfile() {
+      try {
+        const savedName = await AsyncStorage.getItem('userName');
+        const savedImageUri = await AsyncStorage.getItem('userImageUri');
+        setName(savedName || '');
+        setImageUri(savedImageUri || null);
+      } catch (error) {
+        Alert.alert('Error', 'Failed to load user data.');
+        logError('Failed to load user data', error);
+      }
+    }
+    loadProfile();
+  }, []);
+
+  // Functions
+  const getAvailableSubscriptions = async () => {
+    try {
+      let products;
+      // Determine if getSubscriptions expects an array or object
+      // This is a simplistic approach; adjust based on your library version
+      try {
+        products = await RNIap.getSubscriptions(SUBSCRIPTION_IDS);
+      } catch (err) {
+        // If array doesn't work, try object with skus
+        products = await RNIap.getSubscriptions({ skus: SUBSCRIPTION_IDS });
+      }
+      return products;
+    } catch (error) {
+      logError('Failed to fetch subscriptions', error);
+      return [];
     }
   };
-const sendAlert = (Title, messageToShow) => {
-  Alert.alert(Title, messageToShow);
-}
 
-useEffect(() => {
-  async function loadProfile() {
+  const checkSubscription = async () => {
     try {
-      const savedName = await AsyncStorage.getItem('userName');
-      const savedImageUri = await AsyncStorage.getItem('userImageUri');
-      setName(savedName || '');
-      setImageUri(savedImageUri || null);  // Change this line
+      let subscribedUnlimited = false;
+      let activeSubscription = null;
+
+      if (isIAPEnabled) {
+        const purchases = await RNIap.getAvailablePurchases();
+        log(`Available purchases: ${JSON.stringify(purchases)}`);
+        const currentDate = new Date();
+
+        purchases.forEach((purchase) => {
+          // **Modification Start**
+          // Use 'expiresDate' for iOS instead of 'expirationDate'
+          let expirationDate;
+          if (Platform.OS === 'ios') {
+            // 'expiresDate' is a string timestamp in milliseconds
+            expirationDate = purchase.expiresDate ? new Date(parseInt(purchase.expiresDate)) : null;
+          } else {
+            // 'expirationDate' is a timestamp in milliseconds
+            expirationDate = purchase.expirationDate ? new Date(parseInt(purchase.expirationDate)) : null;
+          }
+          // **Modification End**
+
+          // **Updated Condition Start**
+          if (
+            SUBSCRIPTION_IDS.includes(purchase.productId) &&
+            expirationDate && expirationDate > currentDate
+          ) {
+            subscribedUnlimited = true;
+            activeSubscription = purchase.productId;
+          }
+          // **Updated Condition End**
+        });
+      }
+
+      setIsSubscribedUnlimited(subscribedUnlimited);
+      setCurrentSubscription(activeSubscription);
+      await updateUserSubscription(subscribedUnlimited ? activeSubscription : 'free');
     } catch (error) {
-      Alert.alert('Error', 'Failed to load user data.');
-      logError('Failed to load user data', error);
+      logError('Failed to check subscription status', error);
+      Alert.alert(
+        'Subscription Check Error',
+        'Failed to verify subscription status. Please try again later.'
+      );
     }
-  }
-  loadProfile();
-}, []);
+  };
 
-  const resetImageUri = async () => {
+  const handlePurchase = async (productId) => {
+    if (Platform.OS !== 'ios') {
+      Alert.alert('Unsupported Platform', 'Purchases are only supported on iOS devices.');
+      return;
+    }
     try {
-      await AsyncStorage.removeItem('userImageUri');
-      setImageUri('../assets/profile.png');
-      Alert.alert('Reset Done', 'The profile image has been reset.');
+      log(`Attempting to purchase SKU: ${productId}`);
+      setIsPurchasing(true); // Set purchasing state to true
+      processingPurchase.current = true;
+      // Ensure the correct parameter format as per your original code
+      await RNIap.requestSubscription({ sku: productId });
+      // Purchase will be handled in the purchaseUpdatedListener
     } catch (error) {
-      Alert.alert('Error', 'Failed to reset the profile image.');
-      logError('Failed to reset the profile image', error);
+      setIsPurchasing(false); // Reset purchasing state on error
+      processingPurchase.current = false;
+      if (error.code === 'E_USER_CANCELLED') {
+        console.log('Purchase cancelled by user.');
+      } else if (error.code === 'E_ALREADY_OWNED') {
+        Alert.alert('Already Purchased', 'You already have this subscription.');
+      } else {
+        logError(`Purchase failed for: ${productId}`, error);
+        Alert.alert('Purchase Error', error.message || 'An unknown error occurred during the purchase.');
+      }
+    }
+  };
+  
+
+  const updateUserSubscription = async (subscription) => {
+    if (!user) {
+      logError('No user found when updating subscription', null);
+      return;
+    }
+    const updates = { subscriptionStatus: subscription };
+    log(`Updating user subscription with: ${JSON.stringify(updates)}`);
+    await updateUser(updates);
+  };
+
+  const unlockFeatures = (productId) => {
+    if (SUBSCRIPTION_IDS.includes(productId)) {
+      log(`Features for ${productId} Unlocked!`);
+      // Implement feature unlocking logic here
+    }
+  };
+
+  const pickImage = async () => {
+    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!permissionResult.granted) {
+      Alert.alert('Permission Required', 'Permission to access camera roll is required!');
+      return;
+    }
+
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [1, 1],
+        quality: 1,
+      });
+
+      if (!result.cancelled && result.assets && result.assets.length > 0) {
+        const newImageUri = result.assets[0].uri;
+        setImageUri(newImageUri);
+        await saveData(newImageUri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'An error occurred while picking the image.');
+      logError('Error picking image', error);
+    }
+  };
+
+  const saveData = async (uri) => {
+    try {
+      await AsyncStorage.setItem('userName', name);
+      if (uri) {
+        await AsyncStorage.setItem('userImageUri', uri);
+      }
+    } catch (error) {
+      Alert.alert('Error', 'Failed to save data.');
+      logError('Failed to save data', error);
     }
   };
 
@@ -353,18 +383,19 @@ useEffect(() => {
                 'dateLastUsed',
                 'hasViewedTutorial',
                 'hasViewedFeaturesTutorial',
+                'freeAccurateScansUsed',
               ];
-  
-              for (const key of keysToRemove) {
-                const value = await AsyncStorage.getItem(key);
-                if (value !== null) {
-                  await AsyncStorage.removeItem(key);
-                }
-              }
-  
+
+              // Use multiRemove to delete all keys at once
+              await AsyncStorage.multiRemove(keysToRemove);
+              log(`Deleted keys: ${keysToRemove.join(', ')}`);
+
+              // Clear user state
               setUser(null);
-  
-              Alert.alert('Account deleted', 'Your account has been deleted.');
+
+              Alert.alert('Account Deleted', 'Your account has been deleted.');
+
+              // Reset navigation stack to prevent going back
               navigation.reset({
                 index: 0,
                 routes: [{ name: 'Goodbye' }],
@@ -375,501 +406,563 @@ useEffect(() => {
             }
           },
           style: 'destructive',
-        }
+        },
       ],
       { cancelable: false }
     );
   };
 
-  const saveData = async (uri) => {
-    try {
-      await AsyncStorage.setItem('userName', name);
-      if (uri) {
-        await AsyncStorage.setItem('userImageUri', uri);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'Failed to save the data.');
-      logError('Failed to save the data', error);
-    }
-  };
-
-  const pickImage = async () => {
-    const permissionResult = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (!permissionResult.granted) {
-      Alert.alert('Permission Required', 'Permission to access camera roll is required!');
-      return;
-    }
-
-    try {
-      const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [1, 1],
-        quality: 1,
-      });
-
-      if (!result.cancelled && result.assets && result.assets.length > 0) {
-        const newImageUri = result.assets[0].uri;
-        setImageUri(newImageUri);
-        await saveData(newImageUri);
-      }
-    } catch (error) {
-      Alert.alert('Error', 'An error occurred while picking the image.');
-      logError('An error occurred while picking the image', error);
-    }
-  };
+  // Determine color set for dark vs. light mode
+  const colors = colorScheme === 'dark' ? darkColors : lightColors;
+  const styles = getStyles(colors);
 
   return (
-    <ScrollView style={styles.container}>
-      <View style={styles.imageContainer}>
-        <TouchableOpacity onPress={pickImage}>
-        <Image
-          source={imageUri ? { uri: imageUri } : require('../assets/profile.png')}
-          style={styles.image}
-          onError={() => {
-            setLoadError(true);
-          }}
-        />
-          <View style={styles.iconOverlay}>
-            <MaterialCommunityIcons
-              name="pencil"
-              size={24}
-              color={colorScheme === 'dark' ? 'black' : 'white'}
+    <View style={styles.container}>
+      <ScrollView contentContainerStyle={styles.scrollContent}>
+        {/* Profile Section */}
+        <View style={styles.profileSection}>
+          <TouchableOpacity onPress={pickImage} style={styles.avatarContainer}>
+            <Image
+              source={imageUri ? { uri: imageUri } : require('../assets/profile.png')}
+              style={styles.avatar}
             />
-          </View>
-        </TouchableOpacity>
-      </View>
-      <View style={styles.content}>
-        <Text style={styles.title}>
-          {name && name.split(" ")[0] ? `Hi, ${name.split(" ")[0]}! 👋` : "Your Account"}
-        </Text>
-        <TextInput
-          style={styles.input}
-          value={name}
-          onChangeText={setName}
-          placeholder="Enter your full name"
-          onBlur={() => {
-            const parts = name.trim().split(/\s+/);
-            if (parts.length < 2) {
-              Alert.alert("Both Names Please!", "Please enter your full name (first and last name).");
-              setName('');
-            } else {
-              saveData();
-            }
-          }}
-        />
-        <Text style={styles.description}>
-          {name && name.split(" ")[0]
-            ? `Hello, ${name.split(" ")[0]}! You can manage your account, and subscribe to MacroScan+ here.`
-            : "Welcome to MacroScan! You can manage your account settings here."}
-        </Text>
-      </View>
-      <View style={styles.subscriptionContainer}>
-      <View style={styles.subscriptionOption1}>
-  <LinearGradient
-    colors={['#000000', '#414141']} // Define your gradient colors here
-    start={{ x: 0, y: 1.6 }} // Start position (0, 0) is top-left
-  end={{ x: 1.6, y: 0 }} // End position (1, 1) is bottom-right
-  style={[styles.gradientBackground, { overflow: 'hidden' }]}
-  >
-          <View style={styles.titleWithLogo}>
-            <Image source={require('../assets/logo-white-big.png')} style={styles.logo} />
-            <Text style={styles.subscriptionTitlePlusPlus}>MacroScan++</Text>
-            <Text style={styles.subscriptionTitlePremium}>Premium</Text>
-            <TouchableOpacity
-              style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled1 : styles.subscribeButton1}
-              onPress={() => {
-                if (isSubscribedPlusPlus) {
-                  sendAlert('Plan Already Active', 'You already have the MacroScan++ plan. No action needed.')
-                } else {
-                  handlePurchase('macroscan_plusplus');
-                }
-              }}>
-              <Text style={isSubscribedPlusPlus ? styles.subscribeButtonTextDisabledPlusPlus : styles.subscribeButtonText}>
-              {isSubscribedPlus ? 'Upgrade' : isSubscribedPlusPlus ? 'Your plan' : 'Subscribe'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.rightPart}>
-            <Text style={styles.priceText}>$7.99/Month</Text>
-          </View>
-          <Text style={styles.subscriptionFeatureScans}>• Unlimited daily scans</Text>
-          <Text style={styles.subscriptionFeature}>• Access to the most accurate scanner</Text>
-          <Text style={styles.subscriptionFeature}>• Insights and tracking page</Text>
-          </LinearGradient>
-          </View>
-        <View style={styles.subscriptionOption2}>
-        <LinearGradient
-    colors={['#121212', '#636363']} // Define your gradient colors here
-    start={{ x: 0, y: 1.6 }} // Start position (0, 0) is top-left
-  end={{ x: 1.6, y: 0 }} // End position (1, 1) is bottom-right
-    style={styles.gradientBackground}
-  >
-          <View style={styles.titleWithLogo}>
-            <Image source={require('../assets/logo-plus.png')} style={styles.logo} />
-            <Text style={styles.subscriptionTitlePlus}>MacroScan+</Text>
-            <Text style={styles.subscriptionTitleValue}>Best value</Text>
-            <TouchableOpacity
-              style={isSubscribedPlusPlus ? styles.subscribeButtonDisabled2 : isSubscribedPlus ? styles.subscribeButtonDisabled2 : styles.subscribeButton2}
-              onPress={() => {
-                if (isSubscribedPlus) {
-                  sendAlert('Plan Already Active', 'You already have the MacroScan+ plan. No action needed.')
-                } else {
-                  handlePurchase('macroscan_plus');
-                }
-              }}>
-              <Text style={isSubscribedPlusPlus ? styles.subscribeButtonTextDisabled : isSubscribedPlus ? styles.subscribeButtonTextDisabled : styles.subscribeButtonText}>
-                {isSubscribedPlusPlus ? 'Switch' : isSubscribedPlus ? 'Your plan' : 'Subscribe'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.rightPart}>
-            <Text style={styles.priceText}>$4.99/Month</Text>
-          </View>
-          <Text style={styles.subscriptionFeatureScans}>• 20 daily scans</Text>
-          <Text style={styles.subscriptionFeature}>• Access to more accurate recognition</Text>
-          <Text style={styles.subscriptionFeature}>• Insights and tracking page</Text>
-          </LinearGradient>
+            <View style={styles.editButton}>
+              <MaterialCommunityIcons name="pencil" size={22} color={c.pencilcolor} />
+            </View>
+          </TouchableOpacity>
+
+          <Text style={styles.greeting}>
+            Hi, {name && name.trim().split(' ')[0] ? name.split(' ')[0] : 'there'}! 👋
+          </Text>
         </View>
-        <View style={styles.subscriptionOption3}>
-          <View style={styles.titleWithLogo}>
-            <Image source={require('../assets/logo-free.png')} style={styles.logo} />
-            <Text style={styles.subscriptionTitle}>Forever Free</Text>
-            <TouchableOpacity
-              style={hasPurchasedAdsRemoval ? styles.subscribeButtonDisabled3 : styles.subscribeButton3}
-              onPress={() => {
-                if (!isSubscribedPlus && !isSubscribedPlusPlus) {
-                  sendAlert('Plan Already Active', 'You already have the free plan. No action needed.')
-                } else {
-                  navigation.navigate('CancelScreen');
-                }
-              }}>
-              <Text style={styles.subscribeButtonTextFree}>
-                {isSubscribedPlus || isSubscribedPlusPlus ? 'Switch' : 'Your plan'}
-              </Text>
-            </TouchableOpacity>
-          </View>
-          <View style={styles.rightPart}>
-            <Text style={styles.priceTextFree}>Free</Text>
-          </View>
-          <Text style={styles.subscriptionFeatureScans}>• 5 daily scans</Text>
-          <Text style={styles.subscriptionFeature}>• Basic scan accuracy</Text>
-          <Text style={styles.subscriptionFeature}>• Ad-free experience</Text>
+
+        {/* Name Input Section */}
+        <View style={styles.inputSection}>
+          <Text style={styles.inputLabel}>Your name</Text>
+          <TextInput
+            style={styles.input}
+            value={name}
+            onChangeText={setName}
+            placeholder="Enter your full name"
+            placeholderTextColor="#666666"
+            onBlur={() => {
+              const parts = name.trim().split(/\s+/);
+              if (parts.length < 2) {
+                Alert.alert('Both Names Please!', 'Please enter your full name (first and last).');
+                setName('');
+              } else {
+                saveData();
+              }
+            }}
+          />
+          <Text style={styles.inputHelper}>
+            Your name helps personalize your experience throughout the app.
+          </Text>
         </View>
-        <Text style={styles.dangerSection}>⚠️ Danger Section ⚠️</Text>
-        <View style={styles.separatorBox}></View>
-        <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
-          <Text style={styles.deleteButtonText}>Delete Account</Text>
-        </TouchableOpacity>
-      </View>
-    </ScrollView>
+
+        {/* Subscription Section */}
+        <View style={styles.subscriptionSection}>
+          <LinearGradient
+            colors={c.specialOfferGradient}
+            start={{ x: 0, y: 1 }}
+            end={{ x: 1, y: 1 }}
+            style={styles.offerPill}
+          >
+            <Text style={styles.offerPillText}>SPECIAL OFFER</Text>
+          </LinearGradient>
+
+          <View style={styles.subscriptionCard}>
+            {/* Header */}
+            <View style={styles.cardHeader}>
+              <View style={styles.logoContainer}>
+                {/* Replace with your actual logo */}
+                <Image
+                  source={require('../assets/macroscan-unlimited.png')}
+                  style={styles.logoImage}
+                />
+              </View>
+              <View style={styles.titleContainer}>
+                <Text style={styles.cardTitle}>MacroScan Unlimited</Text>
+                <View style={styles.ratingContainer}>
+                  <Text style={styles.ratingStars}>★★★★★</Text>
+                  <Text style={styles.ratingText}>4.9/5</Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Features */}
+            <View style={styles.featuresList}>
+              {/* Repeat for each feature */}
+              <View style={styles.featureItem}>
+                <LinearGradient
+                  colors={c.featureIconGradient.flash}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.featureIcon}
+                >
+                  <MaterialCommunityIcons name="flash" size={25} color="#71A4F3" />
+                </LinearGradient>
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>Unlimited fast scans</Text>
+                  <Text style={styles.featureDescription}>
+                    Scan as many meals as you want, instantly
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.featureItem}>
+                <LinearGradient
+                  colors={c.featureIconGradient.star}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.featureIcon}
+                >
+                  <MaterialCommunityIcons name="star" size={25} color="#B988F6" />
+                </LinearGradient>
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>Early Access to AI Features</Text>
+                  <Text style={styles.featureDescription}>
+                    Be the first to try complex AI scans and other features
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.featureItem}>
+                <LinearGradient
+                  colors={c.featureIconGradient.clock}
+                  start={{ x: 0, y: 0 }}
+                  end={{ x: 1, y: 0 }}
+                  style={styles.featureIcon}
+                >
+                  <MaterialCommunityIcons name="clock" size={25} color="#78DB89" />
+                </LinearGradient>
+                <View style={styles.featureText}>
+                  <Text style={styles.featureTitle}>Premium Support</Text>
+                  <Text style={styles.featureDescription}>
+                    24/7 priority customer service
+                  </Text>
+                </View>
+              </View>
+            </View>
+
+            {/* Pricing Card */}
+            <LinearGradient
+              colors={c.pricingGradient}
+              start={{ x: 1, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.pricingCard}
+            >
+              <View style={styles.priceContainer}>
+                <View style={styles.priceRow}>
+                  <Text style={styles.price}>$2.99</Text>
+                  <Text style={styles.period}>/month</Text>
+                  <LinearGradient
+                    colors={c.saveTagGradient}
+                    start={{ x: 0, y: 1 }}
+                    end={{ x: 1, y: 0.5 }}
+                    style={styles.saveTag}
+                  >
+                    <Text style={styles.saveTagText}>SAVE 50%</Text>
+                  </LinearGradient>
+                </View>
+                <Text style={styles.trialText}>
+                  4 week free trial • cancel anytime • no commitment
+                </Text>
+              </View>
+
+              <TouchableOpacity
+                style={[
+                  styles.ctaButton,
+                  (isSubscribedUnlimited || isPurchasing) && styles.ctaButtonDisabled, // Apply disabled style if subscribed or purchasing
+                ]}
+                onPress={() => {
+                  if (isSubscribedUnlimited) {
+                    Alert.alert('Already Subscribed', 'You already have the MacroScan Unlimited plan.');
+                  } else {
+                    handlePurchase('macroscan_unlimited'); // Directly purchase the macroscan_plus plan
+                  }
+                }}
+                disabled={isSubscribedUnlimited || isPurchasing} // Disable button if subscribed or purchasing
+              >
+                {isPurchasing ? (
+                  <ActivityIndicator color={c.ctabtntext} size="small" />
+                ) : (
+                  <View style={styles.ctaButtonContent}>
+                    <Text style={styles.ctaButtonText}>
+                      {isSubscribedUnlimited ? 'Subscribed' : 'Start Free Trial'}
+                    </Text>
+                    {!isSubscribedUnlimited && (
+                      <FontAwesome6 name="arrow-right" size={20} color={c.ctabtntext} style={styles.ctaButtonIcon} />
+                    )}
+                  </View>
+                )}
+              </TouchableOpacity>
+              {isSubscribedUnlimited && currentSubscription && (
+                <Text style={styles.ctaSubtitle}>
+                  You are currently subscribed to {currentSubscription === 'macroscan_plusplus' ? 'a Monthly' : 'a Yearly'} plan.
+                </Text>
+              )}
+            </LinearGradient>
+            <Text style={styles.ctaSubtitle}>
+              Payments are securely processed by Apple. We cannot see your payment information.
+            </Text>
+          </View>
+        </View>
+
+        {/* Danger Zone */}
+        <View style={styles.dangerZone}>
+          <Text style={styles.dangerTitle}></Text>
+          <View style={styles.separator} />
+          <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
+            <Text style={styles.deleteButtonText}>Delete Account</Text>
+          </TouchableOpacity>
+          <Text style={styles.dangerSubtitle}>
+            This action cannot be undone, there is a second confirmation pop up.
+          </Text>
+        </View>
+      </ScrollView>
+    </View>
   );
 }
 
-const getDynamicStyles = (colorScheme) => StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFF',
-    paddingTop: 60,
-    paddingHorizontal: 20,
+/* COLOR PALETTES */
+const darkColors = {
+  background: '#000000',
+  text: '#FFFFFF',
+  subText: '#b0b0b0',
+  cardBg: '#000000', // Maintained black background in dark mode
+  inputBg: '#000000',
+  inputBorder: '#3B3B3B',
+  placeholder: '#7A7A80',
+  highlight: '#FFFFFF',
+  editIcon: '#000000', // Pencil background is white, so icon is black
+  danger: '#ff6666',
+  separator: '#444444',
+  deleteBtn: '#FF4136',
+  ctabtn: '#FFFFFF',
+  ctabtntext: '#000000',
+  pencilbg: '#2a2a2b',
+  pencilcolor: '#cccccc',
+  specialOfferbg: '#2a2a2b',
+  specialOfferText: '#cccccc',
+  pricingBorderColor: '#4D4D4D',
+  pricingBorderWidth: 1,
+  saveTagbg: '#2E3B80',
+  saveTagText: '#9EC5F8',
+  logoShadow: '#ffffff',
+
+  // Gradient Colors
+  specialOfferGradient: ['#2a2a2b', '#1f1f20'],
+  saveTagGradient: ['#2E3B80', '#1F2359'],
+  pricingGradient: ['#000000', '#222225'],
+  featureIconGradient: {
+    flash: ['#2B3E79', '#151F3B'],
+    star: ['#3C3478', '#231C44'],
+    clock: ['#2D485B', '#192F3A'],
   },
-  imageContainer: {
-    alignItems: 'center',
-    marginBottom: 20,
-    position: 'relative',
+};
+
+const lightColors = {
+  background: '#FFFFFF',
+  text: '#0A0A0A',
+  subText: '#666666',
+  cardBg: '#FFFFFF',
+  inputBg: '#FFFFFF',
+  inputBorder: '#CDCDD0',
+  placeholder: '#999999',
+  highlight: '#000000',
+  editIcon: '#FFFFFF',
+  danger: '#c00',
+  separator: '#ccc',
+  deleteBtn: '#FF4136',
+  ctabtn: '#000000',
+  ctabtntext: '#FFFFFF',
+  pencilbg: '#2a2a2b',
+  pencilcolor: '#FFFFFF',
+  specialOfferbg: '#000000',
+  specialOfferText: '#FFFFFF',
+  pricingBorderColor: '#aaa',
+  pricingBorderWidth: 1,
+  saveTagbg: '#3b65a3',
+  saveTagText: '#cae0fc',
+  logoShadow: '#000000',
+
+  // Gradient Colors
+  specialOfferGradient: ['#555', '#2a2a2b'],
+  saveTagGradient: ['#2E3B80', '#6a8ab8'],
+  pricingGradient: ['#fff', '#ccc'],
+  featureIconGradient: {
+    flash: ['#3E4F8C', '#1A284D'],
+    star: ['#4D3E8A', '#2A2457'],
+    clock: ['#3E5A70', '#1F3A4C'],
   },
-  content: {
-    alignItems: 'center',
-    marginTop: 20,
-  },
-  title: {
-    fontSize: 24,
-    fontWeight: 'bold',
-    color: colorScheme === 'dark' ? '#fff' : '#333',
-    marginBottom: 20,
-  },
-  description: {
-    fontSize: 16,
-    color: colorScheme === 'dark' ? '#b0b0b0' : '#666',
-    textAlign: 'center',
-    marginTop: 10,
-  },
-  image: {
-    width: 150,
-    height: 150,
-    borderRadius: 75,
-    alignSelf: 'center',
-    backgroundColor: '#ddd',
-  },
-  input: {
-    borderWidth: 3,
-    borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#ddd',
-    color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
-    padding: 10,
-    fontSize: 18,
-    borderRadius: 15,
-    width: '98%',
-  },
-  iconOverlay: {
-    position: 'absolute',
-    right: 5,
-    bottom: 5,
-    backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
-    padding: 5,
-    paddingHorizontal: 5,
-    borderRadius: 12,
-  },
-  resetButton: {
-    marginTop: 20,
-    backgroundColor: 'black',
-    padding: 10,
-    borderRadius: 100,
-  },
-  resetButtonText: {
-    color: 'white',
-    textAlign: 'center',
-    fontSize: 16,
-  },
-  subscriptionContainer: {
-    marginTop: '10%',
-    alignItems: 'center',
-    paddingBottom: 60,
-    overflow: 'visible',
-  },
-  subscriptionTitle: {
-    color: 'white',
-    fontSize: fontSize,
-    fontWeight: 'bold',
-    overflow: 'visible',
-  },
-  subscriptionTitlePlusPlus: {
-    position: 'absolute',
-    top: 0,
-    right: '47%',
-    color: 'white',
-    fontSize: fontSize,
-    fontWeight: 'bold',
-    overflow: 'visible',
-  },
-  subscriptionTitlePlus: {
-    position: 'absolute',
-    top: 0,
-    right: '50%',
-    color: 'white',
-    fontSize: fontSize,
-    fontWeight: 'bold',
-    overflow: 'visible',
-  },
-  subscriptionTitlePremium: {
-    padding: 25,
-    position: 'absolute',
-    top: '1%',
-    right: '47%',
-    color: 'gold',
-    fontSize: fontSize,
-    fontWeight: 'bold',
-    textShadowColor: 'gold', // Adjust the color and opacity of the glow
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 30, // Adjust the radius for the glow effect
-    zIndex: 2,
-    overflow: 'visible',
-  },
-  subscriptionTitleValue: {
-    padding: 25,
-    position: 'absolute',
-    top: 2,
-    right: '47%',
-    color: 'silver',
-    fontSize: fontSize,
-    fontWeight: 'bold',
-    textShadowColor: 'silver', // Adjust the color and opacity of the glow
-    textShadowOffset: { width: 0, height: 0 },
-    textShadowRadius: 30, // Adjust the radius for the glow effect
-    zIndex: 2,
-    overflow: 'visible',
-  },
-  subscriptionFeature: {
-    color: 'white',
-    fontSize: subcriptionFeatureSize,
-    marginBottom: '2%',
-    overflow: 'visible',
-  },
-  subscriptionFeatureScans: {
-    color: 'white',
-    fontWeight: '700',
-    fontSize: subcriptionFeatureSize,
-    marginBottom: '2%',
-    overflow: 'visible',
-  },
-  subscribeButtonText: {
-    color: 'black',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  subscribeButtonTextFree: {
-    color: '#b0b0b0',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  titleWithLogo: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    marginBottom: '2%',
-  },
-  logo: {
-    width: logoSize,
-    height: logoSize,
-    marginRight: '4%',
-    resizeMode: 'contain',
-  },
-  priceText: {
-    color: '#d3d3d3',
-    fontSize: priceTextSize,
-    fontWeight: '700',
-    marginTop: 4,
-    textAlign: 'right',
-    marginRight: '7%',
-  },
-  priceTextFree: {
-    color: '#c5c5c5',
-    fontSize: priceTextSize,
-    fontWeight: '700',
-    marginTop: 4,
-    textAlign: 'right',
-    marginRight: '15%',
-  },
-  subscribeButtonTextDisabled: {
-    color: '#c5c5c5',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  subscribeButtonTextDisabledPlusPlus: {
-    color: 'white',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  subscribeButton1: {
-    backgroundColor: '#ffffff',
-    padding: '3.3%',
-    width: '40%',
-    borderRadius: 100,
-    marginTop: 0,
-    marginLeft: '42%',
-    marginRight: '11%',
-  },
-  subscribeButton2: {
-    backgroundColor: '#ffffff',
-    padding: '3.3%',
-    width: '40%',
-    borderRadius: 100,
-    marginTop: 0,
-    marginLeft: '43%',
-    marginRight: '11%',
-  },
-  subscribeButton3: {
-    backgroundColor: '#5f5f5f',
-    padding: '3.3%',
-    width: '40%',
-    borderRadius: 100,
-    marginTop: 0,
-    marginLeft: '11%',
-    marginRight: '11%',
-  },
-  subscriptionOption1: {
-    borderRadius: 30,
-    borderWidth: 1,
-    borderColor: '#755e00',
-    width: '100%',
-    marginBottom: '3%',
-    overflow: 'visible',
-    zindex: 1,
-  },
-  subscriptionOption2: {
-    borderRadius: 30,
-    width: '100%',
-    marginBottom: '3%',
-  },
-  subscriptionOption3: {
-    backgroundColor: '#424242',
-    padding: '5%',
-    borderRadius: 30,
-    width: '100%',
-    marginBottom: '3%',
-  },
-  deleteButton: {
-    marginTop: '6%',
-    backgroundColor: '#FF4136',
-    padding: 15,
-    borderRadius: 100,
-    width: '45%',
-    marginBottom: '10%',
-  },
-  deleteButtonText: {
-    color: 'white',
-    fontSize: 16,
-    textAlign: 'center',
-    fontWeight: 'bold',
-  },
-  dangerSection: {
-    marginTop: '5%',
-    marginBottom: '5%',
-    color: colorScheme === 'dark' ? '#fff' : '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
-  },
-  separatorBox: {
-    width: 330,
-    height: 5,
-    backgroundColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
-    borderRadius: 3,
-  },
-  subscribeButtonDisabled1: {
-    backgroundColor: '#5f5f5f',  // Light gray color for disabled state
-    padding: '3.3%',
-    width: '40%',
-    borderRadius: 100,
-    marginTop: 0,
-    marginLeft: '42.5%',
-    marginRight: '11%',
-    borderWidth: 2,
-    borderColor: 'gray',
-  },
-  subscribeButtonDisabled2: {
-    backgroundColor: '#5f5f5f',  // Light gray color for disabled state
-    padding: '3.3%',
-    width: '40%',
-    borderRadius: 100,
-    marginTop: 0,
-    marginLeft: '42%',
-    marginRight: '11%',
-  },
-  subscribeButtonDisabled3: {
-    backgroundColor: '#5f5f5f',  // Light gray color for disabled state
-    padding: '3.3%',
-    width: '40%',
-    borderRadius: 100,
-    marginTop: 0,
-    marginLeft: '11%',
-    marginRight: '11%',
-  },
-  toggleContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginTop: 20,
-  },
-  toggleLabel: {
-    fontSize: 16,
-    marginRight: 10,
-  },
-  gradientBackground: {
-    flex: 1,
-    borderRadius: 30, // Match the borderRadius of the subscription options
-    padding: '4.5%', // Adjust padding if necessary
-    zIndex: 0,
-  },
-});
+};
+
+/* STYLES */
+const getStyles = (c) =>
+  StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.background, // Dynamic background color
+    },
+    scrollContent: {
+      padding: 20,
+      paddingTop: 60,
+    },
+    profileSection: {
+      marginTop: 20,
+      alignItems: 'center',
+      marginBottom: 30,
+    },
+    avatarContainer: {
+      position: 'relative',
+      marginBottom: 16,
+    },
+    avatar: {
+      width: avatarSize,
+      height: avatarSize,
+      borderRadius: avatarSize / 2,
+      backgroundColor: '#333333',
+    },
+    editButton: {
+      position: 'absolute',
+      bottom: 0,
+      right: 0,
+      backgroundColor: c.pencilbg,
+      borderRadius: 13,
+      padding: 6,
+    },
+    greeting: {
+      fontSize: 28,
+      fontWeight: '600',
+      color: c.text, // Dynamic text color
+    },
+    inputSection: {
+      marginBottom: 30,
+    },
+    inputLabel: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: c.subText, // Dynamic subtext color
+      marginBottom: 5,
+      marginLeft: 15,
+    },
+    input: {
+      backgroundColor: c.inputBg,
+      borderRadius: 21,
+      borderWidth: 3,
+      borderColor: c.inputBorder,
+      padding: 16,
+      color: c.text,
+      fontSize: 16,
+      marginBottom: 8,
+    },
+    inputHelper: {
+      alignSelf: 'center',
+      fontSize: 14,
+      color: c.subText,
+      width: '80%',
+      textAlign: 'center',
+    },
+    subscriptionSection: {
+      marginBottom: 30,
+    },
+    offerPill: {
+      paddingHorizontal: 12,
+      paddingVertical: 6,
+      borderRadius: 16,
+      alignSelf: 'flex-start',
+      marginBottom: 8,
+    },
+    offerPillText: {
+      color: c.specialOfferText,
+      fontSize: 12,
+      fontWeight: '800',
+    },
+    subscriptionCard: {
+      backgroundColor: c.cardBg, // Maintained black or white based on theme
+      borderRadius: 16,
+      padding: 20,
+    },
+    cardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 24,
+    },
+    logoContainer: {
+      marginLeft: '-1.5%',
+      width: 60,
+      height: 60,
+      borderColor: '#777',
+      borderWidth: 1,
+      backgroundColor: '#fff',
+      borderRadius: 15,
+      alignItems: 'center',
+      justifyContent: 'center',
+      shadowColor: c.logoShadow,
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.2,
+      shadowRadius: 15.84,
+      elevation: 10,
+    },
+    logoImage: {
+      width: 55,
+      height: 55,
+      resizeMode: 'contain',
+    },
+    titleContainer: {
+      marginLeft: 12,
+    },
+    cardTitle: {
+      fontSize: 20,
+      fontWeight: '600',
+      color: c.text,
+      marginBottom: 4,
+    },
+    ratingContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    ratingStars: {
+      color: '#F0CF60',
+      marginRight: 4,
+    },
+    ratingText: {
+      color: c.subText,
+      fontSize: 14,
+    },
+    featuresList: {
+      marginBottom: 12,
+    },
+    featureItem: {
+      flexDirection: 'row',
+      marginBottom: 20,
+    },
+    featureIcon: {
+      width: 50,
+      height: 50,
+      borderRadius: 14,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginRight: 12,
+    },
+    featureText: {
+      flex: 1,
+    },
+    featureTitle: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: c.text,
+      marginBottom: 4,
+    },
+    featureDescription: {
+      fontSize: 14,
+      color: c.subText,
+    },
+    pricingCard: {
+      marginHorizontal: -20,
+      borderRadius: 33,
+      padding: 16,
+      borderWidth: c.pricingBorderWidth,
+      borderColor: c.pricingBorderColor,
+    },
+    priceContainer: {
+      marginBottom: 16,
+    },
+    priceRow: {
+      marginLeft: '3%',
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    price: {
+      fontSize: 24,
+      fontWeight: '700',
+      color: c.text,
+    },
+    period: {
+      fontSize: 16,
+      color: c.subText,
+      marginLeft: 4,
+    },
+    saveTag: {
+      paddingHorizontal: 10,
+      paddingVertical: 6,
+      borderRadius: 90,
+      marginLeft: '30%',
+    },
+    saveTagText: {
+      color: c.saveTagText,
+      fontSize: 15,
+      fontWeight: '600',
+    },
+    trialText: {
+      marginLeft: '3%',
+      fontSize: 14,
+      color: c.subText,
+    },
+    ctaButton: {
+      backgroundColor: c.ctabtn, // Button background remains white or black based on theme
+      borderRadius: 25,
+      padding: 20,
+      alignItems: 'center',
+    },
+    ctaButtonDisabled: {
+      backgroundColor: '#A9A9A9', // Gray background for disabled state
+    },
+    ctaButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    ctaButtonText: {
+      color: c.ctabtntext,
+      fontSize: 18,
+      fontWeight: '700',
+      marginRight: 8, // Space between text and icon
+    },
+    ctaButtonIcon: {
+      // Additional styling for the icon if needed
+    },
+    ctaSubtitle: {
+      marginTop: 8,
+      fontSize: 14,
+      color: c.subText,
+      textAlign: 'center',
+    },
+    dangerZone: {
+      marginTop: 30,
+    },
+    dangerTitle: {
+      alignSelf: 'center',
+      fontSize: 18,
+      fontWeight: '600',
+      color: '#FF3B30',
+      marginBottom: 16,
+    },
+    separator: {
+      height: 2,
+      borderRadius: 90,
+      backgroundColor: c.separator,
+      marginBottom: 16,
+    },
+    deleteButton: {
+      backgroundColor: '#FF4136',
+      borderRadius: 18,
+      padding: 16,
+      alignItems: 'center',
+    },
+    deleteButtonText: {
+      color: '#FFFFFF',
+      fontSize: 16,
+      fontWeight: '700',
+    },
+    dangerSubtitle: {
+      width: '80%',
+      marginTop: 16,
+      fontSize: 14,
+      color: c.subText,
+      textAlign: 'center',
+      alignSelf: 'center',
+    },
+  });

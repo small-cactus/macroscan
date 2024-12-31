@@ -3,7 +3,7 @@ import { useNavigationState } from '@react-navigation/native';
 import { useRoute } from '@react-navigation/native';
 import {
   View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
-  Modal, Alert, useColorScheme, Animated, Linking, TextInput, Dimensions, Platform
+  Modal, Alert, useColorScheme, Animated, Linking, TextInput, Dimensions, Platform, AppState,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -24,6 +24,7 @@ import { Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedTextFoodScan from './AnimatedTextFoodScan'; // Adjust the path accordingly
 import AnimatedTextFoodScanFast from './AnimatedTextFoodScanFast'; // Adjust the path accordingly
+import TutorialOverlay from './Tutorial';
 
 const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
 
@@ -113,6 +114,8 @@ const FoodScanScreen = () => {
   const [isSubscribed, setIsSubscribed] = useState(false);
   const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
+  const [freeAccurateScansUsed, setFreeAccurateScansUsed] = useState(0);
+
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
   const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
   const [selectedMode, setSelectedMode] = useState('fast'); // Default to 'fast'
@@ -125,6 +128,13 @@ const FoodScanScreen = () => {
   const navigation = useNavigation();
   const route = useRoute();
   const scrollIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const [showTutorial, setShowTutorial] = useState(false);
+
+  const tutorialSteps = [
+    { text: 'Welcome! This is your home screen.' },
+    { text: 'Tap on the menu to explore options.' },
+    { text: 'Use the search bar to find what you need.' },
+  ];
 
   useEffect(() => {
     const processImageFromCamera = async () => {
@@ -356,28 +366,37 @@ const stopLoadingAnimation = () => {
       try {
         const firstUseDate = await AsyncStorage.getItem('firstUseDate');
         const today = new Date().toISOString().slice(0, 10);
-
+    
         if (!firstUseDate) {
           await AsyncStorage.setItem('firstUseDate', today);
           setIsFirstDayUnlimited(true);
-          setScanCount(Infinity);
+          setScanCount(0);
         } else {
           setIsFirstDayUnlimited(firstUseDate === today);
         }
-
+    
+        const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+        setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
+    
         const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
         if (dateLastUsed !== today) {
           await AsyncStorage.setItem('dailyScanCount', '0');
           await AsyncStorage.setItem('dateLastUsed', today);
+          await AsyncStorage.setItem('freeAccurateScansUsed', '0');
+          setFreeAccurateScansUsed(0);
           setScanCount(0);
         } else {
           const count = await AsyncStorage.getItem('dailyScanCount');
           setScanCount(parseInt(count, 10) || 0);
         }
-
+    
         const model = await AsyncStorage.getItem('selectedModel');
         if (model) {
           setSelectedModel(model);
+        }
+        const mode = await AsyncStorage.getItem('selectedMode');
+        if (mode) {
+          setSelectedMode(mode);
         }
       } catch (error) {
         console.error("Error initializing app data:", error);
@@ -397,38 +416,66 @@ const stopLoadingAnimation = () => {
     const checkSubscription = async () => {
       if (isIAPEnabled) {
         try {
+          let isSubscribedUnlimited = false;
+          let isSubscribedPlus = false;
+  
           const purchases = await RNIap.getAvailablePurchases();
-
-          const hasActivePlusPlusSubscription = purchases.some(purchase =>
-            purchase.productId === 'macroscan_plusplus' ||
-            purchase.productId === 'macroscan_plusplus_yearly'
-          );
-
-          const hasActivePlusSubscription = purchases.some(purchase =>
-            purchase.productId === 'macroscan_plus'
-          );
-
-          if (hasActivePlusPlusSubscription) {
+          // console.log(`Available purchases: ${JSON.stringify(purchases)}`);
+  
+          const currentDate = new Date();
+  
+          purchases.forEach((purchase) => {
+            // **Modification Start**
+            // Get the expiration date based on the platform
+            let expirationDate;
+  
+            if (Platform.OS === 'ios') {
+              // 'expiresDateMs' is a string timestamp in milliseconds for iOS
+              expirationDate = purchase.expiresDateMs ? new Date(parseInt(purchase.expiresDateMs)) : null;
+            } else if (Platform.OS === 'android') {
+              // 'expiryTimeMillis' is a string timestamp in milliseconds for Android
+              expirationDate = purchase.expiryTimeMillis ? new Date(parseInt(purchase.expiryTimeMillis)) : null;
+            }
+  
+            // Check if the subscription is active (not expired)
+            if (
+              ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(purchase.productId) &&
+              expirationDate && expirationDate > currentDate
+            ) {
+              isSubscribedUnlimited = true;
+            }
+  
+            if (
+              purchase.productId === 'macroscan_plus' &&
+              expirationDate && expirationDate > currentDate
+            ) {
+              isSubscribedPlus = true;
+            }
+            // **Modification End**
+          });
+  
+          if (isSubscribedUnlimited) {
             setIsSubscribed(true);
             setIsSubscribedPlus(false);
-          } else if (hasActivePlusSubscription) {
+          } else if (isSubscribedPlus) {
             setIsSubscribed(false);
             setIsSubscribedPlus(true);
           } else {
             setIsSubscribed(false);
             setIsSubscribedPlus(false);
           }
-
+  
         } catch (err) {
           console.error('Failed to check subscriptions:', err);
           setIsSubscribed(false);
           setIsSubscribedPlus(false);
         }
       } else {
-        if (user?.subscriptionStatus === 'plusplus') {
+        // If IAP is not enabled, rely solely on user context
+        if (user?.subscriptionStatus === 'macroscan_unlimited' || user?.subscriptionStatus === 'macroscan_plusplus') {
           setIsSubscribed(true);
           setIsSubscribedPlus(false);
-        } else if (user?.subscriptionStatus === 'plus') {
+        } else if (user?.subscriptionStatus === 'macroscan_plus') {
           setIsSubscribed(false);
           setIsSubscribedPlus(true);
         } else {
@@ -437,9 +484,10 @@ const stopLoadingAnimation = () => {
         }
       }
     };
-
+  
     checkSubscription();
   }, [isIAPEnabled, user]);
+
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -597,52 +645,122 @@ const stopLoadingAnimation = () => {
     }
   };
 
-  const pickImage = async () => {
-    if (isFirstDayUnlimited || isSubscribed) {
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        aspect: [9, 16],
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets) {
-        const manipulatedImage = await manipulateAsync(
-          result.assets[0].uri,
-          [],
-          { format: SaveFormat.JPEG, compress: 0.8 }
-        );
-        setProcessingImage(manipulatedImage.uri);
-        setModalImageUri(manipulatedImage.uri); // Ensure modalImageUri is set
-        await sendImageToApi(manipulatedImage.uri);
-      }
-    } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: false,
-        aspect: [9, 16],
-        quality: 1,
-      });
-
-      if (!result.canceled && result.assets) {
-        const manipulatedImage = await manipulateAsync(
-          result.assets[0].uri,
-          [],
-          { format: SaveFormat.JPEG, compress: 0.8 }
-        );
-        setProcessingImage(manipulatedImage.uri);
-        setModalImageUri(manipulatedImage.uri); // Ensure modalImageUri is set
-        await sendImageToApi(manipulatedImage.uri);
-      }
-    } else {
-      const timeLeft = getTimeUntilMidnight();
-      Alert.alert("No more Scans left", `Upgrade for unlimited scans or wait ${timeLeft} for more scans.`);
+// Update handleAccurateScanUsed to persist the count
+const handleAccurateScanUsed = async () => {
+  if (!isSubscribed && !isFirstDayUnlimited && selectedMode === 'accurate') {
+    const newVal = freeAccurateScansUsed + 1;
+    setFreeAccurateScansUsed(newVal);
+    await AsyncStorage.setItem('freeAccurateScansUsed', newVal.toString());
+    if (newVal >= 1) {
+      setSelectedMode('fast');
+      await AsyncStorage.setItem('selectedMode', 'fast');
+      await AsyncStorage.getItem('selectedMode');
+      console.log('Selected Mode:', selectedMode);
+      Alert.alert(
+        'Accurate Scan Used',
+        'You have used your 1 accurate scan for today. Switching back to Fast Mode.'
+      );
     }
-  };
+  }
+};
 
-  const takePhoto = async () => {
+// Modified pickImage to reflect daily accurate-scan usage
+const pickImage = async () => {
+  if (isFirstDayUnlimited || isSubscribed) {
+    // User has unlimited scans
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      aspect: [9, 16],
+      quality: 1,
+    });
+    if (!result.canceled && result.assets) {
+      const manipulatedImage = await manipulateAsync(
+        result.assets[0].uri,
+        [],
+        { format: SaveFormat.JPEG, compress: 0.8 }
+      );
+      setProcessingImage(manipulatedImage.uri);
+      setModalImageUri(manipulatedImage.uri);
+      await sendImageToApi(manipulatedImage.uri);
+    }
+  } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
+    // Check if accurate scan limit is reached for free users
+    if (
+      !isSubscribed &&
+      !isFirstDayUnlimited &&
+      selectedMode === 'accurate' &&
+      freeAccurateScansUsed >= 1
+    ) {
+      Alert.alert(
+        'No Accurate Scans Left',
+        'You have used your 1 accurate scan for today. Fast mode has automatically been selected. Upgrade for more accurate scans.'
+      );
+      setSelectedMode('fast');
+      await AsyncStorage.setItem('selectedMode', 'fast');
+      await AsyncStorage.getItem('selectedMode');
+      console.log('Selected Mode:', selectedMode);
+      return;
+    }
+
+    // Proceed with image picking and processing
+    let result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: false,
+      aspect: [9, 16],
+      quality: 1,
+    });
+    if (!result.canceled && result.assets) {
+      const manipulatedImage = await manipulateAsync(
+        result.assets[0].uri,
+        [],
+        { format: SaveFormat.JPEG, compress: 0.8 }
+      );
+      setProcessingImage(manipulatedImage.uri);
+      setModalImageUri(manipulatedImage.uri);
+      await sendImageToApi(manipulatedImage.uri);
+    }
+  } else {
+    const timeLeft = getTimeUntilMidnight();
+    Alert.alert(
+      "No More Scans Left",
+      `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
+    );
+  }
+};
+
+const takePhoto = async () => {
+  if (isFirstDayUnlimited || isSubscribed) {
     navigation.navigate('CameraScreen');
-  };
+  } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
+    // Check if accurate scan limit is reached for free users
+    if (
+      !isSubscribed &&
+      !isFirstDayUnlimited &&
+      selectedMode === 'accurate' &&
+      freeAccurateScansUsed >= 1
+    ) {
+      Alert.alert(
+        'No Accurate Scans Left',
+        'You have used your 1 accurate scan for today. Fast mode has automatically been selected. Upgrade for unlimited accurate scans.'
+      );
+      setSelectedMode('fast');
+      await AsyncStorage.setItem('selectedMode', 'fast');
+      console.log('Selected Mode:', 'fast');
+      // navigate to CameraScreen with fast mode
+      // navigation.navigate('CameraScreen');
+      return;
+    }
+
+    navigation.navigate('CameraScreen');
+  } else {
+    const timeLeft = getTimeUntilMidnight();
+    Alert.alert(
+      "No More Scans Left",
+      `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
+    );
+  }
+};
 
   const sendImageToApiWithHint = async (userHint) => {
     setIsLoading(true);
@@ -1512,6 +1630,7 @@ const stopLoadingAnimation = () => {
       if (foodFound) {
         const endTime = Date.now(); // End time measurement
         const processingDuration = endTime - startTime;
+        handleAccurateScanUsed();
         updateAverageProcessingTime(mode, processingDuration); // Update average
   
         if (!isFirstDayUnlimited && !isSubscribed) {
@@ -1918,35 +2037,61 @@ const stopLoadingAnimation = () => {
       </View>
 
       <View style={styles.scanCounterContainer}>
-        <TouchableOpacity
-          style={styles.scanCounter}
-          onPress={() => {
-            let message = '';
-            if (isFirstDayUnlimited || isSubscribed) {
-              message = "You have unlimited scans today.";
-            } else if (isSubscribedPlus) {
-              message = `You have used ${scanCount} of 20 scans today.`;
-            } else {
-              message = `You have used ${scanCount} of 5 scans today.`;
-            }
-            Alert.alert("Scan Limit", message);
-          }}
-        >
-          <View style={styles.scanCounterContent}>
-            {isSubscribed || isFirstDayUnlimited ? (
-              <FontAwesomeIcon
-                icon={faInfinity}
-                size={24}
-                color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
-              />
-            ) : (
-              <Text style={styles.scanCounterText}>
-                {isSubscribedPlus ? (20 - scanCount) : (5 - scanCount)}
-              </Text>
-            )}
-          </View>
-        </TouchableOpacity>
-      </View>
+  <TouchableOpacity
+    style={styles.scanCounter}
+    onPress={() => {
+      let message = '';
+      if (selectedMode === 'accurate') {
+        // If user is in accurate mode
+        if (isFirstDayUnlimited || isSubscribed) {
+          message = 'Accurate Scans: ∞ (Unlimited Plan)';
+        } else if (isSubscribedPlus) {
+          message = `Plus plan: ${20 - scanCount} total scans left. (Accurate scans are unlimited)`;
+        } else {
+          message = `Accurate Scans Left Today: ${Math.max(0, 1 - freeAccurateScansUsed)}`;
+        }
+      } else {
+        // If user is in fast mode
+        if (isFirstDayUnlimited || isSubscribed) {
+          message = "You have unlimited scans today.";
+        } else if (isSubscribedPlus) {
+          message = `You have used ${scanCount} of 20 scans today.`;
+        } else {
+          message = `You have used ${scanCount} of 5 scans today.`;
+        }
+      }
+      Alert.alert("Scan Limit", message);
+    }}
+  >
+    <View style={styles.scanCounterContent}>
+      {selectedMode === 'accurate' ? (
+        isFirstDayUnlimited || isSubscribed ? (
+          <FontAwesomeIcon
+            icon={faInfinity}
+            size={24}
+            color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
+          />
+        ) : (
+          <Text style={styles.scanCounterText}>
+            {Math.max(0, 1 - freeAccurateScansUsed)}
+          </Text>
+        )
+      ) : (
+        isFirstDayUnlimited || isSubscribed ? (
+          <FontAwesomeIcon
+            icon={faInfinity}
+            size={24}
+            color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
+          />
+        ) : (
+          <Text style={styles.scanCounterText}>
+            {isSubscribedPlus ? (20 - scanCount) : (5 - scanCount)}
+          </Text>
+        )
+      )}
+    </View>
+  </TouchableOpacity>
+</View>
 
       <View style={styles.tabContainer}>
         <TouchableOpacity
@@ -2037,7 +2182,7 @@ const stopLoadingAnimation = () => {
     pointerEvents={showScrollIndicator ? 'auto' : 'none'}
   >
     <TouchableOpacity onPress={scrollToBottom}>
-      <Entypo name="chevron-down" size={32} color="#FFFFFF" />
+      <Entypo name="chevron-down" size={32} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
     </TouchableOpacity>
   </Animated.View>
 )}
@@ -2244,7 +2389,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     position: 'absolute',
     bottom: 20,
     alignSelf: 'center',
-    backgroundColor: colorScheme === 'dark' ? 'black' : '#FFFFFF',
+    backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
     borderRadius: 200,
     padding: 3,
   },
@@ -2400,7 +2549,7 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: colorScheme === 'dark' ? '#222' : '#fff',
+    borderColor: colorScheme === 'dark' ? '#222' : '#bbb',
     padding: 12,
     paddingHorizontal: 20,
     shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',

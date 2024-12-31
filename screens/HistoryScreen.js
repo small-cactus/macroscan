@@ -314,7 +314,7 @@ const HistoryScreen = () => {
           type="hierarchical"
           style={styles.symbol}
         />
-      </TouchableOpacity>
+      {/* </TouchableOpacity>
       <TouchableOpacity
         style={[styles.iconButton, styles.debugButton]}
         onPress={() => navigation.navigate('DebugScreen', { history, setHistory })}
@@ -325,7 +325,7 @@ const HistoryScreen = () => {
           tintColor="#fff"
           type="hierarchical"
           style={styles.symbol}
-        />
+        /> */}
       </TouchableOpacity>
       {history.length > 0 ? (
         <ScrollView
@@ -521,7 +521,7 @@ const getDynamicStyles = (colorScheme) =>
     },
     imagePreview: {
       width: '100%',
-      height: isIphoneSE() ? 200 : 300,
+      height: height >= 926 ? 300 : 200,
       borderRadius: 25,
       marginBottom: 15,
     },
@@ -614,13 +614,13 @@ const getDynamicStyles = (colorScheme) =>
     },
     tabContainer: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      justifyContent: 'space-around',
       marginBottom: 16,
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
       marginHorizontal: 15,
       borderRadius: 13,
       paddingVertical: 4,
-      paddingHorizontal: 50,
+      width: '100%',
     },
     tabButton: {
       paddingVertical: 8,

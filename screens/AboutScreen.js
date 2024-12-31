@@ -37,11 +37,11 @@ const CHANGELOG = [
   },
   {
     title: 'New Pricing',
-    details: 'Single $2.99 lifetime purchase. All premium features included with unlimited fast and complex scans.',
+    details: 'Single $2.99 subscription purchase. All premium features included with unlimited fast and accurate scans.',
   },
   {
     title: 'Free Plan Updates',
-    details: 'You now get 2 fast scans, and 2 complex scans every day. When you run out of either, it will automatically switch to the available mode.',
+    details: 'You now get 5 fast scans, and 1 accurate scan every day. When you run out of either, it will automatically switch to the available mode.',
   },
   {
     title: 'Camera Improvements',
@@ -123,7 +123,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.5.0 (71)</Text>
+            <Text style={styles.version}>Version 1.5.0 (73)</Text>
             <View style={styles.betaContainer}>
               {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>
@@ -143,7 +143,7 @@ const AboutScreen = () => {
 
           <Text style={styles.changelogHeader}>Changelog v1.5.0</Text>
           <View style={styles.betaContainer}>
-              <Text style={styles.betaTag}>BETA</Text>
+              <Text style={styles.betaTag}>First Release</Text>
             </View>
           {CHANGELOG.map((item, index) => (
             <View key={index} style={styles.changelogItemContainer}>

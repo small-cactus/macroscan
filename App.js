@@ -1,6 +1,6 @@
 // App.js
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -53,6 +53,7 @@ import DebugScreen from './screens/DebugScreen';
 import CameraScreen from './screens/CameraScreen';
 import ChatWithImageTest from './screens/ChatWithImageTest';
 import LandscapeCarouselScreen from './screens/LandscapeCarouselScreen';
+import InsightsV2 from './screens/InsightsV2';
 
 const { width, height } = Dimensions.get('window');
 
@@ -116,7 +117,7 @@ function HomeTabs() {
       })}
     >
       <Tab.Screen name="Home" component={FoodScanScreen} />
-      <Tab.Screen name="Insights" component={InsightsScreen} />
+      <Tab.Screen name="Insights" component={InsightsV2} />
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
@@ -226,7 +227,11 @@ function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer ref={navigationRef}>
-        <UserProvider navigation={navigationRef.current}>
+        {/* [MODIFIED] Pass mockSubscriptionStatus prop here */}
+        <UserProvider
+          navigation={navigationRef.current}
+          // mockSubscriptionStatus="macroscan-unlimited" // **Add this line to mock the subscription**
+        >
           <IAPProvider>
             <Stack.Navigator
               initialRouteName={initialRoute}
@@ -265,6 +270,11 @@ function App() {
               <Stack.Screen
                 name="HomeTabs"
                 component={HomeTabs}
+                options={{ headerShown: false }}
+              />
+              <Stack.Screen
+                name="InsightsV2"
+                component={InsightsV2}
                 options={{ headerShown: false }}
               />
               <Stack.Screen

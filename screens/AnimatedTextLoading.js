@@ -1,8 +1,8 @@
-// AnimatedCenteredText.js
+// AnimatedTextFoodScan.js
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Animated, StyleSheet, Text } from 'react-native';
 
-const AnimatedCenteredText = ({ text, colorScheme, visible }) => {
+const AnimatedTextFoodScan = ({ text, colorScheme, style }) => {
   const [lines, setLines] = useState([]);
 
   const animationsRef = useRef([]);
@@ -15,26 +15,23 @@ const AnimatedCenteredText = ({ text, colorScheme, visible }) => {
   }, [text]);
 
   useEffect(() => {
-    if (visible) {
-      animations.forEach((anim) => anim.setValue(0));
+    // Start animations
+    animations.forEach((anim) => anim.setValue(0));
 
-      const animationSequence = animations.map((anim, index) => {
-        return Animated.timing(anim, {
-          toValue: 1,
-          duration: 800, // Duration for each character's fade-in
-          useNativeDriver: false, // Must be false for opacity animation on Text
-        });
+    const animationSequence = animations.map((anim) => {
+      return Animated.timing(anim, {
+        toValue: 1,
+        duration: 500, // Duration for each character's fade-in
+        useNativeDriver: false, // Must be false for opacity animation on Text
       });
+    });
 
-      Animated.stagger(2, animationSequence).start();
-    } else {
-      animations.forEach((anim) => anim.setValue(0));
-    }
+    Animated.stagger(20, animationSequence).start();
 
     return () => {
       animations.forEach((anim) => anim.stopAnimation());
     };
-  }, [visible, animations]);
+  }, [animations]);
 
   const handleTextLayout = (event) => {
     const { lines } = event.nativeEvent;
@@ -43,13 +40,13 @@ const AnimatedCenteredText = ({ text, colorScheme, visible }) => {
     }
   };
 
-  const textColor = colorScheme === 'dark' ? '#555' : '#666';
+  const textColor = colorScheme === 'dark' ? '#999' : '#666';
 
   // If lines are not calculated yet, render the text to measure lines
   if (lines.length === 0) {
     return (
       <Text
-        style={[styles.text, { color: textColor }]}
+        style={[styles.text, { color: textColor }, style]}
         onTextLayout={handleTextLayout}
       >
         {text}
@@ -63,12 +60,12 @@ const AnimatedCenteredText = ({ text, colorScheme, visible }) => {
     <View style={styles.container}>
       {lines.map((lineText, lineIndex) => {
         const characters = lineText.split('');
-        const lineChars = characters.map((char, index) => {
+        const lineChars = characters.map((char) => {
           const animation = animations[charIndex];
           const animatedChar = (
             <Animated.Text
               key={charIndex}
-              style={{ opacity: animation }}
+              style={[{ opacity: animation }, style]}
             >
               {char}
             </Animated.Text>
@@ -79,7 +76,7 @@ const AnimatedCenteredText = ({ text, colorScheme, visible }) => {
         return (
           <Text
             key={lineIndex}
-            style={[styles.text, { color: textColor }]}
+            style={[styles.text, { color: textColor }, style]}
           >
             {lineChars}
           </Text>
@@ -91,14 +88,13 @@ const AnimatedCenteredText = ({ text, colorScheme, visible }) => {
 
 const styles = StyleSheet.create({
   container: {
-    marginBottom: 15,
-    alignItems: 'center',
+    alignItems: 'center', // Adjust alignment as needed
   },
   text: {
-    fontSize: 16,
-    lineHeight: 24,
-    textAlign: 'center',
+    fontSize: 14, // This will be overridden by your custom style
+    lineHeight: 30,
+    textAlign: 'center', // Adjust alignment as needed
   },
 });
 
-export default AnimatedCenteredText;
+export default AnimatedTextFoodScan;

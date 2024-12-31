@@ -15,6 +15,7 @@ import {
   UIManager,
   StatusBar,
   ActivityIndicator,
+  ScrollView,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
@@ -424,13 +425,20 @@ const OnboardingScreen = () => {
 
           {item.features && (
             <View style={styles.featuresContainer}>
-              {item.features.map((feature, idx) =>
-                renderFeature(
-                  { item: feature, index: idx },
-                  currentIndex === 0 && index === 0,
-                  currentIndex === 0 && index === 0 ? featureAnimValues[idx] : null
-                )
-              )}
+              <ScrollView
+                nestedScrollEnabled={true}
+                contentContainerStyle={styles.scrollViewContent}
+                style={styles.scrollView}
+                showsVerticalScrollIndicator={true}
+              >
+                {item.features.map((feature, idx) =>
+                  renderFeature(
+                    { item: feature, index: idx },
+                    currentIndex === 0 && index === 0,
+                    currentIndex === 0 && index === 0 ? featureAnimValues[idx] : null
+                  )
+                )}
+              </ScrollView>
             </View>
           )}
 
@@ -628,6 +636,14 @@ const getDynamicStyles = (isDark) => {
       width: '100%',
       marginTop: 8,
       marginBottom: 16,
+      flex: 1, // Allows the container to expand
+    },
+    scrollView: {
+      flex: 1, // Ensures the ScrollView takes available space
+    },
+    scrollViewContent: {
+      paddingBottom: 20, // Ensures the last item is accessible
+      flexGrow: 1, // Allows content to grow and be scrollable
     },
     featureItem: {
       flexDirection: 'row',

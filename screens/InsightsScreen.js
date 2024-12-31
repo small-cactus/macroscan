@@ -29,7 +29,7 @@ import AnimatedCenteredText from './AnimatedCenteredText';
 
 const { width, height } = Dimensions.get('window');
 
-const DEBUG_SHOW_ONBOARDING = true; // Set to true to always show onboarding
+const DEBUG_SHOW_ONBOARDING = false; // Set to true to always show onboarding
 
 const isIphoneSE = () => {
   const smallIphoneDimensions = [

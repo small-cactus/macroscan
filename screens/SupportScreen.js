@@ -92,7 +92,7 @@ const SupportScreen = () => {
     {
       question: 'How accurate is MacroScan?',
       answer:
-        'MacroScan is typically within 80% accuracy of the actual macronutrient content. The precision can vary based on image quality and clarity of the food items.',
+        'MacroScan is 93% accurate based of the actual macronutrient content in accurate mode. The precision can vary based on image quality and clarity of the food items.',
     },
     {
       question: 'Can MacroScan identify all types of food?',
@@ -102,12 +102,12 @@ const SupportScreen = () => {
     {
       question: 'Is there a limit to how many foods I can scan in a day?',
       answer:
-        'Yes, on the free plan you can scan up to 5 times a day. Upgrading to MacroScan++ removes this limit and gives you unlimited scans. All users get unlimited scans on their first day.',
+        'Yes, on the free plan you can scan up to 5 times a day with fast mode, and once a day with accurate mode. Upgrading to MacroScan Unlimited removes this limit and gives you unlimited fast and accurate scans. All users get unlimited scans on their first day.',
     },
     {
       question: 'What should I do if MacroScan does not recognize a food item?',
       answer:
-        "Try taking a clearer picture with better lighting. Including the packaging, writing the food name on paper, or using the 'Did we get this right?' button can also help.",
+        "Try taking a clearer picture with better lighting. Including the packaging or nutrition label can also help. If the issue persists, please contact support for assistance.",
     },
     {
       question: 'Can I save my meal history in MacroScan?',
@@ -122,7 +122,7 @@ const SupportScreen = () => {
     {
       question: 'What if the quantity of items shown is wrong?',
       answer:
-        "Sometimes the quantity might be incorrect, but the nutrient data will still be right. Use the 'Did we get this right?' button to update it without using a scan.",
+        "Sometimes the quantity might be incorrect or the service size will be inaccurate, but the nutrient data will still be right.",
     },
   ];
 
