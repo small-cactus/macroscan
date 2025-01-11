@@ -1727,53 +1727,6 @@ const InsightsV2 = () => {
               </View>
             )}
 
-            {/* Frequently Consumed */}
-{repeatFoods.length > 0 && (
-  <View style={styles.repeatFoodsContainer}>
-    <Text style={styles.sectionTitle}>Frequently Consumed Foods</Text>
-    {repeatFoods.map((food, index) => {
-      const negative = isFoodNegative(food.samples[0]);
-      return (
-        <Animatable.View
-          key={index}
-          animation="fadeInUp"
-          delay={index * 100}
-          style={styles.foodItem}
-        >
-          <View style={styles.foodNameContainer}>
-            <Text style={styles.foodName}>{food.name}</Text>
-            <Text style={styles.scanCount}>Scanned {food.countToday} times today</Text>
-          </View>
-          {negative ? (
-            <Text style={styles.foodSubtitle}>
-              This food has unbalanced Macros, consider picking a different meal.
-            </Text>
-          ) : (
-            <Text style={styles.foodSubtitle}>
-              This food has balanced macros, good job!
-            </Text>
-          )}
-          {negative ? (
-            <Ionicons
-              name="thumbs-down"
-              size={24}
-              color="red"
-              style={styles.foodIcon}
-            />
-          ) : (
-            <Ionicons
-              name="thumbs-up"
-              size={24}
-              color="#4CAF50"
-              style={styles.foodIcon}
-            />
-          )}
-        </Animatable.View>
-      );
-    })}
-  </View>
-)}
-
             {/* Single FAQ Accordion */}
             <View style={styles.faqContainer}>
               <TouchableOpacity style={styles.faqTitleContainer} onPress={toggleFaq}>

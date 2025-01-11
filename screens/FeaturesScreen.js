@@ -25,9 +25,8 @@ import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons, MaterialIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
-import { useUser } from '../userContext';
 import * as RNIap from 'react-native-iap';
-import { useIAP } from '../IAPContext';
+import { useIAP } from '../IAPContext'; // Ensure this is correctly imported
 import { BlurView } from 'expo-blur';
 import * as Linking from 'expo-linking';
 import AnimatedCenteredText from './AnimatedCenteredText';
@@ -52,7 +51,6 @@ const isIphoneSE = () => {
     { width: 375, height: 812 },
     { width: 360, height: 780 },
   ];
-
   return (
     Platform.OS === 'ios' &&
     smallIphoneDimensions.some(
@@ -67,9 +65,7 @@ const FeaturesScreen = () => {
   const navigation = useNavigation();
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
-  const { user } = useUser();
   const { isIAPEnabled } = useIAP(); // Get isIAPEnabled from IAPContext
-
   const models = {
     'claude-3-5-sonnet-20240620': 'Complex Processing',
     'claude-3-haiku-20240307': 'Default Processing',
@@ -94,7 +90,6 @@ const FeaturesScreen = () => {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
   };
-
   const buttonBorderColors = {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
@@ -165,7 +160,7 @@ const FeaturesScreen = () => {
   useEffect(() => {
     checkUnlockStatus();
     loadSettings();
-  }, [debugUnlocked, user, isIAPEnabled]); // Added 'user' and 'isIAPEnabled' as dependencies
+  }, [debugUnlocked, isIAPEnabled]); // Removed 'user' from dependencies
 
   useEffect(() => {
     // Animate initial button states
@@ -215,53 +210,66 @@ const FeaturesScreen = () => {
   };
 
   const checkUnlockStatus = async () => {
-    if (isIAPEnabled) {
-      try {
-        let isUnlockedStatus = false;
-
-        const purchases = await RNIap.getAvailablePurchases();
-
-        console.log(`Available purchases: ${JSON.stringify(purchases)}`);
-
-        const currentDate = new Date();
-
-        purchases.forEach((purchase) => {
-          // Get the expiration date based on the platform
-          let expirationDate;
-
-          if (Platform.OS === 'ios') {
-            // 'expiresDateMs' is a string timestamp in milliseconds for iOS
-            expirationDate = purchase.expiresDateMs
-              ? new Date(parseInt(purchase.expiresDateMs, 10))
-              : null;
-          } else if (Platform.OS === 'android') {
-            // 'expiryTimeMillis' is a string timestamp in milliseconds for Android
-            expirationDate = purchase.expiryTimeMillis
-              ? new Date(parseInt(purchase.expiryTimeMillis, 10))
-              : null;
+    try {
+      let isUnlockedStatus = false;
+  
+      if (isIAPEnabled) {
+        if (Platform.OS === 'ios') {
+          // Ensure initConnection is called before using getReceiptIOS
+          await RNIap.initConnection();
+          // Retrieve the receipt data
+          const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
+  
+          if (!receipt) {
+            console.error('No receipt available');
+          } else {
+            // Send the receipt data to your server for validation
+            const response = await fetch(
+              'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ receiptData: receipt }),
+              }
+            );
+  
+            // Check if the response is OK
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success && data.isSubscribed) {
+                const productId = data.productId;
+                if (SUBSCRIPTION_IDS.includes(productId)) {
+                  isUnlockedStatus = true;
+                }
+              } else {
+                console.error('Receipt validation failed:', data.message);
+              }
+            } else {
+              const responseText = await response.text();
+              console.error('Server Error:', response.status, responseText);
+            }
           }
-
-          // Check if the subscription is active (not expired)
-          if (
-            SUBSCRIPTION_IDS.includes(purchase.productId) &&
-            expirationDate &&
-            expirationDate > currentDate
-          ) {
-            isUnlockedStatus = true;
-          }
-        });
-
-        setIsUnlocked(isUnlockedStatus);
-      } catch (err) {
-        console.error('Failed to check subscriptions:', err);
-        setIsUnlocked(false);
+        } else {
+          // Handle Android platform if necessary
+          isUnlockedStatus = false;
+        }
+      } else {
+        // If IAP is not enabled, rely on other methods if any
+        // For example, you can check user context
+        if (
+          user?.subscriptionStatus === 'macroscan_unlimited' ||
+          user?.subscriptionStatus === 'macroscan_plusplus'
+        ) {
+          isUnlockedStatus = true;
+        }
       }
-    } else {
-      // If IAP is not enabled, rely on user context
-      const status =
-        debugUnlocked ||
-        (user ? user.subscriptionStatus === 'macroscan_unlimited' : false);
-      setIsUnlocked(status);
+  
+      setIsUnlocked(debugUnlocked || isUnlockedStatus);
+    } catch (error) {
+      console.error('Failed to check subscriptions:', error);
+      setIsUnlocked(debugUnlocked || false);
     }
   };
 
@@ -310,13 +318,13 @@ const FeaturesScreen = () => {
   };
 
   const handleModeChange = async (mode) => {
-    // Added condition to show alert for free users selecting 'accurate' mode
+    // Modified condition to check for access based on isUnlocked
     if (mode === 'accurate' && !isUnlocked) {
       Alert.alert(
         'Limited Access',
-        'You only get 1 accurate scan a day on the free plan, make it count!'
+        'Upgrade to MacroScan Unlimited to unlock Accurate Mode.'
       );
-      // Removed 'return;' to allow mode change
+      return; // Added return to prevent mode change
     }
     try {
       await AsyncStorage.setItem('selectedMode', mode);
@@ -339,7 +347,7 @@ const FeaturesScreen = () => {
           options: [
             'Cancel',
             ...options.map(
-              (opt) => `${opt.title}${opt.locked ? ' (Paid Feature)' : ''}`
+              (opt) => `${opt.title}${opt.locked ? ' (Locked)' : ''}`
             ),
           ],
           cancelButtonIndex: 0,

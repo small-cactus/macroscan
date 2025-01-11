@@ -221,7 +221,7 @@ const FoodCarousel = ({ isDark }) => {
   }, [scrollY1, scrollY2, scrollY3, totalHeight]);
 
   // Adjust the height multiplier based on device screen size
-  const heightMultiplier = height >= 926 ? 0.55 : 0.45;
+  const heightMultiplier = height >= 926 ? 0.50 : 0.45;
 
   return (
     <View

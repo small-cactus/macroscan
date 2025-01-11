@@ -12,19 +12,29 @@ import {
   Alert,
   Dimensions,
   Appearance,
-  ActivityIndicator, // Added ActivityIndicator
+  ActivityIndicator,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { FontAwesome6, MaterialCommunityIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
-import * as RNIap from 'react-native-iap';
+import {
+  initConnection,
+  finishTransaction,
+  purchaseUpdatedListener,
+  purchaseErrorListener,
+  requestSubscription,
+  getAvailablePurchases,
+  getSubscriptions,
+  getReceiptIOS
+} from 'react-native-iap';
 import { useIAP } from '../IAPContext';
 import { useUser } from '../userContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const { width } = Dimensions.get('window');
 const avatarSize = width * 0.3;
+
 // Define all active subscription SKUs
 const SUBSCRIPTION_IDS = [
   'macroscan_plusplus',
@@ -43,7 +53,7 @@ export default function AccountScreen() {
   const [debugUnlocked, setDebugUnlocked] = useState(false);
   const [debugTapCount, setDebugTapCount] = useState(0);
   const [showAndroidPicker, setShowAndroidPicker] = useState(false);
-  const [isPurchasing, setIsPurchasing] = useState(false); // Added isPurchasing state
+  const [isPurchasing, setIsPurchasing] = useState(false);
   const colorScheme = Appearance.getColorScheme();
   const c = colorScheme === 'dark' ? darkColors : lightColors;
 
@@ -69,17 +79,14 @@ export default function AccountScreen() {
   // Initialize IAP connection and check subscription once
   useEffect(() => {
     if (!isIAPEnabled) return;
-
     const initIAP = async () => {
       try {
         log('Initializing IAP connection...');
-        await RNIap.initConnection();
+        await initConnection({ autoFinishTransactions: false });
         log('IAP Connection initialized');
-
         // Fetch available subscriptions to verify connection
         const products = await getAvailableSubscriptions();
-        log(`Available subscriptions: ${JSON.stringify(products)}`);
-
+        // log(`Available subscriptions: ${JSON.stringify(products)}`);
         // Check subscription status once after initialization
         if (!hasCheckedSubscription.current) {
           await checkSubscription();
@@ -89,106 +96,11 @@ export default function AccountScreen() {
         logError('Failed to initialize IAP', error);
       }
     };
-
     initIAP();
-
     // Proper cleanup
     return () => {
       log('Ending IAP connection...');
-      RNIap.endConnection();
-    };
-  }, [isIAPEnabled]);
-
-  // Listen for purchase updates and errors
-  useEffect(() => {
-    if (!isIAPEnabled) return undefined;
-
-    const purchaseUpdateSubscription = RNIap.purchaseUpdatedListener(async (purchase) => {
-      // Prevent processing multiple purchases simultaneously
-      if (processingPurchase.current) {
-        log('Already processing a purchase.');
-        return;
-      }
-      processingPurchase.current = true;
-      log(`Purchase updated: ${JSON.stringify(purchase)}`);
-
-      if (!purchase || typeof purchase !== 'object') {
-        logError('Invalid purchase object', purchase);
-        processingPurchase.current = false;
-        setIsPurchasing(false); // Ensure purchasing state is reset
-        return;
-      }
-
-      // Log all properties of the purchase object
-      Object.keys(purchase).forEach((key) => {
-        log(`Purchase property - ${key}: ${purchase[key]}`);
-      });
-
-      // **Modification Start**
-      // Proceed only if transactionId exists (iOS)
-      if (Platform.OS === 'ios' && !purchase.transactionId) {
-        logError('Transaction ID is missing in purchase object', purchase);
-        processingPurchase.current = false;
-        setIsPurchasing(false); // Reset purchasing state
-        return;
-      }
-      // **Modification End**
-
-      const receipt = purchase.transactionReceipt || purchase.originalJson;
-
-      if (receipt) {
-        try {
-          // **Modification Start**
-          // Ensure purchase object has necessary properties before finishing the transaction
-          if (!purchase.transactionId && Platform.OS === 'ios') {
-            throw new Error('Missing transactionId in purchase object');
-          }
-          // **Modification End**
-
-          // Finish the transaction using the unified method
-          await RNIap.finishTransaction(purchase, false);
-          log(`Transaction finished: ${JSON.stringify(purchase)}`);
-
-          if (SUBSCRIPTION_IDS.includes(purchase.productId)) {
-            setIsSubscribedUnlimited(true);
-            setCurrentSubscription(purchase.productId);
-            await updateUserSubscription(purchase.productId);
-            unlockFeatures(purchase.productId);
-
-            // Add a slight delay before checking subscription
-            setTimeout(async () => {
-              await checkSubscription();
-            }, 2000); // 2-second delay
-          }
-        } catch (err) {
-          logError('Finish transaction error', err);
-        }
-      }
-
-      processingPurchase.current = false;
-      setIsPurchasing(false); // Reset purchasing state after processing
-    });
-
-    const purchaseErrorSubscription = RNIap.purchaseErrorListener((error) => {
-      if (error.code === 'E_USER_CANCELLED') {
-        console.log('Purchase cancelled by user.');
-      } else {
-        logError(`Purchase error: ${error.code}`, error.message);
-        Alert.alert('Purchase Error', error.message || 'An unknown error occurred during the purchase.');
-      }
-      setIsPurchasing(false); // Reset purchasing state on error
-      processingPurchase.current = false;
-    });
-
-    return () => {
-      if (purchaseUpdateSubscription) {
-        purchaseUpdateSubscription.remove();
-        log('Purchase update listener removed');
-      }
-      if (purchaseErrorSubscription) {
-        purchaseErrorSubscription.remove();
-        log('Purchase error listener removed');
-      }
+      // No need to call endConnection if using react-native-iap >= 6.0.0
     };
   }, [isIAPEnabled]);
 
@@ -211,15 +123,7 @@ export default function AccountScreen() {
   // Functions
   const getAvailableSubscriptions = async () => {
     try {
-      let products;
-      // Determine if getSubscriptions expects an array or object
-      // This is a simplistic approach; adjust based on your library version
-      try {
-        products = await RNIap.getSubscriptions(SUBSCRIPTION_IDS);
-      } catch (err) {
-        // If array doesn't work, try object with skus
-        products = await RNIap.getSubscriptions({ skus: SUBSCRIPTION_IDS });
-      }
+      const products = await getSubscriptions({ skus: SUBSCRIPTION_IDS });
       return products;
     } catch (error) {
       logError('Failed to fetch subscriptions', error);
@@ -231,40 +135,93 @@ export default function AccountScreen() {
     try {
       let subscribedUnlimited = false;
       let activeSubscription = null;
-
+  
       if (isIAPEnabled) {
-        const purchases = await RNIap.getAvailablePurchases();
-        log(`Available purchases: ${JSON.stringify(purchases)}`);
-        const currentDate = new Date();
-
-        purchases.forEach((purchase) => {
-          // **Modification Start**
-          // Use 'expiresDate' for iOS instead of 'expirationDate'
-          let expirationDate;
-          if (Platform.OS === 'ios') {
-            // 'expiresDate' is a string timestamp in milliseconds
-            expirationDate = purchase.expiresDate ? new Date(parseInt(purchase.expiresDate)) : null;
+        if (Platform.OS === 'ios') {
+          // Ensure initConnection is called before using getReceiptIOS
+          await initConnection();
+  
+          // Retrieve the receipt data
+          const receipt = await getReceiptIOS({ forceRefresh: true });
+  
+          if (!receipt) {
+            console.error('No receipt available');
+            subscribedUnlimited = false;
+            activeSubscription = null;
           } else {
-            // 'expirationDate' is a timestamp in milliseconds
-            expirationDate = purchase.expirationDate ? new Date(parseInt(purchase.expirationDate)) : null;
+            // Optional: Log receipt data length and sample for debugging
+            console.log('Receipt data length:', receipt.length);
+            console.log('Receipt data sample:', receipt.substring(0, 100));
+  
+            // Send the receipt data to the cloud function
+            const response = await fetch(
+              'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ receiptData: receipt }),
+              }
+            );
+  
+            // Check if the response is OK
+            if (!response.ok) {
+              const responseText = await response.text();
+              console.error('Server Error:', response.status, responseText);
+              Alert.alert(
+                'Subscription Check Error',
+                `Server returned an error: ${response.status}`
+              );
+              return;
+            }
+  
+            // Try parsing the response as JSON
+            let data;
+            try {
+              data = await response.json();
+            } catch (parseError) {
+              const responseText = await response.text();
+              console.error('Failed to parse response as JSON:', responseText);
+              Alert.alert(
+                'Subscription Check Error',
+                'Failed to parse server response.'
+              );
+              return;
+            }
+  
+            if (data.success) {
+              if (data.isSubscribed) {
+                // Subscription is active
+                subscribedUnlimited = true;
+                activeSubscription = data.productId;
+              } else {
+                // Subscription is expired or not active
+                subscribedUnlimited = false;
+                activeSubscription = null;
+              }
+            } else {
+              // Handle error in receipt validation
+              console.error('Receipt validation failed:', data.message);
+              Alert.alert(
+                'Subscription Check Error',
+                data.message || 'Failed to verify subscription status.'
+              );
+            }
           }
-          // **Modification End**
-
-          // **Updated Condition Start**
-          if (
-            SUBSCRIPTION_IDS.includes(purchase.productId) &&
-            expirationDate && expirationDate > currentDate
-          ) {
-            subscribedUnlimited = true;
-            activeSubscription = purchase.productId;
-          }
-          // **Updated Condition End**
-        });
+        } else {
+          // Handle other platforms if necessary
+          subscribedUnlimited = false;
+          activeSubscription = null;
+        }
       }
-
+  
       setIsSubscribedUnlimited(subscribedUnlimited);
       setCurrentSubscription(activeSubscription);
-      await updateUserSubscription(subscribedUnlimited ? activeSubscription : 'free');
+      // Optionally update user.subscriptionStatus for tracking
+      await updateUserSubscription(
+        subscribedUnlimited ? activeSubscription : 'free'
+      );
     } catch (error) {
       logError('Failed to check subscription status', error);
       Alert.alert(
@@ -283,8 +240,7 @@ export default function AccountScreen() {
       log(`Attempting to purchase SKU: ${productId}`);
       setIsPurchasing(true); // Set purchasing state to true
       processingPurchase.current = true;
-      // Ensure the correct parameter format as per your original code
-      await RNIap.requestSubscription({ sku: productId });
+      await requestSubscription({ sku: productId });
       // Purchase will be handled in the purchaseUpdatedListener
     } catch (error) {
       setIsPurchasing(false); // Reset purchasing state on error
@@ -299,7 +255,6 @@ export default function AccountScreen() {
       }
     }
   };
-  
 
   const updateUserSubscription = async (subscription) => {
     if (!user) {
@@ -324,7 +279,6 @@ export default function AccountScreen() {
       Alert.alert('Permission Required', 'Permission to access camera roll is required!');
       return;
     }
-
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -332,7 +286,6 @@ export default function AccountScreen() {
         aspect: [1, 1],
         quality: 1,
       });
-
       if (!result.cancelled && result.assets && result.assets.length > 0) {
         const newImageUri = result.assets[0].uri;
         setImageUri(newImageUri);
@@ -385,16 +338,12 @@ export default function AccountScreen() {
                 'hasViewedFeaturesTutorial',
                 'freeAccurateScansUsed',
               ];
-
               // Use multiRemove to delete all keys at once
               await AsyncStorage.multiRemove(keysToRemove);
               log(`Deleted keys: ${keysToRemove.join(', ')}`);
-
               // Clear user state
               setUser(null);
-
               Alert.alert('Account Deleted', 'Your account has been deleted.');
-
               // Reset navigation stack to prevent going back
               navigation.reset({
                 index: 0,
@@ -411,6 +360,69 @@ export default function AccountScreen() {
       { cancelable: false }
     );
   };
+
+  // Listen for purchase updates and errors
+  useEffect(() => {
+    if (!isIAPEnabled) return undefined;
+    const purchaseUpdateSubscription = purchaseUpdatedListener(async (purchase) => {
+      try {
+        // Prevent processing multiple purchases simultaneously
+        if (processingPurchase.current) {
+          log('Already processing a purchase.');
+        }
+        processingPurchase.current = true;
+        // Log the purchase object
+        console.log('Purchase object:', purchase);
+        if (!purchase || typeof purchase !== 'object') {
+          throw new Error('Invalid purchase object received.');
+        }
+        // Ensure that transactionId and transactionReceipt exist
+        if (!purchase.transactionId || !purchase.transactionReceipt) {
+          throw new Error('Missing transactionId or transactionReceipt in purchase object');
+        }
+        // Finish the transaction
+        await finishTransaction({ purchase, isConsumable: false });
+        log(`Transaction finished successfully.`);
+        if (SUBSCRIPTION_IDS.includes(purchase.productId)) {
+          setIsSubscribedUnlimited(true);
+          setCurrentSubscription(purchase.productId);
+          await updateUserSubscription(purchase.productId);
+          unlockFeatures(purchase.productId);
+          // checkSubscription();
+          // // Add a slight delay before checking subscription
+          // setTimeout(async () => {
+          //   await checkSubscription();
+          // }, 2000); // 2-second delay
+        }
+      } catch (err) {
+        logError('Finish transaction error', err);
+        Alert.alert('Purchase Error', err.message || 'An unknown error occurred during the purchase.');
+      } finally {
+        processingPurchase.current = false;
+        setIsPurchasing(false);
+      }
+    });
+    const purchaseErrorSubscription = purchaseErrorListener((error) => {
+      if (error.code === 'E_USER_CANCELLED') {
+        console.log('Purchase cancelled by user.');
+      } else {
+        logError(`Purchase error: ${error.code}`, error.message);
+        Alert.alert('Purchase Error', error.message || 'An unknown error occurred during the purchase.');
+      }
+      setIsPurchasing(false); // Reset purchasing state on error
+      processingPurchase.current = false;
+    });
+    return () => {
+      if (purchaseUpdateSubscription) {
+        purchaseUpdateSubscription.remove();
+        log('Purchase update listener removed');
+      }
+      if (purchaseErrorSubscription) {
+        purchaseErrorSubscription.remove();
+        log('Purchase error listener removed');
+      }
+    };
+  }, [isIAPEnabled]);
 
   // Determine color set for dark vs. light mode
   const colors = colorScheme === 'dark' ? darkColors : lightColors;
@@ -430,12 +442,10 @@ export default function AccountScreen() {
               <MaterialCommunityIcons name="pencil" size={22} color={c.pencilcolor} />
             </View>
           </TouchableOpacity>
-
           <Text style={styles.greeting}>
             Hi, {name && name.trim().split(' ')[0] ? name.split(' ')[0] : 'there'}! 👋
           </Text>
         </View>
-
         {/* Name Input Section */}
         <View style={styles.inputSection}>
           <Text style={styles.inputLabel}>Your name</Text>
@@ -459,7 +469,6 @@ export default function AccountScreen() {
             Your name helps personalize your experience throughout the app.
           </Text>
         </View>
-
         {/* Subscription Section */}
         <View style={styles.subscriptionSection}>
           <LinearGradient
@@ -470,7 +479,6 @@ export default function AccountScreen() {
           >
             <Text style={styles.offerPillText}>SPECIAL OFFER</Text>
           </LinearGradient>
-
           <View style={styles.subscriptionCard}>
             {/* Header */}
             <View style={styles.cardHeader}>
@@ -489,7 +497,6 @@ export default function AccountScreen() {
                 </View>
               </View>
             </View>
-
             {/* Features */}
             <View style={styles.featuresList}>
               {/* Repeat for each feature */}
@@ -509,7 +516,6 @@ export default function AccountScreen() {
                   </Text>
                 </View>
               </View>
-
               <View style={styles.featureItem}>
                 <LinearGradient
                   colors={c.featureIconGradient.star}
@@ -526,7 +532,6 @@ export default function AccountScreen() {
                   </Text>
                 </View>
               </View>
-
               <View style={styles.featureItem}>
                 <LinearGradient
                   colors={c.featureIconGradient.clock}
@@ -544,7 +549,6 @@ export default function AccountScreen() {
                 </View>
               </View>
             </View>
-
             {/* Pricing Card */}
             <LinearGradient
               colors={c.pricingGradient}
@@ -569,20 +573,19 @@ export default function AccountScreen() {
                   4 week free trial • cancel anytime • no commitment
                 </Text>
               </View>
-
               <TouchableOpacity
                 style={[
                   styles.ctaButton,
-                  (isSubscribedUnlimited || isPurchasing) && styles.ctaButtonDisabled, // Apply disabled style if subscribed or purchasing
+                  (isSubscribedUnlimited || isPurchasing) && styles.ctaButtonDisabled,
                 ]}
                 onPress={() => {
                   if (isSubscribedUnlimited) {
                     Alert.alert('Already Subscribed', 'You already have the MacroScan Unlimited plan.');
                   } else {
-                    handlePurchase('macroscan_unlimited'); // Directly purchase the macroscan_plus plan
+                    handlePurchase('macroscan_unlimited');
                   }
                 }}
-                disabled={isSubscribedUnlimited || isPurchasing} // Disable button if subscribed or purchasing
+                disabled={isSubscribedUnlimited || isPurchasing}
               >
                 {isPurchasing ? (
                   <ActivityIndicator color={c.ctabtntext} size="small" />
@@ -599,7 +602,7 @@ export default function AccountScreen() {
               </TouchableOpacity>
               {isSubscribedUnlimited && currentSubscription && (
                 <Text style={styles.ctaSubtitle}>
-                  You are currently subscribed to {currentSubscription === 'macroscan_plusplus' ? 'a Monthly' : 'a Yearly'} plan.
+                  You are currently subscribed to {currentSubscription === 'macroscan_unlimited' ? 'a Monthly' : 'a Yearly'} plan.
                 </Text>
               )}
             </LinearGradient>
@@ -608,7 +611,6 @@ export default function AccountScreen() {
             </Text>
           </View>
         </View>
-
         {/* Danger Zone */}
         <View style={styles.dangerZone}>
           <Text style={styles.dangerTitle}></Text>
@@ -650,7 +652,6 @@ const darkColors = {
   saveTagbg: '#2E3B80',
   saveTagText: '#9EC5F8',
   logoShadow: '#ffffff',
-
   // Gradient Colors
   specialOfferGradient: ['#2a2a2b', '#1f1f20'],
   saveTagGradient: ['#2E3B80', '#1F2359'],
@@ -686,7 +687,6 @@ const lightColors = {
   saveTagbg: '#3b65a3',
   saveTagText: '#cae0fc',
   logoShadow: '#000000',
-
   // Gradient Colors
   specialOfferGradient: ['#555', '#2a2a2b'],
   saveTagGradient: ['#2E3B80', '#6a8ab8'],

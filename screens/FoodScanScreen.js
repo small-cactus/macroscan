@@ -414,74 +414,83 @@ const stopLoadingAnimation = () => {
 
   useEffect(() => {
     const checkSubscription = async () => {
-      if (isIAPEnabled) {
-        try {
-          let isSubscribedUnlimited = false;
-          let isSubscribedPlus = false;
-  
-          const purchases = await RNIap.getAvailablePurchases();
-          // console.log(`Available purchases: ${JSON.stringify(purchases)}`);
-  
-          const currentDate = new Date();
-  
-          purchases.forEach((purchase) => {
-            // **Modification Start**
-            // Get the expiration date based on the platform
-            let expirationDate;
-  
-            if (Platform.OS === 'ios') {
-              // 'expiresDateMs' is a string timestamp in milliseconds for iOS
-              expirationDate = purchase.expiresDateMs ? new Date(parseInt(purchase.expiresDateMs)) : null;
-            } else if (Platform.OS === 'android') {
-              // 'expiryTimeMillis' is a string timestamp in milliseconds for Android
-              expirationDate = purchase.expiryTimeMillis ? new Date(parseInt(purchase.expiryTimeMillis)) : null;
+      try {
+        let isSubscribedUnlimited = false;
+        let isSubscribedPlus = false;
+    
+        if (isIAPEnabled) {
+          if (Platform.OS === 'ios') {
+            // Ensure initConnection is called before using getReceiptIOS
+            await RNIap.initConnection();
+            // Retrieve the receipt data
+            const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
+    
+            if (!receipt) {
+              console.error('No receipt available');
+            } else {
+              // Send the receipt data to the cloud function
+              const response = await fetch(
+                'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ receiptData: receipt }),
+                }
+              );
+    
+              // Check if the response is OK
+              if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.isSubscribed) {
+                  const productId = data.productId;
+                  if (
+                    ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(productId)
+                  ) {
+                    isSubscribedUnlimited = true;
+                  } else if (productId === 'macroscan_plus') {
+                    isSubscribedPlus = true;
+                  }
+                } else {
+                  console.error('Receipt validation failed:', data.message);
+                }
+              } else {
+                const responseText = await response.text();
+                console.error('Server Error:', response.status, responseText);
+              }
             }
-  
-            // Check if the subscription is active (not expired)
-            if (
-              ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(purchase.productId) &&
-              expirationDate && expirationDate > currentDate
-            ) {
-              isSubscribedUnlimited = true;
-            }
-  
-            if (
-              purchase.productId === 'macroscan_plus' &&
-              expirationDate && expirationDate > currentDate
-            ) {
-              isSubscribedPlus = true;
-            }
-            // **Modification End**
-          });
-  
-          if (isSubscribedUnlimited) {
-            setIsSubscribed(true);
-            setIsSubscribedPlus(false);
-          } else if (isSubscribedPlus) {
-            setIsSubscribed(false);
-            setIsSubscribedPlus(true);
           } else {
-            setIsSubscribed(false);
-            setIsSubscribedPlus(false);
+            // Handle Android platform if necessary
+            isSubscribedUnlimited = false;
+            isSubscribedPlus = false;
           }
-  
-        } catch (err) {
-          console.error('Failed to check subscriptions:', err);
-          setIsSubscribed(false);
-          setIsSubscribedPlus(false);
+        } else {
+          // If IAP is not enabled, rely on user context
+          if (
+            user?.subscriptionStatus === 'macroscan_unlimited' ||
+            user?.subscriptionStatus === 'macroscan_plusplus'
+          ) {
+            isSubscribedUnlimited = true;
+          } else if (user?.subscriptionStatus === 'macroscan_plus') {
+            isSubscribedPlus = true;
+          }
         }
-      } else {
-        // If IAP is not enabled, rely solely on user context
-        if (user?.subscriptionStatus === 'macroscan_unlimited' || user?.subscriptionStatus === 'macroscan_plusplus') {
+    
+        if (isSubscribedUnlimited) {
           setIsSubscribed(true);
           setIsSubscribedPlus(false);
-        } else if (user?.subscriptionStatus === 'macroscan_plus') {
+        } else if (isSubscribedPlus) {
           setIsSubscribed(false);
           setIsSubscribedPlus(true);
         } else {
           setIsSubscribed(false);
           setIsSubscribedPlus(false);
         }
+      } catch (error) {
+        console.error('Failed to check subscription status:', error);
+        setIsSubscribed(false);
+        setIsSubscribedPlus(false);
       }
     };
   
@@ -2053,7 +2062,11 @@ const takePhoto = async () => {
       } else {
         // If user is in fast mode
         if (isFirstDayUnlimited || isSubscribed) {
-          message = "You have unlimited scans today.";
+          if (isSubscribed) {
+            message = "You have unlimited scans because you're subscribed.";
+          } else {
+            message = "You have unlimited scans because today is your first day using the app.";
+          }
         } else if (isSubscribedPlus) {
           message = `You have used ${scanCount} of 20 scans today.`;
         } else {
@@ -2061,8 +2074,8 @@ const takePhoto = async () => {
         }
       }
       Alert.alert("Scan Limit", message);
-    }}
-  >
+      }}
+      >
     <View style={styles.scanCounterContent}>
       {selectedMode === 'accurate' ? (
         isFirstDayUnlimited || isSubscribed ? (
