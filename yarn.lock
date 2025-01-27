@@ -7219,6 +7219,11 @@ react-native-shimmer-placeholder@^2.0.9:
   resolved "https://registry.npmjs.org/react-native-shimmer-placeholder/-/react-native-shimmer-placeholder-2.0.9.tgz"
   integrity sha512-s2pfAAO6uaybREYM2KcaxP3c2XlZvLfHfzmhMlGEoOhSKaoM92KpA1Hx0BeC75yilkliJuowqO/hFzvLB0h7hg==
 
+react-native-store-review@^0.4.3:
+  version "0.4.3"
+  resolved "https://registry.npmjs.org/react-native-store-review/-/react-native-store-review-0.4.3.tgz"
+  integrity sha512-RSQ6vx2j4p41GwTqNv2VV7yold62j5qDbGEBAjFi6gkXMrMpxFMg+82FPjbh6012tqv6Ebzwfqw6S4m4d7sddw==
+
 react-native-svg@*, react-native-svg@^15.3.0, "react-native-svg@> 6.4.1", "react-native-svg@>= 11.x", react-native-svg@>=7.0.0:
   version "15.3.0"
   resolved "https://registry.npmjs.org/react-native-svg/-/react-native-svg-15.3.0.tgz"

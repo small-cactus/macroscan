@@ -28,28 +28,20 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const CHANGELOG = [
   {
-    title: 'UI Overhaul',
-    details: 'Now when you scan a food you have access to each ingredient used to make that food, plus more. We completely remade dark mode with updated colors, animations, and gradients.',
+    title: 'Scan Screen UI Update',
+    details: 'Redesigned scan screen with easy toggles between fast and accurate modes. Free users now get 1 accurate scan per day.',
   },
   {
-    title: 'Enhanced Scanning',
-    details: 'Improved meal detection accuracy with detailed ingredients, prep time, overview, and macro analysis. Complex scans have a 93% accuracy on average, fast scans have 73% accuracy on average.',
+    title: 'History Screen Enhancements',
+    details: 'Added smooth animations, filters, and a search bar to help you find past scans more easily.',
   },
   {
-    title: 'New Pricing',
-    details: 'Single $2.99 subscription purchase. All premium features included with unlimited fast and accurate scans.',
+    title: 'Barcode Scanning',
+    details: 'Added barcode scanning capability to photo mode for quick and accurate food identification.',
   },
   {
-    title: 'Free Plan Updates',
-    details: 'You now get 5 fast scans, and 1 accurate scan every day. When you run out of either, it will automatically switch to the available mode.',
-  },
-  {
-    title: 'Camera Improvements',
-    details: 'We added a custom photo interface that is not only faster but also more accurate, we removed compression and frame limits.',
-  },
-  {
-    title: 'Insights Update',
-    details: 'We completely remade the insights screen to allow for more complex and prettier looking graphs, we also made changes to every part of our tracking and trends features.',
+    title: 'UI Polish',
+    details: 'Enhanced icons and improved look and feel across all screens for a more polished user experience.',
   },
 ];
 
@@ -123,7 +115,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.5.0 (75)</Text>
+            <Text style={styles.version}>Version 1.6 (80)</Text>
             <View style={styles.betaContainer}>
               {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>
@@ -141,7 +133,7 @@ const AboutScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.changelogHeader}>Changelog v1.5.0</Text>
+          <Text style={styles.changelogHeader}>Changelog v1.6</Text>
           <View style={styles.betaContainer}>
               <Text style={styles.betaTag}>First Release</Text>
             </View>

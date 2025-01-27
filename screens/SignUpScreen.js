@@ -18,27 +18,25 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { FontAwesome } from '@expo/vector-icons';
 import { Appearance } from 'react-native';
 import { useUser } from '../userContext';
-import { LinearGradient } from 'expo-linear-gradient'; // Ensuring LinearGradient is imported
+import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedTextLoading from './AnimatedTextLoading';
 
 const { width, height } = Dimensions.get('window');
 
 const isIphoneSE = () => {
   const smallIphoneDimensions = [
-    { width: 320, height: 568 }, // iPhone SE (1st generation), iPhone 5, 5S, 5C
-    { width: 375, height: 667 }, // iPhone 6, 6S, 7, 8, SE (2nd generation)
-    { width: 414, height: 736 }, // iPhone 8 Plus
-    { width: 360, height: 640 }, // iPhone SE (2020)
-    { width: 375, height: 812 }, // iPhone 12 Mini, iPhone 13 Mini
-    { width: 360, height: 780 }, // iPhone 12 Mini, iPhone 13 Mini
+    { width: 320, height: 568 },
+    { width: 375, height: 667 },
+    { width: 414, height: 736 },
+    { width: 360, height: 640 },
+    { width: 375, height: 812 },
+    { width: 360, height: 780 },
   ];
 
   return (
     Platform.OS === 'ios' &&
     smallIphoneDimensions.some(
-      (dim) =>
-        (width === dim.width && height === dim.height) ||
-        (width === dim.height && height === dim.width)
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
     )
   );
 };
@@ -50,40 +48,13 @@ export default function SignUpScreen({ navigation }) {
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
   const { createUserWithGoogle, createUserWithApple } = useUser();
-  const fadeAnim1 = useRef(new Animated.Value(0)).current;
-  const fadeAnim2 = useRef(new Animated.Value(0)).current;
+  const [buttonScaleAnim] = useState(new Animated.Value(1));
   const [isDisabled, setIsDisabled] = useState(false);
 
   const [request, response, promptAsync] = Google.useIdTokenAuthRequest({
-    clientId:
-      '675290991564-r29a0q0hf25s70vnh3u29m7tsupihm3f.apps.googleusercontent.com',
+    clientId: '675290991564-r29a0q0hf25s70vnh3u29m7tsupihm3f.apps.googleusercontent.com',
     scopes: ['profile', 'email'],
   });
-
-  useEffect(() => {
-    Animated.timing(fadeAnim1, {
-      toValue: 1,
-      duration: 1000,
-      useNativeDriver: true,
-    }).start(() => {
-      Animated.timing(fadeAnim2, {
-        toValue: 1,
-        duration: 1000,
-        useNativeDriver: true,
-      }).start();
-    });
-  }, [fadeAnim1, fadeAnim2]);
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { id_token } = response.params;
-      handleUserVerification(() => createUserWithGoogle(id_token));
-    } else if (response?.type === 'cancel') {
-      console.log('Google Sign-in cancelled');
-    } else if (response?.type === 'error') {
-      Alert.alert('Google Sign-Up Error', response.error);
-    }
-  }, [response]);
 
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
@@ -91,6 +62,20 @@ export default function SignUpScreen({ navigation }) {
     });
     return () => subscription.remove();
   }, []);
+
+  const handlePressIn = () => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
 
   const storeUserFlag = async () => {
     try {
@@ -101,10 +86,10 @@ export default function SignUpScreen({ navigation }) {
   };
 
   const navigateHome = () => {
-    navigation.navigate('OnBoardingScreen');
+    navigation.navigate('HomeTabs', { screen: 'Home' });
     navigation.reset({
       index: 0,
-      routes: [{ name: 'OnBoardingScreen' }],
+      routes: [{ name: 'HomeTabs' }],
     });
   };
 
@@ -169,219 +154,158 @@ export default function SignUpScreen({ navigation }) {
   };
 
   return (
-    <View style={styles.view}>
-      <View style={styles.logoContainer}>
-        <View style={styles.logoBackground}>
-          <Image source={require('../assets/icon.png')} style={styles.logo} />
+    <View style={styles.View}>
+      <View style={styles.contentContainer}>
+        <View style={styles.logoContainer}>
+          <View style={styles.logoBackground}>
+            <Image source={require('../assets/icon.png')} style={styles.logo} />
+          </View>
         </View>
-      </View>
-      <Text style={styles.title}>Sync with your devices</Text>
-      <View style={styles.descriptionContainer}>
-      <AnimatedTextLoading
-          text="Don't worry, we'll make this quick."
-          colorScheme={colorScheme}
-          style={styles.description}
-        />
-      </View>
-      <View style={styles.container}>
-        {/* Apple Sign-In Button */}
-        <TouchableOpacity
-          style={styles.AppleContinueButtonTouchable}
-          onPress={handlePress}
-          disabled={isDisabled}
-        >
-          <LinearGradient
-            colors={['#000000', '#222']}
-            style={styles.AppleContinueButton}
-            start={[1, 1.3]}
-            end={[1, 0]}
-          >
-            <View style={styles.buttonContent}>
-              <Text style={styles.AppleContinueText}>Continue with Apple</Text>
-              <FontAwesome
-                name="apple"
-                size={20}
-                color="#ffffff"
-                style={styles.icon}
-              />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
 
-        {/* Google Sign-In Button */}
-        {/* Uncomment the following block if you wish to enable Google Sign-In
-        <TouchableOpacity
-          style={styles.GoogleContinueButtonTouchable}
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            promptAsync();
-          }}
-        >
-          <LinearGradient
-            colors={['#DB4437', '#E57373']}
-            style={styles.GoogleContinueButton}
-            start={[1, 1.3]}
-            end={[1, 0]}
-          >
-            <View style={styles.buttonContent}>
-              <Text style={styles.GoogleContinueText}>Continue with Google</Text>
-              <FontAwesome
-                name="google"
-                size={20}
-                color="#ffffff"
-                style={styles.icon}
-              />
-            </View>
-          </LinearGradient>
-        </TouchableOpacity>
-        */}
+        <View style={styles.textContainer}>
+          <AnimatedTextLoading
+            text="Sync with your devices"
+            colorScheme={colorScheme}
+            style={styles.title}
+          />
+          <AnimatedTextLoading
+            text="Don't worry, we'll make this quick"
+            colorScheme={colorScheme}
+            style={styles.description}
+          />
+        </View>
 
-        {/* Redirect to Sign In */}
-        <TouchableOpacity
-          style={styles.signUpRedirect}
-          onPress={async () => {
-          }}
-        >
-          <Text style={styles.signUpRedirectText}>
-            Signing in with Apple makes it easy to sync MacroScan across all your devices. You can't use MacroScan without an Apple Account.
-          </Text>
-        </TouchableOpacity>
+        <View style={styles.buttonContainer}>
+          <Animated.View style={[
+            styles.SignUpButtonTouchable,
+            { transform: [{ scale: buttonScaleAnim }] }
+          ]}>
+            <TouchableOpacity
+              onPress={handlePress}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+              disabled={isDisabled}
+            >
+              <LinearGradient
+                colors={colorScheme === 'dark' ? ['#2a2a2a', '#1a1a1a'] : ['#000', '#333']}
+                style={styles.SignUpButton}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.buttonContent}>
+                  <Text style={styles.SignUpText}>Continue with Apple</Text>
+                  <FontAwesome
+                    name="apple"
+                    size={20}
+                    color={colorScheme === 'dark' ? '#d8d8d8' : '#fff'}
+                    style={styles.arrowIcon}
+                  />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          <TouchableOpacity style={styles.SignInButton}>
+            <Text style={styles.SignInText}>
+              Signing in with Apple makes it easy to sync MacroScan across all your devices. You can't use MacroScan without an Apple Account.
+            </Text>
+          </TouchableOpacity>
+        </View>
       </View>
     </View>
   );
 }
 
-const getDynamicStyles = (colorScheme) =>
-  StyleSheet.create({
-    view: {
-      flexGrow: 1,
-      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
-      paddingHorizontal: 20,
-    },
-    container: {
-      flexGrow: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
-    },
-    title: {
-      fontSize: isIphoneSE() ? 28 : 30,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#fff' : '#333',
-      textAlign: 'center',
-      marginTop: '10%',
-      marginBottom: 20,
-      zIndex: 1,
-    },
-    descriptionContainer: {
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      justifyContent: 'center',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-    },
-    description: {
-      fontSize: 20,
-      fontWeight: '400',
-      color: colorScheme === 'dark' ? '#EEE' : '#666',
-      textAlign: 'center',
-      marginBottom: '0%',
-    },
-    logoContainer: {
-      alignItems: 'center',
-      marginTop: isIphoneSE() ? 45 : 100,
-    },
-    logoBackground: {
-      marginTop: '0%',
-      backgroundColor: '#FFF',
-      borderRadius: 32,
-      padding: 0,
-      shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
-      shadowOffset: { width: 0, height: 15 },
-      shadowOpacity: 0.25,
-      shadowRadius: 15.84,
-      elevation: 10,
-    },
-    logo: {
-      width: 125,
-      height: 125,
-    },
-    AppleContinueButtonTouchable: {
-      width: '100%', // Preserving original width
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 20, // Preserving original border radius
-      marginTop: isIphoneSE() ? 10 : 0, // Preserving original marginTop
-      marginBottom: 10, // Preserving original marginBottom
-    },
-    AppleContinueButton: {
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-      borderRadius: 20, // Preserving original border radius
-      borderWidth: 2, // Preserving original border width
-      borderColor: colorScheme === 'dark' ? '#222' : '#bbb', // Preserving original border color
-      padding: 12, // Preserving original padding
-      height: 55, // Preserving original height
-      maxHeight: 60, // Preserving original maxHeight
-      paddingHorizontal: 25, // Preserving original paddingHorizontal
-      shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.8,
-      shadowRadius: 15,
-      elevation: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: '1%',
-    },
-    AppleContinueText: {
-      color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
-      textAlign: 'center',
-      fontSize: 18,
-      fontWeight: '600',
-    },
-    GoogleContinueButtonTouchable: {
-      width: '75%', // Preserving original width
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 200, // Preserving original border radius
-      marginTop: 20, // Preserving original marginTop
-      marginBottom: 60, // Preserving original marginBottom
-    },
-    GoogleContinueButton: {
-      width: '100%', // Preserving original width
-      height: 55, // Preserving original height
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderRadius: 200, // Preserving original border radius
-      shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.8,
-      shadowRadius: 15,
-      elevation: 1,
-    },
-    GoogleContinueText: {
-      color: '#ffffff',
-      fontWeight: 'bold',
-      fontSize: 18,
-      textAlign: 'center',
-    },
-    signUpRedirect: {
-      marginBottom: '50%',
-      width: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    signUpRedirectText: {
-      width: '90%',
-      textAlign: 'center',
-      fontSize: 15,
-      color: colorScheme === 'dark' ? '#777' : '#000',
-    },
-    buttonContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    icon: {
-      marginLeft: 10, // Preserving original margin between text and icon
-    },
-  });
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
+  View: {
+    flex: 1,
+    backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+  },
+  contentContainer: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: Platform.OS === 'ios' ? 60 : 40,
+  },
+  textContainer: {
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  buttonContainer: {
+    width: '100%',
+    paddingHorizontal: 24,
+    alignItems: 'center',
+  },
+  title: {
+    fontSize: isIphoneSE() ? 25 : 35,
+    fontWeight: '800',
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    textAlign: 'center',
+    marginBottom: 16,
+    letterSpacing: -0.5,
+    padding: 4,
+  },
+  logoContainer: {
+    alignItems: 'center',
+    marginTop: Platform.OS === 'ios' ? 100 : 0,
+  },
+  logoBackground: {
+    backgroundColor: '#FFF',
+    borderRadius: 32,
+    padding: 0,
+    shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
+    shadowOffset: { width: 0, height: 15 },
+    shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.25,
+    shadowRadius: 15.84,
+    elevation: 10,
+  },
+  logo: {
+    width: isIphoneSE() ? 110 : 125,
+    height: isIphoneSE() ? 110 : 125,
+  },
+  SignUpButton: {
+    borderRadius: 16,
+    padding: 16,
+    width: '100%',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    elevation: 5,
+  },
+  SignUpButtonTouchable: {
+    width: '100%',
+    maxWidth: 400,
+  },
+  SignUpText: {
+    color: '#fff',
+    fontSize: 18,
+    fontWeight: '600',
+    letterSpacing: 0.3,
+  },
+  SignInButton: {
+    marginTop: 20,
+    padding: 12,
+  },
+  SignInText: {
+    fontSize: 15,
+    color: colorScheme === 'dark' ? '#999' : '#666',
+    textAlign: 'center',
+  },
+  description: {
+    fontSize: 18,
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#999' : '#666',
+    textAlign: 'center',
+    marginBottom: 250,
+    letterSpacing: 0.2,
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  arrowIcon: {
+    marginLeft: 8,
+  },
+});

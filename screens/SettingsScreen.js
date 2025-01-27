@@ -16,6 +16,7 @@ import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import FoodCarousel from './FoodCarouselHero.js';
 import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
+import { SymbolView } from 'expo-symbols';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -39,64 +40,34 @@ const SettingsScreen = () => {
     {
       title: "Features",
       navigateTo: "FeaturesScreen",
+      symbol: "star.fill"
     },
-    // {
-    //   title: "Notification Preferences",
-    //   navigateTo: "NotificationSettingsScreen",
-    // },
     {
       title: "Privacy and Security",
       navigateTo: "PrivacyScreen",
-    },
-    {
-      title: "About MacroScan",
-      navigateTo: "AboutScreen",
+      symbol: "lock.shield.fill"
     },
     // {
     //   title: "Developer",
     //   navigateTo: "DebuggingScreen",
+    //   symbol: "hammer.fill"
     // },
     {
       title: "Help and Support",
       navigateTo: "SupportScreen",
+      symbol: "questionmark.circle.fill"
     },
-    // {
-    //   title: "Loading Screen Test",
-    //   navigateTo: "LoadingScreen",
-    // },
-    // {
-    //   title: "Goodbye Screen Test",
-    //   navigateTo: "Goodbye",
-    // },
-    // {
-    //   title: "No Internet Screen Test",
-    //   navigateTo: "NoInternet",
-    // },
-    // {
-    //   title: "Fullscreen Camera Test (Beta)",
-    //   navigateTo: "CameraScreen",
-    // },
-    // {
-    //   title: "On Boarding Test",
-    //   navigateTo: "OnBoardingScreen",
-    // },
-    // {
-    //   title: "Image chat test",
-    //   navigateTo: "ChatWithImageTest",
-    // },
-    // {
-    //   title: "Landscape carousel screen",
-    //   navigateTo: "LandscapeCarouselScreen",
-    // },
-    // {
-    //   title: "InsightsV2 Testing",
-    //   navigateTo: "InsightsV2",
-    // },
+    {
+      title: "About MacroScan",
+      navigateTo: "AboutScreen",
+      symbol: "info.circle.fill"
+    },
   ];
 
   const handleSettingPress = async (navigateTo) => {
     // Example: Clearing a specific AsyncStorage item (uncomment if needed)
-    // await AsyncStorage.removeItem('freeAccurateScansUsed');
+    // await AsyncStorage.setItem('freeAccurateScansUsed', '0');
+    // await AsyncStorage.removeItem('@average_processing_times');
     // await AsyncStorage.setItem('@openai_api_key', 'OPENAI_API_KEY_REMOVED');
     navigation.navigate(navigateTo);
   };
@@ -117,7 +88,11 @@ const SettingsScreen = () => {
       style={styles.featureItem}
     >
       <View style={styles.featureIconContainer}>
-        <Ionicons name={icon} size={24} color={currentColorScheme === 'dark' ? '#b4b4b4' : '#000'} />
+        <SymbolView 
+          name={icon} 
+          size={24} 
+          tintColor={currentColorScheme === 'dark' ? '#b4b4b4' : '#000'} 
+        />
       </View>
       <Text style={styles.featureText}>{text}</Text>
     </LinearGradient>
@@ -134,11 +109,20 @@ const SettingsScreen = () => {
               style={styles.settingItemContainer}
               onPress={() => handleSettingPress(setting.navigateTo)}
             >
-              <Text style={styles.settingTitle}>{setting.title}</Text>
+              <View style={styles.settingRow}>
+                <SymbolView
+                  name={setting.symbol}
+                  size={24}
+                  tintColor={currentColorScheme === 'dark' ? '#8E8E93' : '#000'}
+                  style={styles.settingIcon}
+                  weight="semibold"
+                />
+                <Text style={styles.settingTitle}>{setting.title}</Text>
+              </View>
               <Ionicons
                 name="chevron-forward"
                 size={24}
-                color={currentColorScheme === 'dark' ? '#FFF' : '#000'}
+                color={currentColorScheme === 'dark' ? '#8E8E93' : '#000'}
               />
             </TouchableOpacity>
           ))}
@@ -178,6 +162,14 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
     padding: 10,
     borderRadius: 10,
+  },
+  settingRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+  },
+  settingIcon: {
+    marginRight: 12,
   },
   settingTitle: {
     fontSize: 18,

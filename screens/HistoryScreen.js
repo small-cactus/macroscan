@@ -1,15 +1,22 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   StyleSheet, View, Text, ScrollView, TouchableOpacity,
   Image, Modal, Alert, Dimensions, Platform, Linking,
-  Appearance, RefreshControl
+  Appearance, RefreshControl, Animated, LayoutAnimation, UIManager,
+  TextInput
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
+import DateTimePicker from '@react-native-community/datetimepicker';
+import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 const isIphoneSE = () => {
   const smallIphoneDimensions = [
@@ -31,14 +38,529 @@ const isIphoneSE = () => {
   );
 };
 
+const HistoryCard = ({
+  item,
+  onSelect,
+  onRemove,
+  styles,
+  colorScheme,
+  formatDate,
+  renderMetadataBadges
+}) => {
+  const animation = useRef(new Animated.Value(1)).current;
+
+  const confirmDelete = () => {
+    Alert.alert(
+      'Delete Food',
+      'Are you sure you want to delete this history item?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: handleDeleteConfirmed }
+      ],
+      { cancelable: false }
+    );
+  };
+
+  const handleDeleteConfirmed = () => {
+    Animated.timing(animation, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      onRemove();
+    });
+  };
+
+  return (
+    <Animated.View style={{ opacity: animation }}>
+      <View style={styles.cardContainer}>
+        <TouchableOpacity
+          style={styles.card}
+          onPress={() => onSelect(item)}
+        >
+          <Image source={{ uri: item.imageUri }} style={styles.productImage} />
+          <View style={styles.info}>
+            <Text style={styles.productName}>{item.productName}</Text>
+            {formatDate(item.date).map((line, lineIndex) => (
+              <Text key={lineIndex} style={styles.date}>{line}</Text>
+            ))}
+            {renderMetadataBadges(item.scanMetadata)}
+          </View>
+          <TouchableOpacity style={styles.deleteButton} onPress={confirmDelete}>
+            <SymbolView
+              name="trash.slash.fill"
+              size={26}
+              tintColor={colorScheme === 'dark' ? '#fff' : '#000'}
+              type="hierarchical"
+              style={styles.symbol}
+            />
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </View>
+    </Animated.View>
+  );
+};
+
+// Add this constant at the top of the file, outside the component
+const FILTER_SECTION_STATE_KEY = '@filter_section_state';
+const LAST_PLACEHOLDER_KEY = '@last_placeholder';
+const LAST_PLACEHOLDER_TIME_KEY = '@last_placeholder_time';
+
 const HistoryScreen = () => {
   const navigation = useNavigation();
   const [history, setHistory] = useState([]);
+  const [filteredHistory, setFilteredHistory] = useState([]);
   const [selectedItem, setSelectedItem] = useState(null);
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const styles = getDynamicStyles(colorScheme);
   const [activeTab, setActiveTab] = useState('Nutrition');
   const [refreshing, setRefreshing] = useState(false);
+  const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
+  const tabWidthAnim = useRef(new Animated.Value(0)).current;
+  const [tabLayout, setTabLayout] = useState({ width: 0, x: 0 });
+  const isTabsDisabled = !selectedItem;
+  const subtitleAnimation = useRef(new Animated.Value(1)).current;
+  const [searchPlaceholder, setSearchPlaceholder] = useState('Search foods...');
+  const [lastUsedPlaceholders, setLastUsedPlaceholders] = useState(new Set());
+  
+  // State variables for search and filters
+  const [searchQuery, setSearchQuery] = useState('');
+  const [showFilters, setShowFilters] = useState(false);
+  const [filters, setFilters] = useState({
+    barcode: false,
+    accurate: false,
+    fast: false,
+    startDate: null,
+    endDate: null,
+  });
+  const [showDatePicker, setShowDatePicker] = useState(false);
+  const [datePickerMode, setDatePickerMode] = useState('start');
+
+  // Animated rotation value for filter icon
+  const filterRotation = useRef(new Animated.Value(0)).current;
+
+  // Add new state for temporary date selection
+  const [tempSelectedDate, setTempSelectedDate] = useState(null);
+
+  const [animatedOpacities, setAnimatedOpacities] = useState({});
+
+  // Fun food items array for random placeholders
+  const funFoodItems = [
+    "Spicy Buffalo Wings...",
+    "Double Cheeseburger...",
+    "Fresh Fruit Smoothie...",
+    "Grilled Chicken Salad...",
+    "Pepperoni Pizza...",
+    "Chocolate Chip Cookie...",
+    "Breakfast Burrito...",
+    "Veggie Stir Fry...",
+    "Ice Cream Sundae...",
+    "Crispy French Fries...",
+    "Sushi California Roll...",
+    "Greek Yogurt Bowl...",
+    "Chicken Noodle Soup...",
+    "Avocado Toast...",
+    "BBQ Pulled Pork...",
+    "Loaded Nachos Supreme...",
+    "Teriyaki Stir Fry Bowl...",
+    "Fish Tacos & Lime...",
+    "Butter Chicken Curry...",
+    "Crispy Spring Rolls...",
+    "Street Style Tacos...",
+    "Eggs Benedict...",
+    "Mango Smoothie Bowl...",
+    "Cheesy Garlic Bread...",
+    "Vietnamese Pho...",
+    "Fresh Falafel Wrap...",
+    "Acai Power Bowl...",
+    "Sweet & Spicy Wings...",
+    "Banana Split Sundae...",
+    "Spicy Ramen Bowl...",
+    "Rainbow Poke Bowl...",
+    "Truffle Mac & Cheese...",
+    "Korean BBQ Tacos...",
+    "Matcha Green Tea Latte...",
+    "Loaded Sweet Potato...",
+    "Mediterranean Mezze...",
+    "Coconut Curry Noodles...",
+    "Breakfast Pizza...",
+    "Churro Ice Cream Sandwich...",
+    "Kimchi Fried Rice...",
+    "Golden Milk Latte...",
+    "Banh Mi Sandwich...",
+    "Dragon Fruit Smoothie...",
+    "Loaded Tater Tots...",
+    "Mochi Donut...",
+    "Sriracha Honey Wings...",
+    "Buddha Bowl...",
+    "S'mores French Toast...",
+    "Pad Thai Noodles...",
+    "Guacamole & Chips...",
+    "Chicken Tikka Wrap...",
+    "Berry Protein Smoothie...",
+    "Halloumi Burger...",
+    "Peanut Butter Acai Bowl...",
+    "Tempura Udon Soup...",
+    "Mediterranean Falafel Bowl...",
+    "Caramel Macchiato...",
+    "Buffalo Cauliflower Bites...",
+    "Mango Sticky Rice...",
+    "Breakfast Quesadilla...",
+    "Zesty Lemon Tart...",
+    "Fizzy Root Beer Float...",
+    "Cheese-Stuffed Jalapeno Poppers...",
+    "Gooey S'mores Brownie...",
+    "Crispy Tempura Shrimp...",
+    "Savory Beef Wellington...",
+    "Spaghetti Carbonara...",
+    "Green Goddess Salad...",
+    "Maple Bacon Pancakes...",
+    "Chocolate Lava Cake...",
+    "Cinnamon Roll Pancakes...",
+    "Mediterranean Chicken Wrap...",
+    "Seafood Paella...",
+    "Tropical Pineapple Pizza...",
+    "Buttery Croissant...",
+    "Homemade Mac and Cheese...",
+    "Pancake Stack...",
+    "Stuffed Bell Peppers...",
+    "Buffalo Mozzarella Caprese...",
+    "Smoked Brisket Sandwich...",
+    "Apple Pie a la Mode...",
+    "Beef Bulgogi Bowl...",
+    "Chocolate Fondue...",
+    "Lemon Meringue Pie...",
+    "Sourdough French Toast...",
+    "Fried Pickle Bites...",
+    "Spinach Artichoke Dip...",
+    "Rosemary Garlic Lamb...",
+    "Cornbread & Chili...",
+    "Deconstructed Sundae...",
+    "Nacho Cheese Fries...",
+    "Pesto Pasta Primavera...",
+    "Thai Coconut Soup...",
+    "BBQ Ribs Feast...",
+    "Caramel Popcorn Crunch...",
+    "Fig & Goat Cheese Salad...",
+    "Chocolate-covered Strawberries...",
+    "Gourmet Hot Dog...",
+    "Salsa Verde Tacos...",
+    "Pumpkin Spice Latte...",
+    "Crispy Onion Rings...",
+    "Bacon-Wrapped Jalapenos...",
+    "Zesty Caesar Salad...",
+    "Chocolate Peanut Butter Cup...",
+    "Gingerbread Latte...",
+    "Crunchy Veggie Chips...",
+    "Maple Glazed Donuts...",
+    "Berry Waffle Cone...",
+    "Pumpkin Pie Cupcake...",
+    "Roasted Garlic Bread...",
+    "Smoked Salmon Bagel...",
+    "Caramel Apple Crisp...",
+    "Tangy BBQ Nachos...",
+    "Funky Fried Pickles...",
+    "Cheddar Bacon Tater Tots...",
+    "Spiced Chai Parfait...",
+    "Sweet Potato Fries...",
+    "Garlic Parmesan Wings...",
+    "Coconut Mango Sorbet...",
+    "Crispy Chicken Strips...",
+    "French Toast Sticks...",
+    "Loaded Baked Potato...",
+    "Cherry Cheesecake...",
+    "Blueberry Muffin Pancakes...",
+    "Pumpkin Spice Donut...",
+    "Lobster Roll...",
+    "Spinach and Feta Pastry...",
+    "Sausage Egg McMuffin...",
+    "Tiramisu Cake...",
+    "Honey Mustard Pretzel Bites...",
+    "Triple Chocolate Brownie...",
+    "Sea Salt Caramel Popcorn...",
+    "Pepper Jack Quesadilla...",
+    "Caprese Salad Skewers...",
+    "Stuffed Mushroom Caps...",
+    "Wasabi Pea Snack...",
+    "Cinnamon Sugar Pretzel...",
+    "Sweet Chili Shrimp...",
+    "Apple Cider Donut...",
+    "Pineapple Upside-Down Cake...",
+    "Artichoke Spinach Dip...",
+    "Peppermint Mocha...",
+    "Nutella Crepe...",
+    "Rosemary Pita Chips...",
+    "Mushroom Swiss Burger...",
+    "French Onion Soup...",
+    "Tempura Avocado Bites...",
+    "Sizzling Fajitas...",
+    "Caramelized Banana Pancakes...",
+    "Pineapple Teriyaki Skewers...",
+    "Miso Glazed Eggplant...",
+    "Sesame Ginger Salad...",
+    "Blueberry Cheesecake...",
+    "Crispy Duck Dumplings...",
+    "Red Velvet Cupcake...",
+    "Smoked Gouda Mac...",
+    "Lemon Garlic Shrimp...",
+    "Spinach Artichoke Flatbread...",
+    "Truffle Fries...",
+    "Coconut Shrimp...",
+    "Mango Lassi...",
+    "Avocado Egg Rolls...",
+    "Crispy Falafel Balls...",
+    "Blackberry Lemonade...",
+    "Cheesy Stuffed Mushrooms...",
+    "Baked Brie with Fig Jam...",
+    "BBQ Chicken Flatbread...",
+    "Chocolate Dipped Pretzel...",
+    "Pistachio Ice Cream...",
+    "Lamb Gyro...",
+    "Cinnamon Apple Chips...",
+    "Roasted Red Pepper Hummus...",
+    "Oreo Milkshake...",
+    "Matcha Pancakes...",
+    "Spiked Eggnog...",
+    "Cranberry Walnut Salad...",
+    "Fried Mac and Cheese Balls...",
+    "Smoked Turkey Club...",
+    "Chocolate Eclair...",
+    "Margarita Pizza...",
+    "Peach Cobbler...",
+    "Lobster Bisque...",
+    "Loaded Cheese Fries...",
+    "Pomegranate Acai Bowl...",
+    "Gourmet Grilled Cheese...",
+    "Buffalo Chicken Dip...",
+    "Raspberry Sorbet...",
+    "Eggplant Parmesan...",
+    "Tango Mango Salsa...",
+    "Lime Cilantro Rice Bowl...",
+    "Spiced Apple Cider...",
+    "Thai Mango Sticky Rice...",
+    "Choco Pretzel Bark...",
+    "Pumpkin Cheesecake...",
+    "Roasted Brussels Sprouts...",
+    "Smoky Chipotle Chili...",
+    "Hawaiian BBQ Pizza...",
+    "Lava Chocolate Muffin...",
+    "Crispy Potato Skins...",
+    "Triple Berry Parfait...",
+    "Sweet Corn Fritters...",
+    "Roasted Beet Salad...",
+    "Vanilla Bean Cheesecake...",
+    "Crispy Cheese Curds...",
+    "Miso Soup with Tofu...",
+    "Spaghetti Bolognese...",
+    "Cajun Shrimp Po' Boy...",
+    "Macadamia Nut Cookie...",
+    "Pumpkin Spice Latte...",
+    "Cranberry Almond Granola...",
+    "Chocolate Croissant...",
+    "Lemon Blueberry Scones...",
+    "Mediterranean Lamb Skewers...",
+    "Pomegranate Glazed Meatballs...",
+    "Hoisin Chicken Bao...",
+    "Mango Chili Lime Chips...",
+    "Key Lime Pie...",
+    "Sizzling Steak Tacos...",
+    "Buttermilk Biscuits...",
+    "Black Forest Cake...",
+    "Cheesy Broccoli Soup...",
+    "Brie and Cranberry Tart...",
+    "Spaghetti Squash Primavera...",
+    "Chocolate Raspberry Tart...",
+    "Banana Nutella Crepe...",
+    "Teriyaki Glazed Meatballs...",
+    "Crispy Avocado Fries...",
+    "Pumpkin Spice Muffin...",
+    "BBQ Brisket Slider...",
+    "Chili Cheese Dog...",
+    "Strawberry Basil Lemonade...",
+    "Garlic Butter Lobster...",
+    "Sourdough Bread Bowl...",
+    "Cranberry Walnut Bread...",
+    "Honey Glazed Carrots...",
+    "Buffalo Chicken Wrap...",
+    "Strawberry Shortcake...",
+    "Pretzel Baked Brie...",
+    "Fudge Brownie Sundae...",
+    "Roasted Chestnut Soup...",
+    "Crispy Tempura Vegetables...",
+    "Maple Pecan Pie...",
+    "Beetroot Hummus...",
+    "Pumpkin Pancakes...",
+    "Butternut Squash Ravioli...",
+    "Berry Lemon Tart...",
+    "Sautéed Garlic Spinach...",
+    "Chilled Cucumber Soup...",
+    "Ginger Lime Chicken...",
+    "Cheesecake Stuffed Strawberries...",
+    "Churro Bites...",
+    "Mint Chocolate Chip Cookie...",
+    "Blueberry Pancake Stack...",
+    "Tropical Fruit Salad...",
+    "Shaved Ice Float...",
+    "Wild Mushroom Risotto...",
+    "Ginger Peach Crisp...",
+    "Crispy Cauliflower Bites...",
+    "Frosted Cupcake...",
+    "Cheese Fondue...",
+    "Caramelized Onion Tart...",
+    "Sweet Corn Chowder...",
+    "Triple Berry Galette...",
+    "Spicy Tuna Tartare...",
+    "Herbed Lemon Chicken...",
+    "S'mores Dip...",
+    "Hearty Beef Stew...",
+    "Gooey Cheese Quesadilla...",
+    "Butternut Squash Soup...",
+    "Grilled Asparagus...",
+    "Pumpkin Spice Waffles...",
+    "Garlic Parmesan Knots...",
+    "Berry Blast Smoothie...",
+    "Spicy Lamb Kofta...",
+    "Mango Coconut Pudding...",
+    "Crispy Zucchini Fries...",
+    "Cherry Almond Clafoutis...",
+    "Maple Walnut Ice Cream...",
+    "Grilled Shrimp Skewers...",
+    "Coconut Curry Chicken...",
+    "Sweet Potato Casserole...",
+    "Spinach Ricotta Stuffed Shells...",
+    "Chocolate Dipped Oreos...",
+    "Caramelized Fig Tart...",
+    "Toasted Ravioli...",
+    "Crispy Buffalo Cauliflower...",
+    "Chilled Watermelon Soup...",
+    "Fried Ravioli...",
+    "Chocolate Banana Bread...",
+    "Cajun Popcorn Chicken...",
+    "Buttery Biscuit Sliders...",
+    "Pineapple Fried Rice...",
+    "Gingerbread Pancakes...",
+    "Crispy Tempura Sushi...",
+    "Lemon Ricotta Pancakes...",
+    "Spiced Pear Tart...",
+    "Baked Ziti...",
+    "Chocolate Hazelnut Spread...",
+    "Campfire S'mores...",
+    "Garlic Butter Steak...",
+    "Vegetable Tempura...",
+    "Nutty Granola Bars...",
+    "Glazed Lemon Chicken...",
+    "Apricot Glazed Chicken...",
+    "Crispy Chicken Quesadilla...",
+    "Tangy Pineapple Salsa...",
+    "Cinnamon Roll Pancakes...",
+    "Buffalo Steak Bites...",
+    "Toasted Coconut Macaroons...",
+    "Spiced Apple Fritters...",
+    "Cherry Pie Smoothie...",
+    "Fizzy Lemon Sorbet...",
+    "Honey Sriracha Chicken...",
+    "Mini Chicken Pot Pie...",
+    "Buffalo Shrimp Tacos...",
+    "Chocolate Covered Pretzels...",
+    "Coconut Lime Rice Bowl...",
+    "Pesto Chicken Panini...",
+    "Vanilla Chai Latte...",
+    "Baked Brie with Honey...",
+    "Sweet Potato Gnocchi...",
+    "Blackberry Lime Tart...",
+    "Berrylicious Cheesecake...",
+    "Spicy Cajun Wings...",
+    "Garlic Butter Scallops...",
+    "Balsamic Glazed Brussels...",
+    "Strawberry Rhubarb Crisp...",
+    "Chocolate Peanut Butter Pie...",
+    "Tropical Smoothie Bowl...",
+    "Crispy Panko Shrimp...",
+    "Lemon Thyme Chicken...",
+    "Raspberry White Chocolate Muffin...",
+    "Baked Zucchini Chips...",
+    "BBQ Chicken Sliders...",
+    "Gooey Salted Caramel Brownie...",
+    "Crispy Fish and Chips...",
+    "Sizzling Skillet Lasagna...",
+    "Vanilla Bean Frappe...",
+    "Sweet Chili Lime Wings...",
+    "BBQ Bacon Burger...",
+    "Cheesy Spinach Dip...",
+    "Coconut Rice Pudding...",
+    "Baked Apple Crisp...",
+    "Savory Crab Cake...",
+    "Roasted Garlic Mashed Potatoes...",
+    "Spiced Churro Sundae...",
+    "Parmesan Crusted Chicken...",
+    "Blueberry Lemon Pancakes...",
+    "Caramelized Onion Burger...",
+    "S'mores Milkshake...",
+    "Mom's Spaghetti...",
+    "Knees Weak, Arms Spaghetti..."
+];
+
+  // Add this function to get a new random placeholder
+  const getNewRandomPlaceholder = async () => {
+    try {
+      // Get the last used placeholder and its timestamp
+      const lastPlaceholder = await AsyncStorage.getItem(LAST_PLACEHOLDER_KEY);
+      const lastTimeStr = await AsyncStorage.getItem(LAST_PLACEHOLDER_TIME_KEY);
+      const lastTime = lastTimeStr ? parseInt(lastTimeStr) : 0;
+      const currentTime = Date.now();
+      
+      // If it's been less than a week and we have a last placeholder
+      if (lastPlaceholder && currentTime - lastTime < 7 * 24 * 60 * 60 * 1000) {
+        // Try to get a different placeholder
+        const availablePlaceholders = funFoodItems.filter(item => item !== lastPlaceholder);
+        
+        // If we have no more unique placeholders, just pick a random one from the full list
+        if (availablePlaceholders.length === 0) {
+          const randomIndex = Math.floor(Math.random() * funFoodItems.length);
+          const newPlaceholder = funFoodItems[randomIndex];
+          
+          // Store the new placeholder and current time
+          await AsyncStorage.setItem(LAST_PLACEHOLDER_KEY, newPlaceholder);
+          await AsyncStorage.setItem(LAST_PLACEHOLDER_TIME_KEY, currentTime.toString());
+          
+          return newPlaceholder;
+        }
+        
+        // Otherwise use an available placeholder
+        const randomIndex = Math.floor(Math.random() * availablePlaceholders.length);
+        const newPlaceholder = availablePlaceholders[randomIndex];
+        
+        // Store the new placeholder and current time
+        await AsyncStorage.setItem(LAST_PLACEHOLDER_KEY, newPlaceholder);
+        await AsyncStorage.setItem(LAST_PLACEHOLDER_TIME_KEY, currentTime.toString());
+        
+        return newPlaceholder;
+      } else {
+        // If it's been more than a week or no last placeholder, use any placeholder
+        const randomIndex = Math.floor(Math.random() * funFoodItems.length);
+        const newPlaceholder = funFoodItems[randomIndex];
+        
+        // Store the new placeholder and current time
+        await AsyncStorage.setItem(LAST_PLACEHOLDER_KEY, newPlaceholder);
+        await AsyncStorage.setItem(LAST_PLACEHOLDER_TIME_KEY, currentTime.toString());
+        
+        return newPlaceholder;
+      }
+    } catch (error) {
+      console.error('Error managing placeholders:', error);
+      return funFoodItems[Math.floor(Math.random() * funFoodItems.length)];
+    }
+  };
+
+  // Update the useFocusEffect to use the new function
+  useFocusEffect(
+    React.useCallback(() => {
+      getNewRandomPlaceholder().then(placeholder => {
+        setSearchPlaceholder(placeholder);
+      });
+    }, [])
+  );
 
   useEffect(() => {
     const colorSchemeListener = (preferences) => {
@@ -61,15 +583,43 @@ const HistoryScreen = () => {
     }, [])
   );
 
+  useEffect(() => {
+    applyFiltersAndSearch();
+  }, [history, searchQuery, filters]);
+
+  useEffect(() => {
+    loadFilterSectionState();
+  }, []);
+
+  useEffect(() => {
+    // Initialize animation values for all history items
+    const opacities = {};
+    history.forEach(item => {
+      opacities[item.date] = new Animated.Value(1);
+    });
+    setAnimatedOpacities(opacities);
+  }, [history]);
+
   const loadHistory = async () => {
     try {
       const historyData = await AsyncStorage.getItem('@product_history');
       let historyArray = historyData ? JSON.parse(historyData) : [];
-      historyArray = historyArray.reverse(); // Reverse to show newest first
+      historyArray.sort((a, b) => new Date(b.date) - new Date(a.date));
       setHistory(historyArray);
       console.log('Entire history array:', JSON.stringify(historyArray, null, 2));
     } catch (e) {
       console.error('Error loading history: ', e);
+    }
+  };
+
+  const loadFilterSectionState = async () => {
+    try {
+      const savedState = await AsyncStorage.getItem(FILTER_SECTION_STATE_KEY);
+      if (savedState !== null) {
+        setShowFilters(JSON.parse(savedState));
+      }
+    } catch (error) {
+      console.error('Error loading filter section state:', error);
     }
   };
 
@@ -139,35 +689,6 @@ const HistoryScreen = () => {
     return [dateText];
   };
 
-  const deleteEntry = async (date) => {
-    Alert.alert(
-      'Delete Food',
-      'Are you sure you want to delete this history item?',
-      [
-        {
-          text: 'Cancel',
-          onPress: () => console.log('Cancel Pressed'),
-          style: 'cancel',
-        },
-        {
-          text: 'Delete',
-          onPress: async () => {
-            try {
-              const updatedHistory = history.filter(item => item.date !== date);
-              await AsyncStorage.setItem('@product_history', JSON.stringify(updatedHistory.reverse()));
-              setHistory(updatedHistory);
-              console.log('Entry deleted successfully.');
-            } catch (e) {
-              console.error('Error deleting entry: ', e);
-            }
-          },
-          style: 'destructive',
-        },
-      ],
-      { cancelable: false }
-    );
-  };
-
   const onRefresh = React.useCallback(() => {
     setRefreshing(true);
     loadHistory().then(() => setRefreshing(false));
@@ -211,6 +732,23 @@ const HistoryScreen = () => {
 
   const handleTabPress = (tab) => {
     setActiveTab(tab);
+    const tabIndex = ['Nutrition', 'Ingredients', 'Details'].indexOf(tab);
+    Animated.parallel([
+      Animated.spring(tabIndicatorAnim, {
+        toValue: tabIndex,
+        useNativeDriver: true,
+        friction: 24,
+        tension: 180,
+        velocity: 10
+      }),
+      Animated.spring(tabWidthAnim, {
+        toValue: tabLayout.width,
+        useNativeDriver: true,
+        friction: 24,
+        tension: 180,
+        velocity: 10
+      })
+    ]).start();
   };
 
   const renderNutritionTab = (item) => {
@@ -303,9 +841,344 @@ const HistoryScreen = () => {
     return null;
   };
 
+  const renderMetadataBadges = (scanMetadata) => {
+    if (!scanMetadata) return null;
+    
+    return (
+      <View style={styles.metadataBadgesContainer}>
+        <View style={[styles.metadataBadge, scanMetadata.scanMode === 'accurate' && styles.accurateBadge]}>
+          <Text style={styles.metadataBadgeText}>
+            {scanMetadata.scanMode === 'accurate' ? 'Accurate' : 'Fast'} Mode
+          </Text>
+        </View>
+        {scanMetadata.usedBarcode && (
+          <View style={[styles.metadataBadge, styles.barcodeBadge]}>
+            <Text style={styles.metadataBadgeText}>Barcode</Text>
+          </View>
+        )}
+        <View style={styles.metadataBadge}>
+          <Text style={styles.metadataBadgeText}>{scanMetadata.processingTime}s</Text>
+        </View>
+      </View>
+    );
+  };
+
+  const applyFiltersAndSearch = () => {
+    let filtered = [...history];
+    let hadMatches = true;
+
+    // Create a map to track which items will be visible
+    const willBeVisible = {};
+    history.forEach(item => {
+      willBeVisible[item.date] = true;
+    });
+
+    // Apply search
+    if (searchQuery) {
+      filtered = filtered.filter(item => {
+        const matches = item.productName.toLowerCase().includes(searchQuery.toLowerCase());
+        if (!matches) willBeVisible[item.date] = false;
+        return matches;
+      });
+    }
+
+    // Apply scan type filters
+    if (filters.barcode || filters.accurate || filters.fast) {
+      filtered = filtered.filter(item => {
+        if (!item.scanMetadata) {
+          willBeVisible[item.date] = false;
+          return false;
+        }
+        const matches = (
+          (filters.barcode && item.scanMetadata.usedBarcode) ||
+          (filters.accurate && item.scanMetadata.scanMode === 'accurate') ||
+          (filters.fast && item.scanMetadata.scanMode === 'fast')
+        );
+        if (!matches) willBeVisible[item.date] = false;
+        return matches;
+      });
+    }
+
+    // Apply date filters
+    if (filters.startDate) {
+      filtered = filtered.filter(item => {
+        const matches = new Date(item.date) >= filters.startDate;
+        if (!matches) willBeVisible[item.date] = false;
+        return matches;
+      });
+    }
+    if (filters.endDate) {
+      filtered = filtered.filter(item => {
+        const matches = new Date(item.date) <= filters.endDate;
+        if (!matches) willBeVisible[item.date] = false;
+        return matches;
+      });
+    }
+
+    // Check if we have any matches
+    hadMatches = filtered.length > 0;
+
+    // Only trigger error haptic for filters, not search (search error is handled in onSubmitEditing)
+    if (!hadMatches && (filters.barcode || filters.accurate || filters.fast || filters.startDate || filters.endDate)) {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    }
+
+    // First fade out non-matching items
+    const fadeOutPromises = Object.entries(willBeVisible)
+      .filter(([_, visible]) => !visible)
+      .map(([date]) => {
+        return new Promise((resolve) => {
+          if (animatedOpacities[date]) {
+            Animated.timing(animatedOpacities[date], {
+              toValue: 0,
+              duration: 200,
+              useNativeDriver: true,
+            }).start(resolve);
+          } else {
+            resolve();
+          }
+        });
+      });
+
+    // After fade out, update layout and fade in
+    Promise.all(fadeOutPromises).then(() => {
+      // Configure layout animation
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setFilteredHistory(filtered);
+
+      // Fade in matching items (if they were previously faded out)
+      Object.entries(willBeVisible)
+        .filter(([_, visible]) => visible)
+        .forEach(([date]) => {
+          if (animatedOpacities[date]) {
+            animatedOpacities[date].setValue(1);
+          }
+        });
+    });
+  };
+
+  const handleDateSelect = (event, selectedDate) => {
+    // For iOS, we'll handle confirmation through the Done button
+    if (Platform.OS === 'ios') {
+      // Just update the temporary selected date
+      if (selectedDate) {
+        setTempSelectedDate(selectedDate);
+      }
+      return;
+    }
+
+    // For Android, handle as before
+    if (event.type === 'dismissed' || !selectedDate) {
+      setShowDatePicker(false);
+      return;
+    }
+    
+    setShowDatePicker(false);
+    setFilters(prev => ({
+      ...prev,
+      [datePickerMode === 'start' ? 'startDate' : 'endDate']: selectedDate
+    }));
+  };
+
+  const clearFilters = () => {
+    setFilters({
+      barcode: false,
+      accurate: false,
+      fast: false,
+      startDate: null,
+      endDate: null,
+    });
+    setSearchQuery('');
+  };
+
+  const renderFilterChips = () => {
+    if (!showFilters) return null;
+
+    return (
+      <ScrollView 
+        horizontal 
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterChipsContainer}
+        contentContainerStyle={styles.filterChipsContent}
+      >
+        <TouchableOpacity
+          style={[styles.filterChip, filters.barcode && styles.filterChipActive]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setFilters(prev => ({ ...prev, barcode: !prev.barcode }));
+          }}
+        >
+          <SymbolView
+            name="barcode.viewfinder"
+            size={16}
+            tintColor={filters.barcode ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+            type="hierarchical"
+            style={styles.filterChipIcon}
+          />
+          <Text style={[styles.filterChipText, filters.barcode && styles.filterChipTextActive]}>
+            Barcode
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterChip, filters.accurate && styles.filterChipActive]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setFilters(prev => ({ ...prev, accurate: !prev.accurate }));
+          }}
+        >
+          <SymbolView
+            name="checkmark.seal.fill"
+            size={16}
+            tintColor={filters.accurate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+            type="hierarchical"
+            style={styles.filterChipIcon}
+          />
+          <Text style={[styles.filterChipText, filters.accurate && styles.filterChipTextActive]}>
+            Accurate
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterChip, filters.fast && styles.filterChipActive]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setFilters(prev => ({ ...prev, fast: !prev.fast }));
+          }}
+        >
+          <SymbolView
+            name="bolt.fill"
+            size={16}
+            tintColor={filters.fast ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+            type="hierarchical"
+            style={styles.filterChipIcon}
+          />
+          <Text style={[styles.filterChipText, filters.fast && styles.filterChipTextActive]}>
+            Fast
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterChip, filters.startDate && styles.filterChipActive]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setDatePickerMode('start');
+            setShowDatePicker(true);
+          }}
+        >
+          <SymbolView
+            name="calendar"
+            size={16}
+            tintColor={filters.startDate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+            type="hierarchical"
+            style={styles.filterChipIcon}
+          />
+          <Text style={[styles.filterChipText, filters.startDate && styles.filterChipTextActive]}>
+            {filters.startDate ? filters.startDate.toLocaleDateString() : 'Start Date'}
+          </Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[styles.filterChip, filters.endDate && styles.filterChipActive]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            setDatePickerMode('end');
+            setShowDatePicker(true);
+          }}
+        >
+          <SymbolView
+            name="calendar"
+            size={16}
+            tintColor={filters.endDate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+            type="hierarchical"
+            style={styles.filterChipIcon}
+          />
+          <Text style={[styles.filterChipText, filters.endDate && styles.filterChipTextActive]}>
+            {filters.endDate ? filters.endDate.toLocaleDateString() : 'End Date'}
+          </Text>
+        </TouchableOpacity>
+
+        {(filters.barcode || filters.accurate || filters.fast || filters.startDate || filters.endDate) && (
+          <TouchableOpacity
+            style={[styles.filterChip, styles.clearFilterChip]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              clearFilters();
+            }}
+          >
+            <SymbolView
+              name="xmark.circle.fill"
+              size={16}
+              tintColor={colorScheme === 'dark' ? '#fff' : '#000'}
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={styles.filterChipText}>Clear All</Text>
+          </TouchableOpacity>
+        )}
+      </ScrollView>
+    );
+  };
+
+  const toggleFilterSection = () => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const newShow = !showFilters;
+    setShowFilters(newShow);
+    
+    // Save the new state to AsyncStorage
+    try {
+      AsyncStorage.setItem(FILTER_SECTION_STATE_KEY, JSON.stringify(newShow));
+    } catch (error) {
+      console.error('Error saving filter section state:', error);
+    }
+    
+    Animated.timing(filterRotation, {
+      toValue: newShow ? 1 : 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const renderHistoryCard = (item) => {
+    const opacity = animatedOpacities[item.date] || new Animated.Value(1);
+    
+    return (
+      <Animated.View 
+        key={item.date}
+        style={{ opacity }}
+      >
+        <HistoryCard
+          item={item}
+          onSelect={(itm) => {
+            setSelectedItem(itm);
+            setActiveTab('Nutrition');
+          }}
+          onRemove={() => {
+            const updatedHistory = history.filter(i => i.date !== item.date);
+            AsyncStorage.setItem('@product_history', JSON.stringify(updatedHistory));
+            if (updatedHistory.length >= 4) {
+              Animated.timing(subtitleAnimation, {
+                toValue: 0,
+                duration: 300,
+                useNativeDriver: true,
+              }).start();
+            }
+            setHistory(updatedHistory);
+            console.log('Entry deleted successfully.');
+          }}
+          styles={styles}
+          colorScheme={colorScheme}
+          formatDate={formatDate}
+          renderMetadataBadges={renderMetadataBadges}
+        />
+      </Animated.View>
+    );
+  };
+
   return (
     <View style={styles.container}>
       <Text style={styles.historyTitle}>History</Text>
+      
       <TouchableOpacity style={styles.iconButton} onPress={clearHistory}>
         <SymbolView
           name="trash.slash.fill"
@@ -314,61 +1187,159 @@ const HistoryScreen = () => {
           type="hierarchical"
           style={styles.symbol}
         />
-      {/* </TouchableOpacity>
-      <TouchableOpacity
-        style={[styles.iconButton, styles.debugButton]}
-        onPress={() => navigation.navigate('DebugScreen', { history, setHistory })}
-      >
-        <SymbolView
-          name="wrench.and.screwdriver.fill"
-          size={26}
-          tintColor="#fff"
-          type="hierarchical"
-          style={styles.symbol}
-        /> */}
       </TouchableOpacity>
-      {history.length > 0 ? (
-        <ScrollView
-          style={styles.scrollContainer}
-          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-        >
-          {history.map((item, index) => (
-            <View key={index} style={styles.cardContainer}>
-              <TouchableOpacity
-                style={styles.card}
-                onPress={() => {
-                  setSelectedItem(item);
-                  setActiveTab('Nutrition');
-                }}
-              >
-                <Image source={{ uri: item.imageUri }} style={styles.productImage} />
-                <View style={styles.info}>
-                  <Text style={styles.productName}>{item.productName}</Text>
-                  {formatDate(item.date).map((line, lineIndex) => (
-                    <Text key={lineIndex} style={styles.date}>
-                      {line}
-                    </Text>
-                  ))}
-                </View>
-                <TouchableOpacity style={styles.deleteButton} onPress={() => deleteEntry(item.date)}>
-                  <SymbolView
-                    name="trash.slash.fill"
-                    size={26}
-                    tintColor={colorScheme === 'dark' ? '#fff' : '#000'}
-                    type="hierarchical"
-                    style={styles.symbol}
-                  />
-                </TouchableOpacity>
+
+      <ScrollView
+        style={styles.scrollContainer}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      >
+        <View style={styles.searchContainer}>
+          <View style={styles.searchInputContainer}>
+            <SymbolView
+              name="magnifyingglass"
+              size={20}
+              tintColor={colorScheme === 'dark' ? '#666' : '#999'}
+              type="hierarchical"
+              style={styles.searchIcon}
+            />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={searchPlaceholder}
+              placeholderTextColor={colorScheme === 'dark' ? '#666' : '#999'}
+              value={searchQuery}
+              onChangeText={(text) => {
+                setSearchQuery(text);
+                if (text === '') {
+                  Haptics.selectionAsync();
+                }
+              }}
+              onSubmitEditing={() => {
+                // Only trigger error haptic if there's a search query and no results
+                if (searchQuery && filteredHistory.length === 0) {
+                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                }
+              }}
+              returnKeyType="done"
+              enablesReturnKeyAutomatically={false}
+            />
+            {searchQuery !== '' && (
+              <TouchableOpacity onPress={() => {
+                Haptics.selectionAsync();
+                setSearchQuery('');
+              }}>
+                <SymbolView
+                  name="xmark.circle.fill"
+                  size={20}
+                  tintColor={colorScheme === 'dark' ? '#666' : '#999'}
+                  type="hierarchical"
+                  style={styles.clearSearchIcon}
+                />
               </TouchableOpacity>
+            )}
+          </View>
+          <TouchableOpacity 
+            style={styles.filterButton} 
+            onPress={toggleFilterSection}
+          >
+            <Animated.View 
+              style={{
+                transform: [{
+                  rotate: filterRotation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: ['0deg', '180deg']
+                  })
+                }]
+              }}
+            >
+              <SymbolView
+                name="line.3.horizontal.decrease.circle.fill"
+                size={24}
+                tintColor={colorScheme === 'dark' ? '#fff' : '#000'} 
+                type="hierarchical"
+                style={styles.filterIcon}
+              />
+            </Animated.View>
+          </TouchableOpacity>
+        </View>
+
+        {renderFilterChips()}
+
+        {filteredHistory.length > 0 ? (
+          <View style={styles.historyList}>
+            {filteredHistory.map(item => renderHistoryCard(item))}
+            {history.length < 4 && (
+              <Animated.View style={{ opacity: subtitleAnimation }}>
+                <Text style={styles.subtitle}>
+                  Results from the last 28 days will be used to personalize your app.
+                </Text>
+              </Animated.View>
+            )}
+          </View>
+        ) : (
+          <Text style={styles.emptyText}>
+            {history.length === 0 
+              ? 'Your history is currently empty. Items you scan will appear here.'
+              : 'No results found for your search or filters.'}
+          </Text>
+        )}
+      </ScrollView>
+
+      {showDatePicker && (Platform.OS === 'ios' ? (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={showDatePicker}
+          onRequestClose={() => setShowDatePicker(false)}
+        >
+          <View style={styles.datePickerOverlay}>
+            <View style={styles.datePickerContainer}>
+              <View style={styles.datePickerHeader}>
+                <TouchableOpacity 
+                  onPress={() => {
+                    setTempSelectedDate(null);
+                    setShowDatePicker(false);
+                  }}
+                  style={styles.datePickerButton}
+                >
+                  <Text style={styles.datePickerButtonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                  onPress={() => {
+                    const dateToSet = tempSelectedDate || new Date();
+                    setFilters(prev => ({
+                      ...prev,
+                      [datePickerMode === 'start' ? 'startDate' : 'endDate']: dateToSet
+                    }));
+                    setTempSelectedDate(null);
+                    setShowDatePicker(false);
+                  }}
+                  style={styles.datePickerButton}
+                >
+                  <Text style={[styles.datePickerButtonText, { color: '#007AFF' }]}>Done</Text>
+                </TouchableOpacity>
+              </View>
+              <DateTimePicker
+                value={tempSelectedDate || (datePickerMode === 'start' ? 
+                  (filters.startDate || new Date()) : 
+                  (filters.endDate || new Date())
+                )}
+                mode="date"
+                display="spinner"
+                onChange={handleDateSelect}
+                style={styles.datePicker}
+              />
             </View>
-          ))}
-          {renderSubtitle()}
-        </ScrollView>
+          </View>
+        </Modal>
       ) : (
-        <Text style={styles.emptyText}>
-          Your history is currently empty. Items you scan will appear here.
-        </Text>
-      )}
+        <DateTimePicker
+          value={datePickerMode === 'start' ? (filters.startDate || new Date()) : (filters.endDate || new Date())}
+          mode="date"
+          display="default"
+          onChange={handleDateSelect}
+        />
+      ))}
+
       {selectedItem && (
         <Modal
           animationType="slide"
@@ -384,60 +1355,84 @@ const HistoryScreen = () => {
               {truncateString(selectedItem.productName, 20)}
             </Text>
             <Text style={styles.dateModal}>{formatDate(selectedItem.date)}</Text>
-            <Image source={{ uri: selectedItem.imageUri }} style={styles.imagePreview} />
-            {/* Tabs */}
+            
+            <View style={styles.imageContainer}>
+              <View style={styles.controlsOverlay}>
+                {selectedItem.scanMetadata && (
+                  <View style={styles.metadataOverlay}>
+                    <View style={[
+                      styles.metadataBadge, 
+                      selectedItem.scanMetadata.scanMode === 'accurate' && styles.accurateBadge
+                    ]}>
+                      <Text style={styles.metadataBadgeText}>
+                        {selectedItem.scanMetadata.scanMode === 'accurate' ? 'Accurate' : 'Fast'} Mode
+                      </Text>
+                    </View>
+                    {selectedItem.scanMetadata.usedBarcode && (
+                      <View style={[styles.metadataBadge, styles.barcodeBadge]}>
+                        <Text style={styles.metadataBadgeText}>Barcode</Text>
+                      </View>
+                    )}
+                    <View style={styles.metadataBadge}>
+                      <Text style={styles.metadataBadgeText}>
+                        {selectedItem.scanMetadata.processingTime}s
+                      </Text>
+                    </View>
+                  </View>
+                )}
+              </View>
+              <Image source={{ uri: selectedItem.imageUri }} style={styles.modalImage} />
+            </View>
+
             <View style={styles.tabContainer}>
+              {!isTabsDisabled && (
+                <Animated.View
+                  style={[
+                    styles.tabIndicator,
+                    {
+                      transform: [{
+                        translateX: tabIndicatorAnim.interpolate({
+                          inputRange: [0, 1, 2],
+                          outputRange: [width * 0.05, width * 0.35, width * 0.65],
+                        })
+                      }],
+                      width: 90,
+                      opacity: isTabsDisabled ? 0 : 1,
+                    }
+                  ]}
+                />
+              )}
               <TouchableOpacity
-                style={[
-                  styles.tabButton,
-                  activeTab === 'Nutrition' && styles.activeTabButton,
-                ]}
+                style={[styles.tabButton, activeTab === 'Nutrition' && styles.activeTabButton]}
                 onPress={() => handleTabPress('Nutrition')}
               >
-                <Text
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === 'Nutrition' && styles.activeTabButtonText,
-                  ]}
-                >
-                  Nutrition
-                </Text>
+                <Text style={[
+                  styles.tabButtonText,
+                  activeTab === 'Nutrition' && styles.activeTabButtonText
+                ]}>Nutrition</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.tabButton,
-                  activeTab === 'Ingredients' && styles.activeTabButton,
-                ]}
+                style={[styles.tabButton, activeTab === 'Ingredients' && styles.activeTabButton]}
                 onPress={() => handleTabPress('Ingredients')}
               >
-                <Text
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === 'Ingredients' && styles.activeTabButtonText,
-                  ]}
-                >
-                  Ingredients
-                </Text>
+                <Text style={[
+                  styles.tabButtonText,
+                  activeTab === 'Ingredients' && styles.activeTabButtonText
+                ]}>Ingredients</Text>
               </TouchableOpacity>
 
               <TouchableOpacity
-                style={[
-                  styles.tabButton,
-                  activeTab === 'Details' && styles.activeTabButton,
-                ]}
+                style={[styles.tabButton, activeTab === 'Details' && styles.activeTabButton]}
                 onPress={() => handleTabPress('Details')}
               >
-                <Text
-                  style={[
-                    styles.tabButtonText,
-                    activeTab === 'Details' && styles.activeTabButtonText,
-                  ]}
-                >
-                  Details
-                </Text>
+                <Text style={[
+                  styles.tabButtonText,
+                  activeTab === 'Details' && styles.activeTabButtonText
+                ]}>Details</Text>
               </TouchableOpacity>
             </View>
+
             <ScrollView style={styles.nutrientContainer}>
               {activeTab === 'Nutrition' && renderNutritionTab(selectedItem)}
               {activeTab === 'Ingredients' && renderIngredientsTab(selectedItem)}
@@ -459,16 +1454,19 @@ const getDynamicStyles = (colorScheme) =>
       backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
     scrollContainer: {
+      flex: 1,
       width: '100%',
-      marginTop: '5%',
-      padding: '3%',
+    },
+    cardContainer: {
+      marginVertical: 6,
     },
     card: {
       flexDirection: 'row',
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
       padding: 13,
-      marginVertical: 6,
       borderRadius: 25,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     productImage: {
       width: 100,
@@ -492,7 +1490,7 @@ const getDynamicStyles = (colorScheme) =>
       marginLeft: 1,
     },
     emptyText: {
-      marginTop: '70%',
+      marginTop: '50%',
       fontSize: 16,
       color: '#AAAAAA',
       textAlign: 'center',
@@ -519,19 +1517,38 @@ const getDynamicStyles = (colorScheme) =>
       top: '0.3%',
       color: colorScheme === 'dark' ? '#fff' : '#000',
     },
-    imagePreview: {
+    imageContainer: {
       width: '100%',
-      height: height >= 926 ? 300 : 200,
-      borderRadius: 25,
-      marginBottom: 15,
+      height: 250,
+      borderRadius: 24,
+      marginBottom: 16,
+      position: 'relative',
+    },
+    modalImage: {
+      width: '100%',
+      height: '100%',
+      borderRadius: 24,
+    },
+    controlsOverlay: {
+      position: 'absolute',
+      top: 12,
+      left: 12,
+      right: 12,
+      zIndex: 2,
+    },
+    metadataOverlay: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 8,
     },
     nutrientContainer: {
       width: '100%',
     },
-    nutrientItem: {
+    nutrientRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      marginBottom: 5,
+      alignItems: 'center',
+      paddingVertical: 2,
     },
     nutrientLabel: {
       fontWeight: '500',
@@ -616,40 +1633,40 @@ const getDynamicStyles = (colorScheme) =>
       flexDirection: 'row',
       justifyContent: 'space-around',
       marginBottom: 16,
+      width: '100%',
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
       marginHorizontal: 15,
-      borderRadius: 13,
-      paddingVertical: 4,
-      width: '100%',
+      borderRadius: 20,
+      paddingVertical: 6,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+      position: 'relative',
+      overflow: 'hidden',
     },
     tabButton: {
       paddingVertical: 8,
       paddingHorizontal: 16,
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    activeTabButton: {
-      borderBottomWidth: 2,
-      borderBottomColor: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-    },
+    activeTabButton: {},
     tabButtonText: {
-      color: '#888888',
+      color: colorScheme === 'dark' ? '#666' : '#888',
       fontSize: 16,
-      fontWeight: colorScheme === 'dark' ? '400' : '500',
+      fontWeight: '400',
     },
     activeTabButtonText: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontWeight: colorScheme === 'dark' ? '400' : '500',
+      fontWeight: '500',
     },
     tabContentContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#1a1a1b' : '#F0F0F0',
-      borderRadius: 15,
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
+      borderRadius: 25,
       padding: 16,
       marginBottom: 16,
-    },
-    nutrientRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: 2,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     ingredientDescriptionNote: {
       color: '#888888',
@@ -698,6 +1715,184 @@ const getDynamicStyles = (colorScheme) =>
       color: '#888888',
       textAlign: 'center',
       marginBottom: '4%',
+    },
+    metadataBadgesContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 6,
+      marginTop: 8,
+    },
+    metadataBadge: {
+      backgroundColor: colorScheme === 'dark' ? '#2a2a2c' : '#e0e0e0',
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 8,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#3a3a3c' : '#d0d0d0',
+    },
+    accurateBadge: {
+      backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
+      borderColor: colorScheme === 'dark' ? '#234b6b' : '#b8d6f3',
+    },
+    barcodeBadge: {
+      backgroundColor: colorScheme === 'dark' ? '#2c3c2c' : '#e5f5e5',
+      borderColor: colorScheme === 'dark' ? '#3c4c3c' : '#c5e5c5',
+    },
+    metadataBadgeText: {
+      fontSize: 12,
+      color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
+      fontWeight: '500',
+    },
+    scanMetadataContainer: {
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+      borderRadius: 15,
+      padding: 16,
+      marginBottom: 16,
+      width: '100%',
+    },
+    scanMetadataRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: 8,
+    },
+    scanMetadataLabel: {
+      fontSize: 15,
+      color: colorScheme === 'dark' ? '#888' : '#666',
+      fontWeight: '500',
+    },
+    scanMetadataValue: {
+      fontSize: 15,
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+      fontWeight: '600',
+    },
+    accurateText: {
+      color: colorScheme === 'dark' ? '#4a9eff' : '#0066cc',
+    },
+    barcodeText: {
+      color: colorScheme === 'dark' ? '#4caf50' : '#2e7d32',
+    },
+    tabIndicator: {
+      position: 'absolute',
+      bottom: 4,
+      height: 3,
+      backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      borderRadius: 90,
+    },
+    filterChipsContainer: {
+      width: '100%',
+      paddingHorizontal: 16,
+      paddingVertical: 8,
+    },
+    filterChipsContent: {
+      paddingRight: 16,
+      gap: 8,
+      flexDirection: 'row',
+    },
+    filterChip: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 12,
+      paddingVertical: 8,
+      borderRadius: 16,
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
+      borderWidth: 0,
+      height: 50,
+      maxHeight: 50,
+    },
+    filterChipActive: {
+      backgroundColor: colorScheme === 'dark' ? '#0A84FF' : '#007AFF',
+      maxHeight: 50,
+    },
+    filterChipIcon: {
+      width: 16,
+      height: 16,
+      marginRight: 6,
+    },
+    filterChipText: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+    },
+    filterChipTextActive: {
+      color: '#FFFFFF',
+      fontWeight: '600',
+    },
+    clearFilterChip: {
+      backgroundColor: colorScheme === 'dark' ? '#FF453A' : '#FF3B30',
+    },
+    searchContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingHorizontal: 16,
+      marginTop: 16,
+      gap: 12,
+      width: '100%',
+    },
+    searchInputContainer: {
+      flex: 1,
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
+      borderRadius: 12,
+      paddingHorizontal: 12,
+      height: 40,
+    },
+    searchInput: {
+      flex: 1,
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+      fontSize: 16,
+      marginLeft: 8,
+      height: '100%',
+    },
+    searchIcon: {
+      width: 20,
+      height: 20,
+    },
+    clearSearchIcon: {
+      width: 20,
+      height: 20,
+      marginLeft: 8,
+    },
+    filterIcon: {
+      width: 34,
+      height: 34,
+    },
+    filterButton: {
+      // Define any additional styling if needed for consistency
+    },
+    datePickerOverlay: {
+      flex: 1,
+      justifyContent: 'flex-end',
+      backgroundColor: 'rgba(0,0,0,0.4)',
+    },
+    datePickerContainer: {
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#ffffff',
+      borderTopLeftRadius: 20,
+      borderTopRightRadius: 20,
+      paddingBottom: 20,
+    },
+    datePickerHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e5e5',
+    },
+    datePickerButton: {
+      padding: 8,
+    },
+    datePickerButtonText: {
+      fontSize: 16,
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+    },
+    datePicker: {
+      height: 200,
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#ffffff',
+    },
+    historyList: {
+      padding: '3%',
     },
   });
 

@@ -9,6 +9,7 @@ import {
   Platform,
   Animated,
 } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import AnimatedTextLoading from './AnimatedTextLoading'; // Adjust the path as necessary
 
 const { width, height } = Dimensions.get('window');
@@ -32,6 +33,7 @@ const isIphoneSE = () => {
 };
 
 const LoadingScreen = () => {
+  const navigation = useNavigation();
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
 
@@ -65,8 +67,20 @@ const LoadingScreen = () => {
     changePhrase();
     const interval = setInterval(changePhrase, 2000);
 
-    return () => clearInterval(interval);
-  }, [fadeAnim]);
+    // Navigate to home after 3 seconds
+    const timer = setTimeout(() => {
+      navigation.navigate('HomeTabs', { screen: 'Home' });
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'HomeTabs' }],
+      });
+    }, 3000);
+
+    return () => {
+      clearInterval(interval);
+      clearTimeout(timer);
+    };
+  }, [fadeAnim, navigation]);
 
   return (
     <SafeAreaView style={styles.safeArea}>

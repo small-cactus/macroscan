@@ -4,6 +4,7 @@ import { useRoute } from '@react-navigation/native';
 import {
   View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
   Modal, Alert, useColorScheme, Animated, Linking, TextInput, Dimensions, Platform, AppState,
+  LayoutAnimation,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -25,6 +26,9 @@ import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedTextFoodScan from './AnimatedTextFoodScan'; // Adjust the path accordingly
 import AnimatedTextFoodScanFast from './AnimatedTextFoodScanFast'; // Adjust the path accordingly
 import TutorialOverlay from './Tutorial';
+import { MaterialCommunityIcons } from '@expo/vector-icons'; // Add this import
+import { BlurView } from 'expo-blur'; // Add this import at the top
+import * as StoreReview from 'react-native-store-review';
 
 const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
 
@@ -52,8 +56,11 @@ const LOADING_TEXTS = {
     "Validating information...",
     "Enhancing accuracy...",
     "Finalizing insights...",
+    "Still working on it...",
+    "Triple checking data...",
+    "Checking for errors...",
+    "Ensuring consistency...",
   ],
-  // Add more modes if needed
 };
 
 const isIphoneSE = () => {
@@ -74,10 +81,15 @@ const isIphoneSE = () => {
   );
 };
 
-// Add this outside of your component, preferably at the top of your file
-
+// Constants can stay outside the component
+const MODE_LABELS = {
+  fast: 'Fast Mode',
+  accurate: 'Accurate Mode'
+};
 
 const FoodScanScreen = () => {
+  // Move useState inside the component
+  const [showModeChip, setShowModeChip] = useState(true);
   const [image, setImage] = useState(null);
   const [processingImage, setProcessingImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -116,6 +128,9 @@ const FoodScanScreen = () => {
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
   const [freeAccurateScansUsed, setFreeAccurateScansUsed] = useState(0);
 
+  // Add new animated value for tab indicator
+  const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
+
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
   const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
   const [selectedMode, setSelectedMode] = useState('fast'); // Default to 'fast'
@@ -129,6 +144,23 @@ const FoodScanScreen = () => {
   const route = useRoute();
   const scrollIndicatorOpacity = useRef(new Animated.Value(0)).current;
   const [showTutorial, setShowTutorial] = useState(false);
+  const [hadBarcode, setHadBarcode] = useState(false);
+
+  // Add this state near the top with other state declarations
+  const [processingTime, setProcessingTime] = useState(0);
+  const [showProcessingTime, setShowProcessingTime] = useState(false);
+  const processingTimeRef = useRef(null);
+  const processingTimeFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Add these new state variables and refs at the top of the component
+  const [prevMode, setPrevMode] = useState(selectedMode);
+  const chipTextOpacity = useRef(new Animated.Value(1)).current;
+  const modeChipWidth = useRef(new Animated.Value(100)).current;
+
+  // Add this new Animated Value near your other animation refs
+  const longLoadingTextAnim = useRef(new Animated.Value(0)).current;
+
+  const startTimeRef = useRef(null); // Add this line
 
   const tutorialSteps = [
     { text: 'Welcome! This is your home screen.' },
@@ -136,23 +168,55 @@ const FoodScanScreen = () => {
     { text: 'Use the search bar to find what you need.' },
   ];
 
-  useEffect(() => {
-    const processImageFromCamera = async () => {
-      console.log('Received imageUri:', route.params?.imageUri);
-      if (route.params?.imageUri) {
-        const imageUri = route.params.imageUri;
-        // Process the image
-        setProcessingImage(imageUri);
-        setModalImageUri(imageUri); // Ensure modalImageUri is set
-        await sendImageToApi(imageUri);
+  // Add this after other state declarations
+  const [tabLayout, setTabLayout] = useState({ width: 0, x: 0 });
+  const tabWidthAnim = useRef(new Animated.Value(0)).current;
 
-        // Clear the imageUri from params so it doesn't trigger again
-        navigation.setParams({ imageUri: null });
+  const [hasPromptedForReview, setHasPromptedForReview] = useState(false);
+  const [accurateScansBeforeReview, setAccurateScansBeforeReview] = useState(0);
+  
+  // Load rating prompt state
+  useEffect(() => {
+    const loadRatingState = async () => {
+      try {
+        const hasPrompted = await AsyncStorage.getItem('@has_prompted_for_review');
+        const accurateScans = await AsyncStorage.getItem('@accurate_scans_before_review');
+        setHasPromptedForReview(hasPrompted === 'true');
+        setAccurateScansBeforeReview(accurateScans ? parseInt(accurateScans) : 0);
+      } catch (error) {
+        console.error('Error loading rating state:', error);
       }
     };
+    loadRatingState();
+  }, []);
 
+  useEffect(() => {
+    const processImageFromCamera = async () => {
+      console.log(
+        'Received imageUri:',
+        route.params?.imageUri,
+        'barcodeData:',
+        route.params?.barcodeData
+      );
+  
+      // If an imageUri is present, handle it
+      if (route.params?.imageUri) {
+        const imageUri = route.params.imageUri;
+        const barcodeData = route.params.barcodeData;  // <--- Grab barcode data
+        setProcessingImage(imageUri);
+        setModalImageUri(imageUri);
+  
+        // Now pass both the imageUri and barcode data to your AI function
+        await sendImageToApi(imageUri, barcodeData);
+  
+        // Clear them so they aren't re-processed if user revisits the screen
+        navigation.setParams({ imageUri: null, barcodeData: null });
+      }
+    };
+  
     processImageFromCamera();
-  }, [route.params?.imageUri]);
+    // Include barcodeData in the dependency array if you want to trigger re-check on it
+  }, [route.params?.imageUri, route.params?.barcodeData]);
 
   const getLoadingTextsByMode = (mode) => {
     return LOADING_TEXTS[mode] || LOADING_TEXTS.fast; // Default to 'fast' if mode not found
@@ -163,8 +227,8 @@ const FoodScanScreen = () => {
   };
 
   const [averageProcessingTimes, setAverageProcessingTimes] = useState({
-    fast: 5000, // in milliseconds
-    accurate: 10000,
+    fast: 4000, // in milliseconds
+    accurate: 20000,
   });
 
   // Function to load average times from storage
@@ -229,10 +293,17 @@ const FoodScanScreen = () => {
     }, averageTime + 2000); // 2 seconds after average time
   };
 
+  // Update the startLoadingAnimation function
   const startLoadingAnimation = () => {
     if (isAnimationRunningRef.current) return;
     isAnimationRunningRef.current = true;
     const loadingTexts = getLoadingTextsByMode(selectedMode);
+  
+    // Reset states
+    setProcessingTime(0);
+    setShowProcessingTime(false);
+    clearInterval(processingTimeRef.current);
+    longLoadingTextAnim.setValue(0); // Reset the long loading animation
   
     // Immediately display the first loading text
     setCurrentLoadingText(loadingTexts[0]);
@@ -251,10 +322,9 @@ const FoodScanScreen = () => {
         duration: 300,
         useNativeDriver: true,
       }).start(() => {
-        // Schedule the first fade out after display duration
         loadingTimeoutRef.current = setTimeout(() => {
           updateLoadingText();
-        }, 0); // Display duration
+        }, 0);
       });
     });
   
@@ -262,25 +332,40 @@ const FoodScanScreen = () => {
     const averageTime = averageProcessingTimes[mode] || 8000;
     console.log(`Predicted processing time for mode ${mode}: ${averageTime} ms`);
   
-    // Schedule "Almost done..."
-    setTimeout(() => {
-      console.log(`Scheduling "Almost done..." at ${averageTime * 0.7} ms`);
-      // Replace the loadingTextQueue with "Almost done..." and skip remaining texts
-      loadingTextQueueRef.current = ["Almost done..."];
-      isHoldingRef.current = true;
-  
-      // Force an update to display "Almost done..."
-      updateLoadingText();
-    }, averageTime * 0.7);
-  
-    // Schedule "Taking longer than usual..."
+    // Schedule "Taking longer than usual..." with fade in
     setTimeout(() => {
       console.log(`Scheduling "Taking longer than usual..." at ${averageTime + 2000} ms`);
       loadingTextQueueRef.current = ["Taking longer than usual..."];
-      isHoldingRef.current = false;
+      isHoldingRef.current = true;
   
-      // Continue updates
-      updateLoadingText();
+      // Fade out current text
+      Animated.timing(loadingTextFadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentLoadingText("Taking longer than usual...");
+        
+        // Fade in the "taking longer" text and keep it visible
+        Animated.timing(longLoadingTextAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      });
+  
+      // Start the processing time counter
+      setShowProcessingTime(true);
+      processingTimeRef.current = setInterval(() => {
+        setProcessingTime(prev => prev + 1);
+      }, 1000);
+  
+      // Fade in the processing time
+      Animated.timing(processingTimeFadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
     }, averageTime + 2000);
   };  
 
@@ -327,13 +412,16 @@ const stopLoadingAnimation = () => {
   isAnimationRunningRef.current = false;
   loadingTextQueueRef.current = [];
   setCurrentLoadingText('');
+  setShowProcessingTime(false);
+  clearInterval(processingTimeRef.current);
+  
   if (loadingTimeoutRef.current) {
     clearTimeout(loadingTimeoutRef.current);
     loadingTimeoutRef.current = null;
   }
-  // Fade out the parent container
+  
   Animated.timing(fadeAnim, {
-    toValue: 0, // Fade out
+    toValue: 0,
     duration: 300,
     useNativeDriver: true,
   }).start();
@@ -364,32 +452,43 @@ const stopLoadingAnimation = () => {
   useEffect(() => {
     const initializeAppData = async () => {
       try {
-        const firstUseDate = await AsyncStorage.getItem('firstUseDate');
         const today = new Date().toISOString().slice(0, 10);
-    
+  
+        // 1) Check the existing "dateLastUsed"
+        const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+        console.log('[INIT] dateLastUsed:', dateLastUsed, ' vs. today:', today);
+  
+        // 2) Check "firstUseDate"
+        const firstUseDate = await AsyncStorage.getItem('firstUseDate');
         if (!firstUseDate) {
+          // If no firstUseDate, set it to today
           await AsyncStorage.setItem('firstUseDate', today);
           setIsFirstDayUnlimited(true);
           setScanCount(0);
         } else {
           setIsFirstDayUnlimited(firstUseDate === today);
         }
-    
-        const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
-        setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
-    
-        const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+  
+        // 3) If the date changed since last use, reset daily counters
         if (dateLastUsed !== today) {
+          console.log('[INIT] Resetting daily counters because date changed.');
           await AsyncStorage.setItem('dailyScanCount', '0');
           await AsyncStorage.setItem('dateLastUsed', today);
           await AsyncStorage.setItem('freeAccurateScansUsed', '0');
           setFreeAccurateScansUsed(0);
           setScanCount(0);
         } else {
+          // If the date is the same, load existing counters
           const count = await AsyncStorage.getItem('dailyScanCount');
           setScanCount(parseInt(count, 10) || 0);
+  
+          // Also load how many accurate scans used
+          const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+          setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
+          console.log('[INIT] freeAccurateScansUsed =', accurateScansUsed);
         }
-    
+  
+        // 4) Load the user's chosen model & mode
         const model = await AsyncStorage.getItem('selectedModel');
         if (model) {
           setSelectedModel(model);
@@ -402,7 +501,7 @@ const stopLoadingAnimation = () => {
         console.error("Error initializing app data:", error);
       }
     };
-
+  
     initializeAppData();
   }, []);
 
@@ -642,13 +741,18 @@ const stopLoadingAnimation = () => {
       const productDetailsWithDate = {
         ...productDetails,
         date: productDetails.date || new Date().toISOString(),
+        scanMetadata: {
+          scanMode: selectedMode,
+          usedBarcode: productDetails.hadBarcode,  // Use the passed value instead of state
+          processingTime: ((Date.now() - startTimeRef.current) / 1000).toFixed(1),
+          modelUsed: selectedModel
+        }
       };
-      console.log('Storing product details:', JSON.stringify(productDetailsWithDate, null, 2)); // Added logging
+      console.log('Storing product details:', JSON.stringify(productDetailsWithDate, null, 2));
 
       existingHistory.push(productDetailsWithDate);
       const newHistoryJson = JSON.stringify(existingHistory);
       await AsyncStorage.setItem('@product_history', newHistoryJson);
-      // console.log("Updated History: ", existingHistory);
     } catch (e) {
       console.error("Error storing product details: ", e);
     }
@@ -822,9 +926,12 @@ const takePhoto = async () => {
     }
   };
 
-  const sendImageToApi = async (imageUri) => {
+  const sendImageToApi = async (imageUri, barcodeData) => {
+    // Set hadBarcode state based on whether barcodeData exists
+    setHadBarcode(!!barcodeData);
+
     const mode = selectedMode;
-  
+
     if (mode === 'dynamic') {
       Alert.alert(
         "Feature Not Implemented",
@@ -842,7 +949,7 @@ const takePhoto = async () => {
     setProcessingImage(imageUri);
   
     scheduleLoadingTexts(); // Schedule loading texts based on average time
-    const startTime = Date.now(); // Start time measurement
+    startTimeRef.current = Date.now(); // Update this line
   
     console.log("Starting API call with mode:", mode);
     console.log(currentLoadingText);
@@ -853,69 +960,108 @@ const takePhoto = async () => {
       const base64Image = await imageToBase64(imageUri);
   
       // Define your system prompts here (unchanged)
-      const systemPromptFast = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
-  
-  When presented with an image, follow these steps:
-  
-  1. Carefully examine the image to identify all food items or components of the meal, including those that may be partially visible or in small quantities.
-  2. If the image does not contain food, respond only with "{No Food Found.}"
-  
-  IMPORTANT STEPS:
-  
-  3. Pay meticulous attention to serving size measurements. Provide nutrient information based precisely on the serving size shown in the image. For example, if the image depicts a whole jar of peanut butter, report nutrients for the entire jar. If it shows 2/3 of a cookie, provide nutrients for 2/3 of a cookie. Aim for maximum accuracy in all calculations. Ensure the serving size value correctly represents the entire food content visible in the image. For instance, if the image shows a plate of food, the serving size should be "1 plate." If it displays 2/3 of a cookie, the serving size should be "2/3 cookie."
-  4. Clearly state any assumptions or adjustments made specific to the image within the details value. For example, if you only analyzed 2/3 of a cookie because that's what was shown in the image, explicitly mention this. Your explanation might read: "Nutrient information is provided for 2/3 of a cookie, as that was the portion visible in the image." This transparency ensures the user understands the basis of your nutrient calculations.
-  
-  5. For food images, analyze and provide the following information in JSON format:
-  
-  {
-    "food": {
-      "name": "String",
-      "class": "String",
-      "type": "String",
-      "calories": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "proteins": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "carbohydrates": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "fats": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "fiber": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "sodium": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "ingredients": [
-        {
-          "name": "String",
-          "wikipediaLink": "String",
-          "description": "String"
-        }
-      ],
-      "details": {
-        "summary": "String",
-        "prepTime": "String",
-        "servingSize": "String",
-        "wikipediaLink": "String"
+      let systemPromptFast = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
+
+When presented with an image and potential barcode data, follow these steps:
+1. EXTREMELY IMPORTANT: Only use barcode data if it is explicitly provided to you. NEVER make up or infer barcode data that wasn't provided.
+2. If barcode data is provided:
+   - Use it as your primary source of truth for any nutritional values and product information it contains
+   - Verify the image matches the barcode data
+   - Only use the barcode data that was explicitly provided, never infer additional barcode data
+3. If no barcode data is provided:
+   - Rely solely on visual analysis
+   - Do not make assumptions about barcode information
+   - Be transparent about estimations in the details.summary
+4. If the image does not contain food, respond only with "{No Food Found.}"
+
+IMPORTANT STEPS:
+5. Pay meticulous attention to serving size measurements:
+   - Carefully measure serving size shown in image
+   - Provide nutrient information based precisely on the visible serving size, not anything else
+
+6. Clearly document in the details.summary:
+If barcode data is provided:
+   - Which specific values came from barcode data
+   - Any values calculated/extended from barcode data
+   - How the barcode product matches the image
+   - Any adjustments made to barcode values based on serving size
+   - Which values were estimated visually
+   - Format example: "Nutrition data sourced from barcode scan (calories, protein, carbs). Fat content estimated from visual analysis. Serving size adjusted to match 1.5x portion shown in image."
+If no barcode data is provided:
+  - Clearly state that all values are based on visual analysis
+  - Explain anything that you saw in the image that was not included in the calculations for macronutrients
+  - Format example: "All nutrition data sourced from visual analysis. Serving size adjusted to match 1.5x portion shown in image."`;
+
+  // Add barcode data if available
+  if (barcodeData) {
+    const barcodeDataString = JSON.stringify(barcodeData, null, 2);
+    systemPromptFast += `
+
+BARCODE INFO FOR THE IMAGE PROVIDED (EXTREMELY IMPORTANT):
+The user scanned a barcode with nutrient data, this data is from the image provided. some data may be missing:
+${barcodeDataString}
+
+It doesn't matter if the product name is missing, this data is always from the image provided.
+
+1. The barcode data supersedes visual estimates for any nutritional values it contains
+2. Document in details.summary exactly what values came from the barcode data
+3. Adjust all barcode values proportionally if serving size differs
+4. Only fall back to visual estimation for values not provided in barcode data
+5. Infer from the image any and all values that are not provided in the barcode data`;
+  }
+
+  // Add the JSON format specification
+  systemPromptFast += `
+
+6. For food images, analyze and provide the following information in JSON format:
+{
+  "food": {
+    "name": "String",
+    "class": "String",
+    "type": "String",
+    "calories": {
+      "amount": "Number",
+      "marginOfErrorPercent": "Number"
+    },
+    "proteins": {
+      "amount": "Number",
+      "marginOfErrorPercent": "Number"
+    },
+    "carbohydrates": {
+      "amount": "Number",
+      "marginOfErrorPercent": "Number"
+    },
+    "fats": {
+      "amount": "Number",
+      "marginOfErrorPercent": "Number"
+    },
+    "fiber": {
+      "amount": "Number",
+      "marginOfErrorPercent": "Number"
+    },
+    "sodium": {
+      "amount": "Number",
+      "marginOfErrorPercent": "Number"
+    },
+    "ingredients": [
+      {
+        "name": "String",
+        "wikipediaLink": "String",
+        "description": "String"
       }
+    ],
+    "details": {
+      "summary": "String",
+      "prepTime": "String",
+      "servingSize": "String",
+      "wikipediaLink": "String"
     }
   }
+}
+
+Include anything you saw like drinks, condiments, or other items that were NOT included in the calculations for macronutrients inside the 'details' section of the JSON output. These things might include condiments, also include things you are unsure about in the details screen. Be specific and concise.`;
   
-  Include anything you saw like, drinks, condiments, or other items that were NOT included in the calculations for macronutrients inside the 'details' section of the JSON output. These things might include condiments, also include things you are unsure about in the details screen. Be specific and concise. 
-  `;
-  
-      const systemPromptAccurate = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
+      let systemPromptAccurate = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
   
   You will be provided with an image to analyze:
   
@@ -935,8 +1081,6 @@ const takePhoto = async () => {
   
   Throughout your analysis, maintain transparency about uncertainties and avoid overconfidence in your estimations. Clearly state when you are making assumptions or when certain aspects of the nutritional content are difficult to determine from the image alone.
   
-  Additionally, ensure that any seen foods, drinks, condiments, or other items that were NOT included in the calculations for macronutrients are noted, so they can be included in the 'details' section of the JSON output.
-  
   Your final output should be structured as follows:
   
   <analysis>
@@ -955,10 +1099,27 @@ const takePhoto = async () => {
   </recommendations>
   </analysis>
   
-  Remember, your analysis should help users make informed dietary decisions while acknowledging the limitations of visual assessment. Always prioritize accuracy and transparency over providing a complete but potentially inaccurate analysis.
-  `;
+  Remember, your analysis should help users make informed dietary decisions while acknowledging the limitations of visual assessment. Always prioritize accuracy and transparency over providing a complete but potentially inaccurate analysis.`;
   
-      const systemPromptAccurateJson = `Based on your previous analysis, particularly focusing on the highest-scored thought path you identified, provide the following information in JSON format:
+      // Add barcode data if available
+      if (barcodeData) {
+        const barcodeDataString = JSON.stringify(barcodeData, null, 2);
+        systemPromptAccurate += `
+
+BARCODE INFO FOR THE IMAGE PROVIDED (EXTREMELY IMPORTANT):
+The user scanned a barcode with nutrient data, this data is from the image provided. some data may be missing:
+${barcodeDataString}
+
+It doesn't matter if the product name is missing, this data is always from the image provided.
+
+1. The barcode data supersedes visual estimates for any nutritional values it contains
+2. Document in details.summary exactly what values came from the barcode data
+3. Adjust all barcode values proportionally if serving size differs
+4. Only fall back to visual estimation for values not provided in barcode data
+5. Infer from the image any and all values that are not provided in the barcode data`;
+      }
+  
+      systemPromptAccurateJson = `Based on your previous analysis, particularly focusing on the highest-scored thought path you identified, provide the following information in JSON format:
   
   {
     "food": {
@@ -1221,19 +1382,7 @@ const takePhoto = async () => {
             try {
               const parsedData = JSON.parse(secondResponseJson.choices[0].message.content);
               if (parsedData && parsedData.food) {
-                setFoodData(parsedData.food);
-                setNoFoodFound(false);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                fadeOutTab('Nutrition');
-      
-                await storeProductDetails({
-                  productName: parsedData.food.name,
-                  imageUri: imageUri,
-                  nutrients: parsedData.food,
-                  date: new Date().toISOString(),
-                });
-      
-                foodFound = true;
+                foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
               } else {
                 throw new Error("Parsed data is missing required properties.");
               }
@@ -1380,19 +1529,7 @@ const takePhoto = async () => {
           try {
             const parsedData = JSON.parse(responseJson.choices[0].message.content);
             if (parsedData && parsedData.food) {
-              setFoodData(parsedData.food);
-              setNoFoodFound(false);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              fadeOutTab('Nutrition');
-      
-              await storeProductDetails({
-                productName: parsedData.food.name,
-                imageUri: imageUri,
-                nutrients: parsedData.food,
-                date: new Date().toISOString(),
-              });
-      
-              foodFound = true;
+              foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
             } else {
               throw new Error("Parsed data is missing required properties.");
             }
@@ -1438,7 +1575,7 @@ const takePhoto = async () => {
                   {
                     type: "text",
                     text:
-                      "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'",
+                      "Analyze this image and provide nutritional information as specified, using barcode data if available, otherwise use visual analysis. If the image isn't food, just say '{No Food Found.}'. Your response should be in perfect JSON format.",
                   },
                   {
                     type: "image",
@@ -1470,20 +1607,7 @@ const takePhoto = async () => {
             try {
               const parsedData = JSON.parse(jsonString);
               if (parsedData && parsedData.food) {
-                setFoodData(parsedData.food);
-                setNoFoodFound(false);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                fadeOutTab('Nutrition');
-  
-                // Directly store the product details
-                await storeProductDetails({
-                  productName: parsedData.food.name,
-                  imageUri: imageUri,
-                  nutrients: parsedData.food,
-                  date: new Date().toISOString(),
-                });
-  
-                foodFound = true; // Food was found
+                foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
               } else {
                 throw new Error("Parsed data is missing required properties.");
               }
@@ -1517,7 +1641,7 @@ const takePhoto = async () => {
                   {
                     type: "text",
                     text:
-                      "Analyze this image and provide nutritional information as specified. If the image doesn't contain any food AT ALL, just say '{No Food Found.}'",
+                      "Analyze this image and provide nutritional information as specified. If the image doesn't contain any food AT ALL, just say '{No Food Found.}'. Your response should be in perfect JSON format.",
                   },
                   {
                     type: "image",
@@ -1604,20 +1728,7 @@ const takePhoto = async () => {
             try {
               const parsedData = JSON.parse(jsonString);
               if (parsedData && parsedData.food) {
-                setFoodData(parsedData.food);
-                setNoFoodFound(false);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                fadeOutTab('Nutrition');
-  
-                // Directly store the product details
-                await storeProductDetails({
-                  productName: parsedData.food.name,
-                  imageUri: imageUri,
-                  nutrients: parsedData.food,
-                  date: new Date().toISOString(),
-                });
-  
-                foodFound = true;
+                foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
               } else {
                 throw new Error("Parsed data is missing required properties.");
               }
@@ -1638,7 +1749,7 @@ const takePhoto = async () => {
   
       if (foodFound) {
         const endTime = Date.now(); // End time measurement
-        const processingDuration = endTime - startTime;
+        const processingDuration = endTime - startTimeRef.current;
         handleAccurateScanUsed();
         updateAverageProcessingTime(mode, processingDuration); // Update average
   
@@ -1751,9 +1862,28 @@ const takePhoto = async () => {
     }).start();
   };
 
+  // Update the handleTabPress function
   const handleTabPress = (tab) => {
     if (!isTabsDisabled) {
       fadeOutTab(tab);
+      // Animate the tab indicator
+      const tabIndex = ['Nutrition', 'Ingredients', 'Details'].indexOf(tab);
+      Animated.parallel([
+        Animated.spring(tabIndicatorAnim, {
+          toValue: tabIndex,
+          useNativeDriver: true,
+          friction: 24,
+          tension: 180,
+          velocity: 10
+        }),
+        Animated.spring(tabWidthAnim, {
+          toValue: tabLayout.width,
+          useNativeDriver: true,
+          friction: 24,
+          tension: 180,
+          velocity: 10
+        })
+      ]).start();
     }
   };
   
@@ -1999,6 +2129,163 @@ const takePhoto = async () => {
     );
   };
 
+  // Add this new function to handle text crossfade
+  const crossfadeChipText = (newMode) => {
+    Animated.timing(chipTextOpacity, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      LayoutAnimation.easeInEaseOut();
+      setPrevMode(selectedMode);
+      setSelectedMode(newMode);
+
+      Animated.timing(chipTextOpacity, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  // Update the handleModeChipPress function
+  const handleModeChipPress = async () => {
+    const currentMode = selectedMode;
+    const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
+    
+    const switchToMode = async (newMode) => {
+      if (newMode === 'accurate') {
+        if (isSubscribed || isFirstDayUnlimited) {
+          await AsyncStorage.setItem('selectedMode', newMode);
+          crossfadeChipText(newMode);
+          await AsyncStorage.setItem('selectedModel', 'claude-3-5-sonnet-20240620');
+          setSelectedModel('claude-3-5-sonnet-20240620');
+          Haptics.selectionAsync();
+        } else {
+          const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+          if (freeAccurateScansUsed === '1') {
+            Alert.alert(
+              'Daily Limit Reached',
+              'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+            );
+            return;
+          }
+          Alert.alert(
+            'Heads Up!',
+            'You only get one accurate scan a day on the free plan, so make it count!',
+            [
+              { text: 'Cancel', style: 'cancel' },
+              {
+                text: 'OK',
+                onPress: async () => {
+                  await AsyncStorage.setItem('selectedMode', newMode);
+                  crossfadeChipText(newMode);
+                  await AsyncStorage.setItem('selectedModel', 'claude-3-5-sonnet-20240620');
+                  setSelectedModel('claude-3-5-sonnet-20240620');
+                  Haptics.selectionAsync();
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        }
+      } else {
+        await AsyncStorage.setItem('selectedMode', newMode);
+        crossfadeChipText(newMode);
+        await AsyncStorage.setItem('selectedModel', 'claude-3-haiku-20240307');
+        setSelectedModel('claude-3-haiku-20240307');
+        Haptics.selectionAsync();
+      }
+    };
+
+    Alert.alert(
+      'Scan Mode',
+      `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
+      (currentMode === 'fast' 
+        ? 'Fast Mode provides quick results and is great for packaged foods.'
+        : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: `Switch to ${MODE_LABELS[oppositeMode]}`,
+          onPress: () => switchToMode(oppositeMode)
+        }
+      ]
+    );
+  };
+
+  // Add this state variable with the other state declarations
+  const [hasScannedSinceOpen, setHasScannedSinceOpen] = useState(false);
+
+  // Update the useFocusEffect to check for this new condition
+  useFocusEffect(
+    useCallback(() => {
+      const checkForRatingPrompt = async () => {
+        try {
+          const hasPrompted = await AsyncStorage.getItem('@has_prompted_for_review');
+          const accurateScans = await AsyncStorage.getItem('@accurate_scans_before_review');
+          const lastScanTime = await AsyncStorage.getItem('@last_scan_time');
+          
+          // Only show rating prompt if:
+          // 1. We haven't prompted before
+          // 2. User has completed enough accurate scans
+          // 3. Last scan was not just now (must be from a previous session)
+          // 4. User has performed a scan since opening the app
+          if (!hasPrompted && 
+              accurateScans && 
+              parseInt(accurateScans) >= 2 && 
+              lastScanTime && 
+              hasScannedSinceOpen) {
+            const now = Date.now();
+            const lastScan = parseInt(lastScanTime);
+            // Only show if last scan was more than 1 minute ago
+            if (now - lastScan > 60000) {
+              if (StoreReview.isAvailable) {
+                await AsyncStorage.setItem('@has_prompted_for_review', 'true');
+                StoreReview.requestReview();
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking rating prompt state:', error);
+        }
+      };
+
+      checkForRatingPrompt();
+    }, [hasScannedSinceOpen]) // Add hasScannedSinceOpen to dependencies
+  );
+
+  const handleSuccessfulScan = async (parsedData, imageUri, barcodeData) => {
+    setFoodData(parsedData.food);
+    setNoFoodFound(false);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    fadeOutTab('Nutrition');
+
+    await storeProductDetails({
+      productName: parsedData.food.name,
+      imageUri: imageUri,
+      nutrients: parsedData.food,
+      date: new Date().toISOString(),
+      hadBarcode: !!barcodeData
+    });
+
+    // If this was an accurate scan, update the count and store the scan time
+    if (selectedMode === 'accurate') {
+      const newCount = accurateScansBeforeReview + 1;
+      try {
+        await AsyncStorage.setItem('@accurate_scans_before_review', newCount.toString());
+        await AsyncStorage.setItem('@last_scan_time', Date.now().toString());
+        setAccurateScansBeforeReview(newCount);
+        // Set the flag indicating user has scanned since opening the app
+        setHasScannedSinceOpen(true);
+      } catch (error) {
+        console.error('Error updating scan data:', error);
+      }
+    }
+
+    return true; // Indicate success
+  };
+
   return (
     <View style={styles.container}>
   <AnimatedTextFoodScan
@@ -2028,6 +2315,100 @@ const takePhoto = async () => {
     style={styles.subtitle}
   />
       <View style={styles.imageContainer}>
+        <View style={styles.controlsOverlay}>
+          <TouchableOpacity
+            style={styles.chipContainer}
+            onPress={() => {
+              let message = '';
+              if (selectedMode === 'accurate') {
+                if (isFirstDayUnlimited || isSubscribed) {
+                  message = 'Accurate Scans: ∞ (Unlimited Plan)';
+                } else if (isSubscribedPlus) {
+                  message = `Plus plan: ${20 - scanCount} total scans left. (Accurate scans are unlimited)`;
+                } else {
+                  message = `Accurate Scans Left Today: ${Math.max(0, 1 - freeAccurateScansUsed)}`;
+                }
+              } else {
+                if (isFirstDayUnlimited || isSubscribed) {
+                  message = isSubscribed 
+                    ? "You have unlimited scans because you're subscribed."
+                    : "You have unlimited scans because today is your first day using the app.";
+                } else if (isSubscribedPlus) {
+                  message = `You have used ${scanCount} of 20 scans today.`;
+                } else {
+                  message = `You have used ${scanCount} of 5 scans today.`;
+                }
+              }
+              Alert.alert("Scan Limit", message);
+            }}
+          >
+            <LinearGradient
+              colors={colorScheme === 'dark' 
+                ? ['rgba(0, 0, 0, 1)', 'rgba(30, 30, 30, 0.85)']
+                : ['rgba(60, 60, 60, 0.95)', 'rgba(140, 140, 140, 0.95)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.chip}
+            >
+              <View style={styles.chipContent}>
+                <Text style={[styles.chipLabel, { color: colorScheme === 'dark' ? '#fff' : '#fff' }]}>Scans:</Text>
+                {isFirstDayUnlimited || isSubscribed ? (
+                  <FontAwesomeIcon
+                    icon={faInfinity}
+                    size={18}
+                    color={colorScheme === 'dark' ? '#fff' : '#fff'}
+                  />
+                ) : (
+                  <Text style={[styles.chipText, { color: colorScheme === 'dark' ? '#fff' : '#fff' }]}>
+                    {selectedMode === 'accurate' 
+                      ? Math.max(0, 1 - freeAccurateScansUsed)
+                      : isSubscribedPlus 
+                        ? (20 - scanCount) 
+                        : (5 - scanCount)}
+                  </Text>
+                )}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.chipContainer} 
+            onPress={handleModeChipPress}
+          >
+            <LinearGradient
+              colors={
+                selectedMode === 'accurate' 
+                  ? colorScheme === 'dark'
+                    ? ['rgba(25, 72, 110, 0.95)', 'rgba(40, 90, 140, 0.95)']
+                    : ['rgba(70, 120, 220, 0.95)', 'rgba(40, 90, 180, 0.95)']
+                  : colorScheme === 'dark'
+                    ? ['rgba(0, 0, 0, 0.85)', 'rgba(20, 20, 20, 0.95)']
+                    : ['rgba(40, 40, 40, 0.95)', 'rgba(80, 80, 80, 0.95)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.chip, selectedMode === 'accurate' && styles.chipAccurate]}
+            >
+              <View style={styles.chipContent}>
+                <Icon 
+                  name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
+                  size={16} 
+                  color={colorScheme === 'dark' ? '#fff' : selectedMode === 'accurate' ? '#fff' : '#fff'} 
+                />
+                <Animated.Text style={[
+                  styles.chipText, 
+                  { 
+                    opacity: chipTextOpacity,
+                    color: colorScheme === 'dark' ? '#fff' : selectedMode === 'accurate' ? '#fff' : '#fff'
+                  }
+                ]}>
+                  {selectedMode === 'fast' ? 'Fast' : 'Accurate'}
+                </Animated.Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
         {showPlaceholder ? (
           <Animated.View
             style={[
@@ -2038,75 +2419,52 @@ const takePhoto = async () => {
             <Text style={styles.placeholderText}>You haven't scanned anything yet</Text>
           </Animated.View>
         ) : (
-          <Animated.Image
-            source={{ uri: image }}
-            style={[styles.foodImage, { opacity: fadeAnimImage }]}
-          />
+          <View style={styles.imageWrapper}>
+            <Animated.Image
+              source={{ uri: image }}
+              style={[styles.foodImage, { opacity: fadeAnimImage }]}
+            />
+            {hadBarcode && (
+              <TouchableOpacity 
+                style={styles.barcodeIconContainer}
+                onPress={() => {
+                  Alert.alert(
+                    "Barcode Detected",
+                    "This scan's results were enhanced using barcode data for improved accuracy.",
+                    [{ text: "OK" }]
+                  );
+                }}
+              >
+                <MaterialCommunityIcons 
+                  name="barcode-scan" 
+                  size={30} 
+                  color="#fff" 
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
 
-      <View style={styles.scanCounterContainer}>
-  <TouchableOpacity
-    style={styles.scanCounter}
-    onPress={() => {
-      let message = '';
-      if (selectedMode === 'accurate') {
-        // If user is in accurate mode
-        if (isFirstDayUnlimited || isSubscribed) {
-          message = 'Accurate Scans: ∞ (Unlimited Plan)';
-        } else if (isSubscribedPlus) {
-          message = `Plus plan: ${20 - scanCount} total scans left. (Accurate scans are unlimited)`;
-        } else {
-          message = `Accurate Scans Left Today: ${Math.max(0, 1 - freeAccurateScansUsed)}`;
-        }
-      } else {
-        // If user is in fast mode
-        if (isFirstDayUnlimited || isSubscribed) {
-          if (isSubscribed) {
-            message = "You have unlimited scans because you're subscribed.";
-          } else {
-            message = "You have unlimited scans because today is your first day using the app.";
-          }
-        } else if (isSubscribedPlus) {
-          message = `You have used ${scanCount} of 20 scans today.`;
-        } else {
-          message = `You have used ${scanCount} of 5 scans today.`;
-        }
-      }
-      Alert.alert("Scan Limit", message);
-      }}
-      >
-    <View style={styles.scanCounterContent}>
-      {selectedMode === 'accurate' ? (
-        isFirstDayUnlimited || isSubscribed ? (
-          <FontAwesomeIcon
-            icon={faInfinity}
-            size={24}
-            color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
-          />
-        ) : (
-          <Text style={styles.scanCounterText}>
-            {Math.max(0, 1 - freeAccurateScansUsed)}
-          </Text>
-        )
-      ) : (
-        isFirstDayUnlimited || isSubscribed ? (
-          <FontAwesomeIcon
-            icon={faInfinity}
-            size={24}
-            color={colorScheme === 'dark' ? '#e9e9e9' : '#000'}
-          />
-        ) : (
-          <Text style={styles.scanCounterText}>
-            {isSubscribedPlus ? (20 - scanCount) : (5 - scanCount)}
-          </Text>
-        )
-      )}
-    </View>
-  </TouchableOpacity>
-</View>
-
       <View style={styles.tabContainer}>
+        {/* Add the sliding indicator */}
+        {!isTabsDisabled && (
+          <Animated.View
+            style={[
+              styles.tabIndicator,
+              {
+                transform: [{
+                  translateX: tabIndicatorAnim.interpolate({
+                    inputRange: [0, 1, 2],
+                    outputRange: [width * 0.05, width * 0.36, width * 0.67], // Adjusted positions
+                  })
+                }],
+                width: 90, // Fixed width for the indicator
+                opacity: isTabsDisabled ? 0 : 1,
+              }
+            ]}
+          />
+        )}
         <TouchableOpacity
           style={[
             styles.tabButton,
@@ -2205,23 +2563,85 @@ const takePhoto = async () => {
   animationType="fade"
   visible={isLoading}
 >
-  <View style={styles.modalBackground}>
-    <View style={styles.activityIndicatorWrapper}>
-      <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#FFF' : '#000'} />
-      <Animated.View
-        style={[
-          styles.loadingTextContainer,
-          {
-            opacity: fadeAnim,
-          },
-        ]}
-      >
-<Animated.Text style={[styles.loadingText, { opacity: loadingTextFadeAnim }]}>
-  {currentLoadingText}
-</Animated.Text>
-      </Animated.View>
+  <BlurView
+    intensity={30}
+    tint={colorScheme === 'dark' ? 'dark' : 'light'}
+    style={styles.modalBackground}
+  >
+    <View style={styles.loadingCard}>
+      {/* Mode Badge */}
+      <View style={styles.modeBadgeContainer}>
+        <BlurView intensity={50} style={styles.modeBadge}>
+          <Icon 
+            name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
+            size={24} 
+            color={colorScheme === 'dark' ? '#fff' : '#000'} 
+          />
+          <Text style={styles.modeBadgeText}>
+            {selectedMode === 'fast' ? 'Fast Scan' : 'Accurate Scan'}
+          </Text>
+        </BlurView>
+      </View>
+
+      {/* Loading Indicator and Text */}
+      <View style={styles.loadingContent}>
+        <ActivityIndicator 
+          size="large" 
+          color={colorScheme === 'dark' ? '#FFF' : '#000'} 
+        />
+        
+        <Animated.View style={[styles.loadingTextContainer]}>
+          {isHoldingRef.current ? (
+            <Animated.Text style={[styles.loadingText, { opacity: longLoadingTextAnim }]}>
+              {currentLoadingText}
+            </Animated.Text>
+          ) : (
+            <Animated.Text style={[styles.loadingText, { opacity: loadingTextFadeAnim }]}>
+              {currentLoadingText}
+            </Animated.Text>
+          )}
+        </Animated.View>
+      </View>
+
+      {/* Info Cards */}
+      <View style={styles.infoCardsContainer}>
+        {/* Scans Left Card */}
+        <BlurView intensity={50} style={styles.infoCard}>
+          <Icon 
+            name="scan-outline" 
+            size={20} 
+            color={colorScheme === 'dark' ? '#fff' : '#000'} 
+          />
+          <Text style={styles.infoCardText}>
+            {isFirstDayUnlimited || isSubscribed ? (
+              'Unlimited Scans'
+            ) : (
+              selectedMode === 'accurate' ? 
+                `${Math.max(0, 1 - freeAccurateScansUsed - 1)} accurate scans left` :
+                isSubscribedPlus ?
+                  `${20 - scanCount - 1} scans left` :
+                  `${5 - scanCount - 1} scans left`
+            )}
+          </Text>
+        </BlurView>
+
+        {/* Processing Time Card */}
+        <BlurView intensity={50} style={styles.infoCard}>
+          <Icon 
+            name="time-outline" 
+            size={20} 
+            color={colorScheme === 'dark' ? '#fff' : '#000'} 
+          />
+          <Text style={styles.infoCardText}>
+            {showProcessingTime ? 
+              `${processingTime}s` : 
+              `~${Math.round(averageProcessingTimes[selectedMode] / 1000)}s`
+            }
+          </Text>
+        </BlurView>
+      </View>
     </View>
-  </View>
+  </BlurView>
 </Modal>
 
       <Modal
@@ -2288,24 +2708,56 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     paddingTop: isIphoneSE() ? 0 : 40,
   },
   scanCounterContainer: {
-    position: 'absolute',
-    top: isIphoneSE() ? 30 : 50,
-    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
   },
   scanCounter: {
-    borderWidth: 2.5,
-    borderColor: colorScheme === 'dark' ? '#5a5a5a' : '#CCCCCC',
-    borderRadius: 50,
-    padding: 5,
+    flexDirection: 'row',
     alignItems: 'center',
-    justifyContent: 'center',
-    height: 40,
-    width: 40,
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+  },
+  scanCounterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
   },
   scanCounterText: {
-    fontSize: 21,
+    fontSize: 16,
     fontWeight: '500',
     color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
+  },
+  scanCounterLabel: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#888' : '#666',
+    marginRight: 4,
+  },
+  modeChip: {
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f0f0f0',
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: colorScheme === 'dark' ? '#3a3a3d' : '#e0e0e0',
+    width: 100,
+  },
+  modeChipAccurate: {
+    backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
+    borderColor: colorScheme === 'dark' ? '#234b6b' : '#b8d6f3',
+  },
+  modeChipText: {
+    color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  modeIcon: {
+    marginRight: 8,
   },
   feedbackContainer: {
     flexDirection: 'column',
@@ -2453,24 +2905,38 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     marginBottom: 16,
     backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
     marginHorizontal: 15,
-    borderRadius: 13,
-    paddingVertical: 4,
+    borderRadius: 20,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    height: 3,
+    backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+    borderRadius: 90,
   },
   tabButton: {
     paddingVertical: 8,
     paddingHorizontal: 16,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   activeTabButton: {
-    borderBottomWidth: 2,
-    borderBottomColor: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    // Remove the border bottom since we're using the sliding indicator
   },
   tabButtonText: {
-    color: '#888888',
+    color: colorScheme === 'dark' ? '#666' : '#888',
     fontSize: 16,
+    fontWeight: '400',
   },
   activeTabButtonText: {
     color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-    fontWeight: '400',
+    fontWeight: '500',
   },
   scrollContainer: {
     paddingBottom: 100,
@@ -2479,9 +2945,11 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   tabContentContainer: {
     backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
-    borderRadius: 15,
+    borderRadius: 25,
     padding: 16,
     marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
   },
   separator: {
     height: 4,
@@ -2604,9 +3072,9 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   modalBackground: {
     flex: 1,
-    backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.5)' : 'rgba(50, 50, 50, 0.5)',
     justifyContent: 'center',
     alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)', // Slightly transparent background
   },
   loadingTextContainer: {
     height: 30,
@@ -2631,13 +3099,26 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   imageContainer: {
     width: '90%',
-    justifyContent: 'center',
-    alignItems: 'center',
     height: 200,
     borderRadius: 24,
     marginBottom: 16,
     backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
     marginHorizontal: 20,
+    position: 'relative', // Add this to position children absolutely
+  },
+  imageWrapper: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  controlsOverlay: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 2,
   },
   tooltip: {
     position: 'absolute',
@@ -2654,6 +3135,214 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 14,
     textAlign: 'center',
+  },
+  barcodeIconContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 14,
+    padding: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    // Add these to show it's interactive
+    opacity: 1,
+    activeOpacity: 0.7,
+  },
+  processingTimeText: {
+    color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
+    fontWeight: '400',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+  },
+  chipContainer: {
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  chipAccurate: {
+    borderColor: 'rgba(66, 135, 245, 0.6)',
+  },
+  chipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    justifyContent: 'center', // Add this to keep content centered during animation
+  },
+  chipLabel: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '400',
+  },
+  chipText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  scrollIndicatorOpacity: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    borderRadius: 200,
+    padding: 3,
+  },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCard: {
+    width: '90%',
+    maxWidth: 400,
+    alignItems: 'center',
+    paddingVertical: 30,
+    borderRadius: 25, // Match your existing rounded corners
+    overflow: 'hidden', // Ensure the blur effect respects the border radius
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  loadingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  modeText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  scanCounter: {
+    backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  scanCounterText: {
+    color: colorScheme === 'dark' ? '#fff' : '#fff',
+    fontWeight: '500',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  loadingTextContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  estimatedTimeContainer: {
+    borderTopWidth: 1,
+    borderTopColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  estimatedTimeText: {
+    color: colorScheme === 'dark' ? '#999' : '#666',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  loadingCard: {
+    width: '90%',
+    maxWidth: 400,
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  modeBadgeContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
+    overflow: 'hidden',
+  },
+  modeBadgeText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  loadingContent: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  loadingTextContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  infoCardsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingHorizontal: 20,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
+    overflow: 'hidden',
+  },
+  infoCardText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 15,
+    fontWeight: '500',
+    marginLeft: 8,
   },
 });
 

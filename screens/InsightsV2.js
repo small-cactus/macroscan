@@ -80,7 +80,7 @@ const AnimatedBar = ({
   const colorScheme = useColorScheme();
   const styles = getDynamicStyles(colorScheme);
 
-  // Store bar’s X position to decide tooltip side
+  // Store bar's X position to decide tooltip side
   const [barX, setBarX] = useState(0);
 
   useEffect(() => {
@@ -238,6 +238,58 @@ const InsightsV2 = () => {
     activityLevel: '',
     goal: 'Maintain Weight',
   });
+
+  // Validation function for onboarding steps
+  const isCurrentStepValid = () => {
+    const currentStep = onboardingData[currentOnboardingIndex];
+    const data = onboardingDataCollected;
+    
+    if (currentOnboardingIndex === 0) {
+      // Welcome screen, always valid
+      return true;
+    }
+
+    if (currentStep.field === 'height') {
+      if (data.unit === 'imperial') {
+        const feet = parseFloat(data.heightFeet);
+        const inches = parseFloat(data.heightInches);
+        return !isNaN(feet) && !isNaN(inches) && feet > 0 && inches >= 0 && inches < 12;
+      } else {
+        const height = parseFloat(data.height);
+        return !isNaN(height) && height > 0;
+      }
+    }
+
+    if (currentStep.field === 'weight') {
+      const weight = parseFloat(data.weight);
+      return !isNaN(weight) && weight > 0;
+    }
+
+    if (currentStep.field === 'age') {
+      const age = parseInt(data.age);
+      return !isNaN(age) && age > 0 && age < 120;
+    }
+
+    if (currentStep.field === 'gender') {
+      return !!data.gender;
+    }
+
+    if (currentStep.field === 'activityLevel') {
+      return !!data.activityLevel;
+    }
+
+    if (currentStep.field === 'goal') {
+      return !!data.goal;
+    }
+
+    if (currentOnboardingIndex === 7) {
+      // Final goals screen, always valid if we made it here
+      return true;
+    }
+
+    return false;
+  };
+
   const [calculatedGoals, setCalculatedGoals] = useState(null);
   const [goalsAdjustments, setGoalsAdjustments] = useState({
     calories: 0,
@@ -250,12 +302,12 @@ const InsightsV2 = () => {
     {
       key: '1',
       title: 'Welcome to Insights',
-      description: "Let's get to know you better to set up your personalized goals.",
+      description: "Let's get to know you better to set up your personalized goals. This is where you'll set your goals and see your progress.",
       icon: 'stats-chart',
     },
     {
       key: '2',
-      title: 'What is your height?',
+      title: "What's your height?",
       field: 'height',
       icon: 'man-outline',
       description:
@@ -792,10 +844,10 @@ const InsightsV2 = () => {
     itemVisiblePercentThreshold: 50,
   };
 
-  // 4) Trends
-  useEffect(() => {
-    calculateTrends();
-  }, [history, goals]);
+  // // 4) Trends
+  // useEffect(() => {
+  //   calculateTrends();
+  // }, [history, goals]);
 
   const calculateTrends = () => {
     if (!history || history.length === 0) {
@@ -849,7 +901,7 @@ const InsightsV2 = () => {
     setTrends(newTrends);
   };
 
-  // 5) Today’s scans
+  // 5) Today's scans
   const [todaysScansCount, setTodaysScansCount] = useState(0);
   useEffect(() => {
     const today = new Date();
@@ -929,7 +981,7 @@ const InsightsV2 = () => {
     return false;
   };
 
-  // 7) Today’s progress
+  // 7) Today's progress
   const calculateTodayProgress = () => {
     if (!goals) return { calories: 0, proteins: 0, carbohydrates: 0, fats: 0 };
     const today = new Date();
@@ -1507,6 +1559,108 @@ const InsightsV2 = () => {
     fats: { icon: 'water', color: '#6495ED' },
   };
 
+  // Add this validation function after the onboardingData array
+  const validateCurrentStep = (index, data) => {
+    const currentStep = onboardingData[index];
+    
+    if (index === 0) {
+      // Welcome screen, always valid
+      return true;
+    }
+
+    if (currentStep.field === 'height') {
+      if (data.unit === 'imperial') {
+        const feet = parseFloat(data.heightFeet);
+        const inches = parseFloat(data.heightInches);
+        return !isNaN(feet) && !isNaN(inches) && feet > 0 && inches >= 0 && inches < 12;
+      } else {
+        const height = parseFloat(data.height);
+        return !isNaN(height) && height > 0;
+      }
+    }
+
+    if (currentStep.field === 'weight') {
+      const weight = parseFloat(data.weight);
+      return !isNaN(weight) && weight > 0;
+    }
+
+    if (currentStep.field === 'age') {
+      const age = parseInt(data.age);
+      return !isNaN(age) && age > 0 && age < 120;
+    }
+
+    if (currentStep.field === 'gender') {
+      return !!data.gender;
+    }
+
+    if (currentStep.field === 'activityLevel') {
+      return !!data.activityLevel;
+    }
+
+    if (currentStep.field === 'goal') {
+      return !!data.goal;
+    }
+
+    if (index === 7) {
+      // Final goals screen, always valid if we made it here
+      return true;
+    }
+
+    return false;
+  };
+
+  // Add this style to the styles object
+  const disabledButton = {
+    opacity: 0.5,
+  };
+
+  // Replace the onboarding footer section with this updated version
+  <View style={styles.onboardingFooter}>
+    <View style={styles.pagination}>
+      {onboardingData.map((_, idx) => (
+        <View
+          key={idx}
+          style={[
+            styles.paginationDot,
+            currentOnboardingIndex === idx
+              ? styles.paginationDotActive
+              : styles.paginationDotInactive,
+          ]}
+        />
+      ))}
+    </View>
+    {currentOnboardingIndex < onboardingData.length - 1 ? (
+      <TouchableOpacity
+        style={[
+          styles.onboardingNextButton,
+          !validateCurrentStep(currentOnboardingIndex, onboardingDataCollected) && disabledButton,
+        ]}
+        disabled={!validateCurrentStep(currentOnboardingIndex, onboardingDataCollected)}
+        onPress={() => {
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+          if (currentOnboardingIndex < onboardingData.length - 1) {
+            const nextIndex = currentOnboardingIndex + 1;
+            setOnboardingIndex(nextIndex);
+            flatListRef.current.scrollToIndex({ index: nextIndex });
+          }
+        }}
+      >
+        <Text style={styles.onboardingButtonText}>Next</Text>
+      </TouchableOpacity>
+    ) : (
+      <TouchableOpacity
+        style={[
+          styles.onboardingNextButton,
+          !validateCurrentStep(currentOnboardingIndex, onboardingDataCollected) && disabledButton,
+        ]}
+        disabled={!validateCurrentStep(currentOnboardingIndex, onboardingDataCollected)}
+        onPress={handleSaveGoalsFromOnboarding}
+      >
+        <Text style={styles.onboardingButtonText}>Finish</Text>
+      </TouchableOpacity>
+    )}
+  </View>
+
   // Finally, conditionally render loading or main UI in ONE return.
   // (So we don't skip hooks if isLoading is true.)
   return (
@@ -1555,7 +1709,11 @@ const InsightsV2 = () => {
                   </View>
                   {currentOnboardingIndex < onboardingData.length - 1 ? (
                     <TouchableOpacity
-                      style={styles.onboardingNextButton}
+                      style={[
+                        styles.onboardingNextButton,
+                        !isCurrentStepValid() && { opacity: 0.5 },
+                      ]}
+                      disabled={!isCurrentStepValid()}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         if (currentOnboardingIndex < onboardingData.length - 1) {
@@ -1569,7 +1727,11 @@ const InsightsV2 = () => {
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      style={styles.onboardingNextButton}
+                      style={[
+                        styles.onboardingNextButton,
+                        !isCurrentStepValid() && { opacity: 0.5 },
+                      ]}
+                      disabled={!isCurrentStepValid()}
                       onPress={handleSaveGoalsFromOnboarding}
                     >
                       <Text style={styles.onboardingButtonText}>Finish</Text>
@@ -1741,7 +1903,7 @@ const InsightsV2 = () => {
               </TouchableOpacity>
               {faqOpen && (
                 <AnimatedAnswer
-                  text="Today’s Progress averages each macro’s percentage (with adjustments if over 100%), while the bar chart compares total macros to their goals. This creates different percentages: the bar chart is technically more accurate, but “Today’s Progress” better reflects your effort."
+                  text="Today's Progress averages each macro's percentage (with adjustments if over 100%), while the bar chart compares total macros to their goals. This creates different percentages: the bar chart is technically more accurate, but 'Today's Progress' better reflects your effort."
                   colorScheme={colorScheme}
                 />
               )}

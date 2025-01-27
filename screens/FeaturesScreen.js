@@ -15,7 +15,6 @@ import {
   Alert,
   Appearance,
   Animated,
-  Easing,
   ActionSheetIOS,
   Picker,
   Modal,
@@ -23,15 +22,13 @@ import {
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons, MaterialIcons } from '@expo/vector-icons';
+import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as RNIap from 'react-native-iap';
-import { useIAP } from '../IAPContext'; // Ensure this is correctly imported
+import { useIAP } from '../IAPContext'; 
 import { BlurView } from 'expo-blur';
-import * as Linking from 'expo-linking';
 import AnimatedCenteredText from './AnimatedCenteredText';
 
-// Enable LayoutAnimation on Android
 if (
   Platform.OS === 'android' &&
   UIManager.setLayoutAnimationEnabledExperimental
@@ -42,6 +39,7 @@ if (
 const DEBUG_MOCK_UNLIMITED = false;
 const { width, height } = Dimensions.get('window');
 
+// Helper function to detect older iPhone sizes
 const isIphoneSE = () => {
   const smallIphoneDimensions = [
     { width: 320, height: 568 },
@@ -65,27 +63,27 @@ const FeaturesScreen = () => {
   const navigation = useNavigation();
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
-  const { isIAPEnabled } = useIAP(); // Get isIAPEnabled from IAPContext
+  const { isIAPEnabled } = useIAP();
+
+  // Models: 'Complex Processing' is paywalled in the UI,
+  // but we'll force it behind the scenes when user picks Accurate Mode.
   const models = {
     'claude-3-5-sonnet-20240620': 'Complex Processing',
     'claude-3-haiku-20240307': 'Default Processing',
   };
-  const [selectedModel, setSelectedModel] = useState(
-    'claude-3-haiku-20240307'
-  );
+
+  // Basic state
+  const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
   const [selectedMode, setSelectedMode] = useState('fast');
   const [isUnlocked, setIsUnlocked] = useState(false);
-  const [debugUnlocked, setDebugUnlocked] = useState(DEBUG_MOCK_UNLIMITED);
-  const [debugTapCount, setDebugTapCount] = useState(0);
+  const [debugUnlocked] = useState(DEBUG_MOCK_UNLIMITED);
   const [showAndroidPicker, setShowAndroidPicker] = useState(false);
 
-  // Animated values for scaling buttons
+  // For animating the mode buttons
   const scaleValues = {
     fast: useRef(new Animated.Value(1)).current,
     accurate: useRef(new Animated.Value(1)).current,
   };
-
-  // Animated values for button colors
   const buttonBackgroundColors = {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
@@ -95,7 +93,7 @@ const FeaturesScreen = () => {
     accurate: useRef(new Animated.Value(0)).current,
   };
 
-  // Tutorial state variables
+  // Tutorial
   const [showTutorial, setShowTutorial] = useState(false);
   const [debugShowTutorialAlways, setDebugShowTutorialAlways] = useState(false);
   const tutorialOpacityAnim = useRef(new Animated.Value(0)).current;
@@ -111,14 +109,14 @@ const FeaturesScreen = () => {
       key: '2',
       title: 'Fast Mode (Default)',
       description:
-        'Provides instant results without in-depth analysis. Great for packaged or well-known foods. Less accurate for homemade meals.',
+        'Provides instant results without in-depth analysis. Great for packaged or well-known foods.',
       icon: 'flash',
     },
     {
       key: '3',
       title: 'Accurate Mode',
       description:
-        'Accurate Mode uses specialized reasoning with multiple scoring runs for high accuracy. It’s ideal for homemade or complex meals; it does take a bit longer but it is rarely wrong.',
+        'Accurate Mode uses specialized reasoning with multiple runs for high accuracy. You only get one free scan a day!',
       icon: 'shield-checkmark',
       isBeta: true,
     },
@@ -126,21 +124,18 @@ const FeaturesScreen = () => {
       key: '4',
       title: 'Processing Models',
       description:
-        'You can change the intelligence model for food content detection. The Complex model gives more accurate scans but takes longer. Since all features are optimized for the Fast intelligence model, we recommend using fast mode.',
+        'Pick the intelligence model for detection. Complex is normally locked for subscribers, but is used behind the scenes in Accurate Mode.',
       icon: 'settings',
     },
   ];
   const [tutorialIndex, setTutorialIndex] = useState(0);
-  const flatListRef = useRef(null);
-  // New state to track the currently visible tutorial index
   const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
+  const flatListRef = useRef(null);
 
-  // Viewability Config for FlatList
+  // Viewability config for the tutorial slides
   const viewabilityConfig = {
-    itemVisiblePercentThreshold: 50, // Consider item visible if 50% is visible
+    itemVisiblePercentThreshold: 50,
   };
-
-  // Handler when viewable items change
   const onViewableItemsChanged = useRef(({ viewableItems }) => {
     if (viewableItems.length > 0) {
       const index = viewableItems[0].index;
@@ -150,7 +145,7 @@ const FeaturesScreen = () => {
     }
   }).current;
 
-  // Define your subscription IDs
+  // Subscription IDs to check
   const SUBSCRIPTION_IDS = [
     'macroscan_plusplus',
     'macroscan_plusplus_yearly',
@@ -160,10 +155,10 @@ const FeaturesScreen = () => {
   useEffect(() => {
     checkUnlockStatus();
     loadSettings();
-  }, [debugUnlocked, isIAPEnabled]); // Removed 'user' from dependencies
+  }, [isIAPEnabled]);
 
   useEffect(() => {
-    // Animate initial button states
+    // Animate selected mode on mount
     Object.keys(buttonBackgroundColors).forEach((mode) => {
       animateButtonSelection(mode, mode === selectedMode);
     });
@@ -173,6 +168,7 @@ const FeaturesScreen = () => {
     checkTutorial();
   }, [debugShowTutorialAlways]);
 
+  // Check if user has seen tutorial
   const checkTutorial = async () => {
     try {
       const hasViewedTutorial = await AsyncStorage.getItem(
@@ -191,13 +187,13 @@ const FeaturesScreen = () => {
     }
   };
 
+  // Dismiss the tutorial
   const dismissTutorial = async () => {
     try {
       await AsyncStorage.setItem('hasViewedFeaturesTutorial', 'true');
     } catch (error) {
       console.error('Error setting tutorial status:', error);
     }
-    // Start fade-out animation
     Animated.timing(tutorialOpacityAnim, {
       toValue: 0,
       duration: 500,
@@ -209,21 +205,18 @@ const FeaturesScreen = () => {
     });
   };
 
+  // Check subscription status (iOS example)
   const checkUnlockStatus = async () => {
     try {
       let isUnlockedStatus = false;
-  
+
       if (isIAPEnabled) {
         if (Platform.OS === 'ios') {
-          // Ensure initConnection is called before using getReceiptIOS
           await RNIap.initConnection();
-          // Retrieve the receipt data
           const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
-  
           if (!receipt) {
             console.error('No receipt available');
           } else {
-            // Send the receipt data to your server for validation
             const response = await fetch(
               'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
               {
@@ -234,8 +227,6 @@ const FeaturesScreen = () => {
                 body: JSON.stringify({ receiptData: receipt }),
               }
             );
-  
-            // Check if the response is OK
             if (response.ok) {
               const data = await response.json();
               if (data.success && data.isSubscribed) {
@@ -252,12 +243,12 @@ const FeaturesScreen = () => {
             }
           }
         } else {
-          // Handle Android platform if necessary
+          // Android subscription check can go here
           isUnlockedStatus = false;
         }
       } else {
-        // If IAP is not enabled, rely on other methods if any
-        // For example, you can check user context
+        // Fallback if not using IAP
+        // Example: user object says user.subscriptionStatus
         if (
           user?.subscriptionStatus === 'macroscan_unlimited' ||
           user?.subscriptionStatus === 'macroscan_plusplus'
@@ -265,7 +256,6 @@ const FeaturesScreen = () => {
           isUnlockedStatus = true;
         }
       }
-  
       setIsUnlocked(debugUnlocked || isUnlockedStatus);
     } catch (error) {
       console.error('Failed to check subscriptions:', error);
@@ -273,6 +263,7 @@ const FeaturesScreen = () => {
     }
   };
 
+  // Load any saved settings (model/mode) from AsyncStorage
   const loadSettings = async () => {
     try {
       const model = await AsyncStorage.getItem('selectedModel');
@@ -284,13 +275,6 @@ const FeaturesScreen = () => {
     }
   };
 
-  const showBetaAlert = () => {
-    Alert.alert(
-      'Beta Feature',
-      `Accurate mode is a beta feature. While it can be more accurate, sometimes it may produce incorrect results.`
-    );
-  };
-
   const handleTitlePress = () => {
     setShowTutorial(true);
     Animated.timing(tutorialOpacityAnim, {
@@ -300,7 +284,20 @@ const FeaturesScreen = () => {
     }).start();
   };
 
+  // Force set the Complex model (claude-3-5-sonnet-20240620) in AsyncStorage
+  const forceComplexModel = async () => {
+    try {
+      await AsyncStorage.setItem('selectedModel', 'claude-3-5-sonnet-20240620');
+      setSelectedModel('claude-3-5-sonnet-20240620');
+    } catch (error) {
+      console.error('Error setting complex model:', error);
+    }
+  };
+
+  // Handle changing the model
   const handleModelChange = async (model) => {
+    // If user tries to pick Complex from the model selector manually
+    // but isn't unlocked => show alert
     if (!isUnlocked && model !== 'claude-3-haiku-20240307') {
       Alert.alert(
         'Unlock Required',
@@ -317,25 +314,177 @@ const FeaturesScreen = () => {
     }
   };
 
+  // Main logic for changing the scanning mode
   const handleModeChange = async (mode) => {
-    // Modified condition to check for access based on isUnlocked
-    if (mode === 'accurate' && !isUnlocked) {
-      Alert.alert(
-        'Limited Access',
-        'Upgrade to MacroScan Unlimited to unlock Accurate Mode.'
-      );
-      return; // Added return to prevent mode change
-    }
     try {
-      await AsyncStorage.setItem('selectedMode', mode);
-      setSelectedMode(mode);
-      Haptics.selectionAsync();
+      if (mode === 'accurate') {
+        if (isUnlocked) {
+          // Subscribers get unlimited accurate scans
+          await AsyncStorage.setItem('selectedMode', mode);
+          setSelectedMode(mode);
+          // Force complex model too
+          await forceComplexModel();
+          Haptics.selectionAsync();
+        } else {
+          // Free user => check if used up the 1 daily scan
+          const freeAccurateScansUsed = await AsyncStorage.getItem(
+            'freeAccurateScansUsed'
+          );
+          
+          if (freeAccurateScansUsed === '1') {
+            // Already used the free accurate scan
+            Alert.alert(
+              'Daily Limit Reached',
+              'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+            );
+          } else {
+            // Not used yet => show the "make it count" alert
+            Alert.alert(
+              'Heads Up!',
+              'You only get one accurate scan a day on the free plan, so make it count!',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'OK',
+                  onPress: async () => {
+                    // Switch to accurate
+                    await AsyncStorage.setItem('selectedMode', mode);
+                    setSelectedMode(mode);
+                    // Force complex model even on free plan
+                    await forceComplexModel();
+                    Haptics.selectionAsync();
+                  },
+                },
+              ],
+              { cancelable: false }
+            );
+          }
+        }
+      } else {
+        // Fast mode is always allowed
+        await AsyncStorage.setItem('selectedMode', mode);
+        setSelectedMode(mode);
+        Haptics.selectionAsync();
+
+        // If user toggles back to fast mode, force them back to default model.
+        if (selectedModel !== 'claude-3-haiku-20240307') {
+          try {
+            await AsyncStorage.setItem('selectedModel', 'claude-3-haiku-20240307');
+            setSelectedModel('claude-3-haiku-20240307');
+          } catch (error) {
+            console.error('Error setting default model:', error);
+          }
+        }
+      }
     } catch (error) {
-      console.error('Error saving selectedMode:', error);
+      console.error('Error handling mode change:', error);
     }
   };
 
+  // Animate button color & border changes
+  const animateButtonSelection = (mode, selected) => {
+    const duration = 200;
+    Animated.timing(buttonBackgroundColors[mode], {
+      toValue: selected ? 1 : 0,
+      duration,
+      useNativeDriver: false,
+    }).start();
+    Animated.timing(buttonBorderColors[mode], {
+      toValue: selected ? 1 : 0,
+      duration,
+      useNativeDriver: false,
+    }).start();
+  };
+
+  const toggleModelSelector = useCallback(() => {
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+  }, []);
+
+  // Render a single mode button (fast or accurate)
+  const renderScanModeButton = (mode, icon, title, description) => {
+    const scaleValue = scaleValues[mode];
+    const backgroundColor = buttonBackgroundColors[mode].interpolate({
+      inputRange: [0, 1],
+      outputRange: [
+        colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+        colorScheme === 'dark' ? '#2c2c2e' : '#e5e5e5',
+      ],
+    });
+    const borderColor = buttonBorderColors[mode].interpolate({
+      inputRange: [0, 1],
+      outputRange: [
+        'transparent',
+        colorScheme === 'dark' ? '#5c5c5e' : '#d5d5d5',
+      ],
+    });
+
+    const handlePressIn = () => {
+      Animated.spring(scaleValue, {
+        toValue: 0.97,
+        useNativeDriver: false,
+      }).start();
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    };
+
+    const handlePressOut = () => {
+      Animated.spring(scaleValue, {
+        toValue: 1,
+        friction: 3,
+        tension: 40,
+        useNativeDriver: false,
+      }).start();
+      // Actually change the mode on release
+      handleModeChange(mode);
+
+      // Switch animations for the selected/deselected states
+      Object.keys(buttonBackgroundColors).forEach((m) => {
+        animateButtonSelection(m, m === mode);
+      });
+    };
+
+    return (
+      <TouchableWithoutFeedback
+        key={mode}
+        onPressIn={handlePressIn}
+        onPressOut={handlePressOut}
+      >
+        <Animated.View
+          style={[
+            styles.modeButton,
+            {
+              backgroundColor,
+              borderColor,
+              transform: [{ scale: scaleValue }],
+            },
+          ]}
+        >
+          <View style={styles.modeButtonContent}>
+            <View style={styles.modeIconContainer}>
+              <Ionicons
+                name={icon}
+                size={24}
+                color={colorScheme === 'dark' ? '#FFF' : '#000'}
+              />
+            </View>
+            <View style={styles.modeTextContainer}>
+              <Text style={styles.modeButtonTitle}>{title}</Text>
+              <Text style={styles.modeButtonDescription}>{description}</Text>
+            </View>
+          </View>
+        </Animated.View>
+      </TouchableWithoutFeedback>
+    );
+  };
+
+  // iOS ActionSheet for picking the model OR Android picker modal
   const handleModelSelectorPress = () => {
+    if (selectedMode === 'accurate') {
+      Alert.alert(
+        'Sorry!',
+        'Accurate mode is a beta feature and currently only acheives 90% accuracy using the Complex Processing model.'
+      );
+      return;
+    }
     if (Platform.OS === 'ios') {
       const options = Object.entries(models).map(([key, value]) => ({
         key,
@@ -372,97 +521,7 @@ const FeaturesScreen = () => {
     }
   };
 
-  const animateButtonSelection = (mode, selected) => {
-    const duration = 200;
-    // Animate background color
-    Animated.timing(buttonBackgroundColors[mode], {
-      toValue: selected ? 1 : 0,
-      duration,
-      useNativeDriver: false,
-    }).start();
-    // Animate border color
-    Animated.timing(buttonBorderColors[mode], {
-      toValue: selected ? 1 : 0,
-      duration,
-      useNativeDriver: false,
-    }).start();
-  };
-
-  const toggleModelSelector = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-    // This function is no longer used as model selector is handled differently
-  }, []);
-
-  const renderScanModeButton = (mode, icon, title, description) => {
-    const scaleValue = scaleValues[mode];
-    const backgroundColor = buttonBackgroundColors[mode].interpolate({
-      inputRange: [0, 1],
-      outputRange: [
-        colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-        colorScheme === 'dark' ? '#2c2c2e' : '#e5e5e5',
-      ],
-    });
-    const borderColor = buttonBorderColors[mode].interpolate({
-      inputRange: [0, 1],
-      outputRange: [
-        'transparent',
-        colorScheme === 'dark' ? '#5c5c5e' : '#d5d5d5',
-      ],
-    });
-    const handlePressIn = () => {
-      Animated.spring(scaleValue, {
-        toValue: 0.97,
-        useNativeDriver: false,
-      }).start();
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-    };
-    const handlePressOut = () => {
-      Animated.spring(scaleValue, {
-        toValue: 1,
-        friction: 3,
-        tension: 40,
-        useNativeDriver: false,
-      }).start();
-      handleModeChange(mode);
-      Object.keys(buttonBackgroundColors).forEach((m) => {
-        animateButtonSelection(m, m === mode);
-      });
-    };
-    return (
-      <TouchableWithoutFeedback
-        key={mode}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
-      >
-        <Animated.View
-          style={[
-            styles.modeButton,
-            {
-              backgroundColor,
-              borderColor,
-              transform: [{ scale: scaleValue }],
-            },
-          ]}
-        >
-          <View style={styles.modeButtonContent}>
-            <View style={styles.modeIconContainer}>
-              <Ionicons
-                name={icon}
-                size={24}
-                color={colorScheme === 'dark' ? '#FFF' : '#000'}
-              />
-            </View>
-            <View style={styles.modeTextContainer}>
-              <Text style={styles.modeButtonTitle}>{title}</Text>
-              <Text style={styles.modeButtonDescription}>{description}</Text>
-            </View>
-          </View>
-        </Animated.View>
-      </TouchableWithoutFeedback>
-    );
-  };
-
-  // Android Picker Modal
+  // Android modal
   const AndroidPickerModal = () => (
     <Modal
       visible={showAndroidPicker}
@@ -532,6 +591,7 @@ const FeaturesScreen = () => {
     </Modal>
   );
 
+  // Tutorial slides
   const renderTutorialItem = ({ item, index }) => (
     <View style={styles.tutorialPage}>
       <View style={styles.tutorialInnerContent}>
@@ -546,7 +606,14 @@ const FeaturesScreen = () => {
         </View>
         <Text style={styles.tutorialTitle}>{item.title}</Text>
         {item.isBeta && (
-          <TouchableOpacity onPress={showBetaAlert}>
+          <TouchableOpacity
+            onPress={() => {
+              Alert.alert(
+                'Beta Feature',
+                'Accurate mode is a beta feature, so occasionally it may produce unexpected results.'
+              );
+            }}
+          >
             <View style={styles.betaContainer}>
               <Text style={styles.betaTag}>BETA</Text>
             </View>
@@ -561,6 +628,7 @@ const FeaturesScreen = () => {
     </View>
   );
 
+  // Slide animation
   const handleScroll = (event) => {
     const newIndex = Math.round(
       event.nativeEvent.contentOffset.x / width
@@ -581,16 +649,14 @@ const FeaturesScreen = () => {
           <View style={styles.tutorialContainer}>
             <View style={styles.tutorialContent}>
               <FlatList
+                ref={flatListRef}
                 data={tutorialData}
                 renderItem={renderTutorialItem}
                 horizontal
                 pagingEnabled
                 showsHorizontalScrollIndicator={false}
                 keyExtractor={(item) => item.key}
-                scrollEnabled={true}
-                extraData={tutorialIndex}
                 onMomentumScrollEnd={handleScroll}
-                ref={flatListRef}
                 style={styles.flatList}
                 contentContainerStyle={styles.flatListContent}
                 onViewableItemsChanged={onViewableItemsChanged}
@@ -618,7 +684,7 @@ const FeaturesScreen = () => {
                   if (currentTutorialIndex < tutorialData.length - 1) {
                     const nextIndex = currentTutorialIndex + 1;
                     setTutorialIndex(nextIndex);
-                    flatListRef.current.scrollToIndex({ index: nextIndex });
+                    flatListRef.current?.scrollToIndex({ index: nextIndex });
                   } else {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                     dismissTutorial();
@@ -635,9 +701,9 @@ const FeaturesScreen = () => {
           </View>
         </Animated.View>
       )}
+
       {/* Header with Back Button and Title */}
       <View style={styles.header}>
-        {/* Left Section */}
         <View style={styles.headerLeft}>
           <TouchableOpacity
             style={styles.backButton}
@@ -650,32 +716,30 @@ const FeaturesScreen = () => {
             />
           </TouchableOpacity>
         </View>
-        {/* Center Section */}
         <View style={styles.headerCenter}>
           <TouchableOpacity onPress={handleTitlePress}>
             <Text style={styles.title}>Scanner Settings</Text>
           </TouchableOpacity>
         </View>
-        {/* Right Section (Empty Placeholder) */}
         <View style={styles.headerRight} />
       </View>
+
       <ScrollView style={styles.container}>
         <Text style={styles.sectionDescription}>
-          Choose between quick results or detailed analysis. Switch anytime
-          based on your needs!
+          Choose between quick results (Fast Mode) or detailed analysis (Accurate Mode).
         </Text>
         <View style={styles.modeButtonsContainer}>
           {renderScanModeButton(
             'fast',
             'flash',
             'Default Mode',
-            'Instant results • Great for packaged foods • Quick tracking'
+            'Instant results • Good for packaged foods • Quick tracking'
           )}
           {renderScanModeButton(
             'accurate',
             'shield-checkmark',
             'Accurate Mode',
-            'Detailed analysis • Best for homemade meals • Highly accurate'
+            'Detailed analysis • Best for homemade meals • Uses Complex Reasoning',
           )}
         </View>
         <View style={styles.separator} />
@@ -685,28 +749,40 @@ const FeaturesScreen = () => {
           onPress={handleModelSelectorPress}
         >
           <View style={styles.modelSelectorButtonContent}>
-            <View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={styles.modelSelectorLabel}>
                 Processing Model
               </Text>
+              {(selectedMode === 'accurate' &&
+                selectedModel === 'claude-3-5-sonnet-20240620') && (
+                <Ionicons
+                  name="lock-closed"
+                  size={16}
+                  color={colorScheme === 'dark' ? '#666' : '#000'}
+                  style={{ marginLeft: 5 }}
+                />
+              )}
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={styles.modelSelectorValue}>
                 {models[selectedModel]}
               </Text>
+              <Ionicons
+                name="chevron-down"
+                size={24}
+                color={colorScheme === 'dark' ? '#FFF' : '#000'}
+              />
             </View>
-            <Ionicons
-              name="chevron-down"
-              size={24}
-              color={colorScheme === 'dark' ? '#FFF' : '#000'}
-            />
           </View>
         </TouchableOpacity>
-        {/* Tip Description moved closer */}
+
         <Text style={styles.bottomNote}>
-          💡 Tip: Default Mode provides quick results for common foods. Use Accurate
-          Mode for complex or homemade meals to get precise nutritional
-          information.
+          💡 Tip: Fast Mode is great for quick checks. Use Accurate Mode for 
+          complex meals. Free users get only 1 accurate scan per day. 
+          (Accurate Mode automatically uses Complex Processing in the background.)
         </Text>
       </ScrollView>
+
       {Platform.OS === 'android' && <AndroidPickerModal />}
     </SafeAreaView>
   );
@@ -724,13 +800,13 @@ const getDynamicStyles = (colorScheme) => {
     header: {
       flexDirection: 'row',
       alignItems: 'center',
-      justifyContent: 'space-between', // Distribute space evenly
+      justifyContent: 'space-between',
       marginTop: isIphoneSE() ? '5%' : '2%',
       paddingHorizontal: '5%',
-      height: 60, // Optional: Set a fixed height for consistency
+      height: 60,
     },
     headerLeft: {
-      width: 50, // Fixed width to balance the center
+      width: 50,
       alignItems: 'flex-start',
     },
     headerCenter: {
@@ -738,14 +814,13 @@ const getDynamicStyles = (colorScheme) => {
       alignItems: 'center',
     },
     headerRight: {
-      width: 50, // Same width as headerLeft to balance
+      width: 50,
       alignItems: 'flex-end',
     },
     backButton: {
       backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
       borderRadius: 140,
       padding: 10,
-      // Removed marginRight
       borderWidth: 2,
       borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
     },
@@ -754,15 +829,11 @@ const getDynamicStyles = (colorScheme) => {
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
     },
-    content: {
-      marginTop: '2%',
-      marginBottom: '20%',
-    },
     sectionDescription: {
       fontSize: 14,
       color: colorScheme === 'dark' ? '#999' : '#666',
       marginBottom: 15,
-      textAlign: 'center', // Center align text
+      textAlign: 'center',
     },
     modeButtonsContainer: {
       marginTop: 15,
@@ -821,20 +892,20 @@ const getDynamicStyles = (colorScheme) => {
     },
     modelSelectorValue: {
       fontSize: 16,
-      fontWeight: '600',
+      fontWeight: '500',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
       marginTop: 2,
+      marginRight: 5,
     },
     bottomNote: {
       fontSize: 14,
       color: colorScheme === 'dark' ? '#999' : '#666',
       textAlign: 'center',
-      marginTop: 10, // Reduced margin to bring it closer
+      marginTop: 10,
       marginBottom: 30,
       paddingHorizontal: '5%',
       fontStyle: 'italic',
     },
-    // New styles for the picker modal
     modalContainer: {
       flex: 1,
       justifyContent: 'flex-end',
@@ -857,7 +928,7 @@ const getDynamicStyles = (colorScheme) => {
       fontSize: 16,
       fontWeight: '600',
     },
-    // Tutorial Overlay Styles
+    // Tutorial overlay
     tutorialOverlay: {
       ...StyleSheet.absoluteFillObject,
       backgroundColor: 'transparent',
@@ -889,7 +960,7 @@ const getDynamicStyles = (colorScheme) => {
     },
     tutorialInnerContent: {
       alignItems: 'center',
-      marginTop: 50, // Move the icon and text down
+      marginTop: 50,
     },
     tutorialIconContainer: {
       marginBottom: 30,
