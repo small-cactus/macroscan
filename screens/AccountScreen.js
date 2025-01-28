@@ -202,7 +202,7 @@ export default function AccountScreen() {
               }
             } else {
               // Handle error in receipt validation
-              console.error('Receipt validation failed:', data.message);
+              console.log('Receipt validation failed:', data.message);
               Alert.alert(
                 'Subscription Check Error',
                 data.message || 'Failed to verify subscription status.'

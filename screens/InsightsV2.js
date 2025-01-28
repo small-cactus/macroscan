@@ -120,19 +120,12 @@ const AnimatedBar = ({
   const showTooltip = exceedsGoal && isTodayBar && realDifference >= 15;
 
   // For the label pinned at top of bar:
-  // If it's under 100% show e.g. "75%", if it's between 100–114, show "✅", if >= 115, show "❗"
+  // Show the actual percentage regardless of whether it's over 100%
   let computedPercentage = 0;
   if (value > 0 && maxValue > 0) {
     computedPercentage = Math.round((value / maxValue) * 100);
   }
-  let percentString = '';
-  if (computedPercentage < 100) {
-    percentString = `${computedPercentage}%`;
-  } else if (computedPercentage <= 114) {
-    percentString = '✅';
-  } else {
-    percentString = '❗';
-  }
+  let percentString = `${computedPercentage}%`;
 
   const hasData = value > 0 && maxValue > 0;
 
@@ -238,58 +231,6 @@ const InsightsV2 = () => {
     activityLevel: '',
     goal: 'Maintain Weight',
   });
-
-  // Validation function for onboarding steps
-  const isCurrentStepValid = () => {
-    const currentStep = onboardingData[currentOnboardingIndex];
-    const data = onboardingDataCollected;
-    
-    if (currentOnboardingIndex === 0) {
-      // Welcome screen, always valid
-      return true;
-    }
-
-    if (currentStep.field === 'height') {
-      if (data.unit === 'imperial') {
-        const feet = parseFloat(data.heightFeet);
-        const inches = parseFloat(data.heightInches);
-        return !isNaN(feet) && !isNaN(inches) && feet > 0 && inches >= 0 && inches < 12;
-      } else {
-        const height = parseFloat(data.height);
-        return !isNaN(height) && height > 0;
-      }
-    }
-
-    if (currentStep.field === 'weight') {
-      const weight = parseFloat(data.weight);
-      return !isNaN(weight) && weight > 0;
-    }
-
-    if (currentStep.field === 'age') {
-      const age = parseInt(data.age);
-      return !isNaN(age) && age > 0 && age < 120;
-    }
-
-    if (currentStep.field === 'gender') {
-      return !!data.gender;
-    }
-
-    if (currentStep.field === 'activityLevel') {
-      return !!data.activityLevel;
-    }
-
-    if (currentStep.field === 'goal') {
-      return !!data.goal;
-    }
-
-    if (currentOnboardingIndex === 7) {
-      // Final goals screen, always valid if we made it here
-      return true;
-    }
-
-    return false;
-  };
-
   const [calculatedGoals, setCalculatedGoals] = useState(null);
   const [goalsAdjustments, setGoalsAdjustments] = useState({
     calories: 0,
@@ -302,12 +243,12 @@ const InsightsV2 = () => {
     {
       key: '1',
       title: 'Welcome to Insights',
-      description: "Let's get to know you better to set up your personalized goals. This is where you'll set your goals and see your progress.",
+      description: "Let's get to know you better to set up your personalized goals.",
       icon: 'stats-chart',
     },
     {
       key: '2',
-      title: "What's your height?",
+      title: 'What is your height?',
       field: 'height',
       icon: 'man-outline',
       description:
@@ -844,10 +785,10 @@ const InsightsV2 = () => {
     itemVisiblePercentThreshold: 50,
   };
 
-  // // 4) Trends
-  // useEffect(() => {
-  //   calculateTrends();
-  // }, [history, goals]);
+  // 4) Trends
+  useEffect(() => {
+    calculateTrends();
+  }, [history, goals]);
 
   const calculateTrends = () => {
     if (!history || history.length === 0) {
@@ -870,7 +811,7 @@ const InsightsV2 = () => {
       return itemDate >= startPreviousRange && itemDate < startCurrentRange;
     });
 
-    const newTrends = [];
+    const trendInsights = [];
     macros.forEach(macro => {
       const last7Sum = last7DaysItems.reduce(
         (sum, item) => sum + (item.nutrients?.[macro]?.amount || 0),
@@ -880,25 +821,70 @@ const InsightsV2 = () => {
         (sum, item) => sum + (item.nutrients?.[macro]?.amount || 0),
         0
       );
+
+      // Skip if no data in both weeks
       if (previous7Sum === 0 && last7Sum === 0) return;
+
+      const prettyMacro = macro === 'carbohydrates' ? 'carbs' : macro;
+      const { icon, color } = miniBarConfig[macro];
+
+      // Calculate daily averages
+      const last7Daily = last7Sum / 7;
+      const previous7Daily = previous7Sum / 7;
+      const goalValue = goals?.[macro] || 0;
+
+      let insight = {
+        macro: prettyMacro,
+        icon,
+        color,
+        lastWeekAvg: Math.round(last7Daily),
+        previousWeekAvg: Math.round(previous7Daily),
+        goal: goalValue,
+        changePercent: 0,
+        status: 'neutral',
+        message: '',
+      };
+
+      // First time tracking this macro
       if (previous7Sum === 0 && last7Sum > 0) {
-        newTrends.push(`Big changes for ${macro} compared to last week! Keep it up!`);
-        return;
-      }
-      const diffPercent = ((last7Sum - previous7Sum) / (previous7Sum || 1)) * 100;
-      if (Math.abs(diffPercent) >= 5) {
-        if (diffPercent > 0) {
-          newTrends.push(
-            `You're about ${Math.round(diffPercent)}% more on track with ${macro} than last week. Great job!`
-          );
+        insight.status = 'new';
+        insight.message = `Started tracking ${prettyMacro}`;
+      } else {
+        // Calculate percent change
+        const diffPercent = ((last7Daily - previous7Daily) / (previous7Daily || 1)) * 100;
+        insight.changePercent = Math.round(diffPercent);
+
+        if (Math.abs(diffPercent) >= 5) {
+          if (goalValue > 0) {
+            const lastWeekToGoal = (last7Daily / goalValue) * 100;
+            const prevWeekToGoal = (previous7Daily / goalValue) * 100;
+            
+            // Determine if the change was good or bad relative to the goal
+            if (lastWeekToGoal > prevWeekToGoal && lastWeekToGoal <= 100) {
+              insight.status = 'improved';
+              insight.message = `Getting closer to your ${prettyMacro} goal`;
+            } else if (lastWeekToGoal < prevWeekToGoal && prevWeekToGoal > 100) {
+              insight.status = 'improved';
+              insight.message = `Better control of ${prettyMacro}`;
+            } else if (Math.abs(100 - lastWeekToGoal) > Math.abs(100 - prevWeekToGoal)) {
+              insight.status = 'warning';
+              insight.message = `Moving away from your ${prettyMacro} goal`;
+            }
+          } else {
+            // No goal set, just show the change
+            insight.status = diffPercent > 0 ? 'increased' : 'decreased';
+            insight.message = `${Math.abs(diffPercent)}% ${diffPercent > 0 ? 'increase' : 'decrease'} in ${prettyMacro}`;
+          }
         } else {
-          newTrends.push(
-            `You're about ${Math.round(Math.abs(diffPercent))}% below last week's ${macro}. Keep an eye on this!`
-          );
+          insight.status = 'stable';
+          insight.message = `${prettyMacro} intake is stable`;
         }
       }
+
+      trendInsights.push(insight);
     });
-    setTrends(newTrends);
+
+    setTrends(trendInsights);
   };
 
   // 5) Today's scans
@@ -1450,12 +1436,14 @@ const InsightsV2 = () => {
 
   useEffect(() => {
     if (currentWeekOffset !== 0) {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       Animated.timing(returnButtonOpacity, {
         toValue: 1,
         duration: 500,
         useNativeDriver: true,
       }).start();
     } else {
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       Animated.timing(returnButtonOpacity, {
         toValue: 0,
         duration: 300,
@@ -1474,6 +1462,7 @@ const InsightsV2 = () => {
         <TouchableOpacity
           style={styles.returnButton}
           onPress={async () => {
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
             await Haptics.selectionAsync();
             handleReturnToCurrentWeek();
           }}
@@ -1559,108 +1548,6 @@ const InsightsV2 = () => {
     fats: { icon: 'water', color: '#6495ED' },
   };
 
-  // Add this validation function after the onboardingData array
-  const validateCurrentStep = (index, data) => {
-    const currentStep = onboardingData[index];
-    
-    if (index === 0) {
-      // Welcome screen, always valid
-      return true;
-    }
-
-    if (currentStep.field === 'height') {
-      if (data.unit === 'imperial') {
-        const feet = parseFloat(data.heightFeet);
-        const inches = parseFloat(data.heightInches);
-        return !isNaN(feet) && !isNaN(inches) && feet > 0 && inches >= 0 && inches < 12;
-      } else {
-        const height = parseFloat(data.height);
-        return !isNaN(height) && height > 0;
-      }
-    }
-
-    if (currentStep.field === 'weight') {
-      const weight = parseFloat(data.weight);
-      return !isNaN(weight) && weight > 0;
-    }
-
-    if (currentStep.field === 'age') {
-      const age = parseInt(data.age);
-      return !isNaN(age) && age > 0 && age < 120;
-    }
-
-    if (currentStep.field === 'gender') {
-      return !!data.gender;
-    }
-
-    if (currentStep.field === 'activityLevel') {
-      return !!data.activityLevel;
-    }
-
-    if (currentStep.field === 'goal') {
-      return !!data.goal;
-    }
-
-    if (index === 7) {
-      // Final goals screen, always valid if we made it here
-      return true;
-    }
-
-    return false;
-  };
-
-  // Add this style to the styles object
-  const disabledButton = {
-    opacity: 0.5,
-  };
-
-  // Replace the onboarding footer section with this updated version
-  <View style={styles.onboardingFooter}>
-    <View style={styles.pagination}>
-      {onboardingData.map((_, idx) => (
-        <View
-          key={idx}
-          style={[
-            styles.paginationDot,
-            currentOnboardingIndex === idx
-              ? styles.paginationDotActive
-              : styles.paginationDotInactive,
-          ]}
-        />
-      ))}
-    </View>
-    {currentOnboardingIndex < onboardingData.length - 1 ? (
-      <TouchableOpacity
-        style={[
-          styles.onboardingNextButton,
-          !validateCurrentStep(currentOnboardingIndex, onboardingDataCollected) && disabledButton,
-        ]}
-        disabled={!validateCurrentStep(currentOnboardingIndex, onboardingDataCollected)}
-        onPress={() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-          if (currentOnboardingIndex < onboardingData.length - 1) {
-            const nextIndex = currentOnboardingIndex + 1;
-            setOnboardingIndex(nextIndex);
-            flatListRef.current.scrollToIndex({ index: nextIndex });
-          }
-        }}
-      >
-        <Text style={styles.onboardingButtonText}>Next</Text>
-      </TouchableOpacity>
-    ) : (
-      <TouchableOpacity
-        style={[
-          styles.onboardingNextButton,
-          !validateCurrentStep(currentOnboardingIndex, onboardingDataCollected) && disabledButton,
-        ]}
-        disabled={!validateCurrentStep(currentOnboardingIndex, onboardingDataCollected)}
-        onPress={handleSaveGoalsFromOnboarding}
-      >
-        <Text style={styles.onboardingButtonText}>Finish</Text>
-      </TouchableOpacity>
-    )}
-  </View>
-
   // Finally, conditionally render loading or main UI in ONE return.
   // (So we don't skip hooks if isLoading is true.)
   return (
@@ -1709,11 +1596,7 @@ const InsightsV2 = () => {
                   </View>
                   {currentOnboardingIndex < onboardingData.length - 1 ? (
                     <TouchableOpacity
-                      style={[
-                        styles.onboardingNextButton,
-                        !isCurrentStepValid() && { opacity: 0.5 },
-                      ]}
-                      disabled={!isCurrentStepValid()}
+                      style={styles.onboardingNextButton}
                       onPress={() => {
                         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                         if (currentOnboardingIndex < onboardingData.length - 1) {
@@ -1727,11 +1610,7 @@ const InsightsV2 = () => {
                     </TouchableOpacity>
                   ) : (
                     <TouchableOpacity
-                      style={[
-                        styles.onboardingNextButton,
-                        !isCurrentStepValid() && { opacity: 0.5 },
-                      ]}
-                      disabled={!isCurrentStepValid()}
+                      style={styles.onboardingNextButton}
                       onPress={handleSaveGoalsFromOnboarding}
                     >
                       <Text style={styles.onboardingButtonText}>Finish</Text>
@@ -1744,190 +1623,255 @@ const InsightsV2 = () => {
 
           {renderMacroModal()}
 
-          {/* Header */}
-          <View style={styles.header}>
-            <Text style={styles.title}>Hi, {userName}!</Text>
-            <TouchableOpacity onPress={showBetaAlert}>
-              <View style={styles.betaContainer}>
-                <Text style={styles.betaTag}>BETA</Text>
-              </View>
-            </TouchableOpacity>
-          </View>
-
-          {/* Weekly Scroll */}
-          <View style={styles.weekScrollContainer}>
-            <FlatList
-              data={allOffsets}
-              keyExtractor={item => item.toString()}
-              horizontal
-              pagingEnabled
-              initialScrollIndex={WEEKS_RANGE}
-              getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
-              renderItem={renderWeekItem}
-              showsHorizontalScrollIndicator={false}
-              onScroll={Animated.event(
-                [{ nativeEvent: { contentOffset: { x: scrollX } } }],
-                { useNativeDriver: false }
-              )}
-              onMomentumScrollEnd={e => {
-                const pageIndex = Math.round(e.nativeEvent.contentOffset.x / width);
-                setCurrentWeekOffset(allOffsets[pageIndex]);
-              }}
-              onViewableItemsChanged={onViewableItemsChangedWeekly}
-              viewabilityConfig={viewabilityConfigWeekly}
-              ref={flatListRefWeekly}
-            />
-            {renderReturnButton()}
-          </View>
-
-          {/* Main Content */}
-          <ScrollView style={styles.container} contentContainerStyle={{ paddingBottom: 100 }}>
-            <Animated.View
-              style={[
-                styles.goalsInfoContainer,
-                {
-                  flexDirection: 'row',
-                  justifyContent: 'space-between',
-                  alignItems: 'center',
-                },
-                { transform: [{ translateY: goalsContainerTranslateY }] },
-              ]}
-            >
-              {goals ? (
-                <>
-                  {/* Left side */}
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.goalsInfoTitle}>Today's Progress</Text>
-                    <Text
-                      style={[
-                        styles.bigPercent,
-                        { color: isAnyMacroOverLimit ? '#e34949' : '#007AFF' },
-                      ]}
-                    >
-                      {Number.isNaN(displayPercent) ? '0' : displayPercent}%
-                    </Text>
-                    <Text style={styles.percentSubtext}>of your daily goals</Text>
+          {/* Main ScrollView containing all content */}
+          <ScrollView
+            style={styles.container}
+            contentContainerStyle={{ paddingBottom: 100 }}
+          >
+            <View style={styles.headerContainer}>
+              <View style={styles.header}>
+                <Text style={styles.title}>Hi, {userName}!</Text>
+                <TouchableOpacity onPress={showBetaAlert}>
+                  <View style={styles.betaContainer}>
+                    <Text style={styles.betaTag}>BETA</Text>
                   </View>
-
-                  {/* Right side: mini bar chart */}
-                  <View style={styles.miniBarChartContainer}>
-                    {['calories', 'proteins', 'carbohydrates', 'fats'].map(macro => {
-                      const macroGoal = goals[macro] || 1;
-                      const macroIntake = todaysIntake[macro] || 0;
-                      const isOverGoal = macroIntake > macroGoal;
-                      // We'll still compute the "overPercent" but
-                      // we ensure no tooltip appears by setting isTodayBar={false}.
-                      const overPercent = isOverGoal ? Math.round((macroIntake / macroGoal) * 100) : 0;
-                      const { icon, color } = miniBarConfig[macro];
-                      return (
-                        <View key={macro} style={styles.miniBarItem}>
-                          <AnimatedBar
-                            value={macroIntake}
-                            maxValue={macroGoal}
-                            barColor={color}
-                            exceedsGoal={isOverGoal}
-                            percentageOverGoal={overPercent}
-                            tooltipText={`${overPercent}% over your ${macro} goal`}
-                            // Ensure tooltips never show in this mini chart:
-                            isTodayBar={false}
-                            maxBarHeight={78}
-                          />
-                          <MaterialCommunityIcons
-                            name={icon}
-                            size={24}
-                            color={color}
-                            style={{ marginTop: 4 }}
-                          />
-                        </View>
-                      );
-                    })}
-                  </View>
-                </>
-              ) : (
-                <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#ccc' : '#888'} />
-              )}
-            </Animated.View>
-
-            {/* Over-limit breakdown */}
-            {isAnyMacroOverLimit && (
-              <View style={styles.overLimitContainer}>
-                <Text style={styles.overLimitTitle}>Over the limit!</Text>
-                {overLimitInfo.map(({ macro, overPercent, lastItem }, idx) => {
-                  if (!lastItem) return null;
-                  const itemMacroVal = lastItem.nutrients?.[macro]?.amount || 0;
-                  const prettyMacroName =
-                    macro === 'carbohydrates' ? 'Carbs' : capitalizeFirstLetter(macro);
-
-                  return (
-                    <View key={`${macro}-${idx}`} style={styles.overLimitRow}>
-                      <Text style={styles.overLimitMacro}>
-                        {prettyMacroName} +{overPercent}%
-                      </Text>
-                      <Text style={styles.overLimitFood}>
-                        Last scan:{' '}
-                        <Text style={styles.foodName}>{lastItem.productName}</Text>
-                      </Text>
-                      <Text style={styles.overLimitReason}>
-                        {prettyMacroName}:{' '}
-                        <Text style={styles.highlightMacro}>{itemMacroVal}</Text>
-                      </Text>
-                    </View>
-                  );
-                })}
+                </TouchableOpacity>
               </View>
-            )}
-
-            {/* Trends */}
-            {todaysScansCount > 3 && trends && trends.length > 0 && (
-              <View style={styles.adviceContainer}>
-                <Text style={styles.sectionTitle}>Trends</Text>
-                {trends.map((trend, idx) => (
-                  <Text key={idx} style={styles.adviceText}>
-                    {trend}
-                  </Text>
-                ))}
-              </View>
-            )}
-
-            {/* Single FAQ Accordion */}
-            <View style={styles.faqContainer}>
-              <TouchableOpacity style={styles.faqTitleContainer} onPress={toggleFaq}>
-                <Ionicons
-                  name={faqOpen ? 'chevron-up' : 'chevron-down'}
-                  size={24}
-                  color={colorScheme === 'dark' ? '#FFF' : '#000'}
-                />
-                <Text style={styles.faqTitle}>
-                  Why do the bar chart and Today's Progress show different percentages?
-                </Text>
-              </TouchableOpacity>
-              {faqOpen && (
-                <AnimatedAnswer
-                  text="Today's Progress averages each macro's percentage (with adjustments if over 100%), while the bar chart compares total macros to their goals. This creates different percentages: the bar chart is technically more accurate, but 'Today's Progress' better reflects your effort."
-                  colorScheme={colorScheme}
-                />
-              )}
+              <LinearGradient
+                colors={
+                  colorScheme === 'dark'
+                    ? ['rgba(0, 0, 0, 1)', 'rgba(0, 0, 0, 0)']
+                    : ['rgba(255, 255, 255, 1)', 'rgba(255, 255, 255, 0)']
+                }
+                style={{
+                  position: 'absolute',
+                  top: 89.4,
+                  left: 0,
+                  right: 0,
+                  height: 0,
+                  zIndex: 1000,
+                }}
+              />
             </View>
 
-            {/* Disclaimer */}
-            <View style={styles.disclaimerContainer}>
-<Text style={styles.disclaimerText}>
-  Your data is stored locally and is not shared. Learn more about BMI{' '}
-  <Text
-    style={styles.linkText}
-    onPress={() => Linking.openURL('https://en.wikipedia.org/wiki/Body_mass_index')}
-  >
-    here
-  </Text>
-  {' '}and BMR{' '}
-  <Text
-    style={styles.linkText}
-    onPress={() => Linking.openURL('https://en.wikipedia.org/wiki/Basal_metabolic_rate')}
-  >
-    here
-  </Text>
-  .
-</Text>
+            {/* Weekly Scroll */}
+            <View style={styles.weekScrollContainer}>
+              <FlatList
+                data={allOffsets}
+                keyExtractor={item => item.toString()}
+                horizontal
+                pagingEnabled
+                initialScrollIndex={WEEKS_RANGE}
+                getItemLayout={(_, index) => ({ length: width, offset: width * index, index })}
+                renderItem={renderWeekItem}
+                showsHorizontalScrollIndicator={false}
+                onScroll={Animated.event(
+                  [{ nativeEvent: { contentOffset: { x: scrollX } } }],
+                  { useNativeDriver: false }
+                )}
+                onMomentumScrollEnd={e => {
+                  const pageIndex = Math.round(e.nativeEvent.contentOffset.x / width);
+                  setCurrentWeekOffset(allOffsets[pageIndex]);
+                }}
+                onViewableItemsChanged={onViewableItemsChangedWeekly}
+                viewabilityConfig={viewabilityConfigWeekly}
+                ref={flatListRefWeekly}
+                nestedScrollEnabled={true}
+              />
+              {renderReturnButton()}
+            </View>
+
+            {/* Content below graph with padding */}
+            <View style={styles.contentContainer}>
+              {/* Goals Info Container */}
+              <Animated.View
+                style={[
+                  styles.goalsInfoContainer,
+                  {
+                    flexDirection: 'row',
+                    justifyContent: 'space-between',
+                    alignItems: 'center',
+                  },
+                  { transform: [{ translateY: goalsContainerTranslateY }] },
+                ]}
+              >
+                {goals ? (
+                  <>
+                    {/* Left side */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={styles.goalsInfoTitle}>Today's Progress</Text>
+                      <Text
+                        style={[
+                          styles.bigPercent,
+                          { color: isAnyMacroOverLimit ? '#e34949' : '#007AFF' },
+                        ]}
+                      >
+                        {Number.isNaN(displayPercent) ? '0' : displayPercent}%
+                      </Text>
+                      <Text style={styles.percentSubtext}>of your daily goals</Text>
+                    </View>
+
+                    {/* Right side: mini bar chart */}
+                    <View style={styles.miniBarChartContainer}>
+                      {['calories', 'proteins', 'carbohydrates', 'fats'].map(macro => {
+                        const macroGoal = goals[macro] || 1;
+                        const macroIntake = todaysIntake[macro] || 0;
+                        const isOverGoal = macroIntake > macroGoal;
+                        const overPercent = isOverGoal ? Math.round((macroIntake / macroGoal) * 100) : 0;
+                        const { icon, color } = miniBarConfig[macro];
+                        return (
+                          <View key={macro} style={styles.miniBarItem}>
+                            <AnimatedBar
+                              value={macroIntake}
+                              maxValue={macroGoal}
+                              barColor={color}
+                              exceedsGoal={isOverGoal}
+                              percentageOverGoal={overPercent}
+                              tooltipText={`${overPercent}% over your ${macro} goal`}
+                              isTodayBar={false}
+                              maxBarHeight={78}
+                            />
+                            <MaterialCommunityIcons
+                              name={icon}
+                              size={24}
+                              color={color}
+                              style={{ marginTop: 4 }}
+                            />
+                          </View>
+                        );
+                      })}
+                    </View>
+                  </>
+                ) : (
+                  <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#ccc' : '#888'} />
+                )}
+              </Animated.View>
+
+              {/* Over-limit breakdown */}
+              {isAnyMacroOverLimit && (
+                <View style={styles.overLimitContainer}>
+                  <View style={styles.overLimitHeader}>
+                    <View style={styles.overLimitTitleContainer}>
+                      <Ionicons name="warning" size={24} color={colorScheme === 'dark' ? '#FFD700' : '#FF6B6B'} />
+                      <Text style={styles.overLimitTitle}>Over the limit</Text>
+                    </View>
+                    <Text style={styles.overLimitSubtitle}>These macros exceeded your daily goals</Text>
+                  </View>
+                  {overLimitInfo.map(({ macro, overPercent, lastItem }, idx) => {
+                    if (!lastItem) return null;
+                    const itemMacroVal = lastItem.nutrients?.[macro]?.amount || 0;
+                    const prettyMacroName = macro === 'carbohydrates' ? 'Carbs' : capitalizeFirstLetter(macro);
+                    const { icon, color } = miniBarConfig[macro];
+
+                    return (
+                      <View key={`${macro}-${idx}`} style={styles.overLimitRow}>
+                        <View style={styles.overLimitMacroHeader}>
+                          <View style={[styles.overLimitIconContainer, { backgroundColor: `${color}20` }]}>
+                            <MaterialCommunityIcons name={icon} size={20} color={color} />
+                          </View>
+                          <View style={styles.overLimitMacroInfo}>
+                            <Text style={styles.overLimitMacroName}>{prettyMacroName}</Text>
+                            <Text style={[styles.overLimitPercentage, { color }]}>+{overPercent}% over goal</Text>
+                          </View>
+                        </View>
+                        <View style={styles.overLimitDetail}>
+                          <Text style={styles.overLimitDetailLabel}>Most likely because you ate:</Text>
+                          <View style={styles.overLimitFoodContainer}>
+                            <Text style={styles.overLimitFoodName}>{lastItem.productName}</Text>
+                            <Text style={styles.overLimitMacroValue}>
+                              {itemMacroVal}{macro === 'calories' ? ' kcal' : 'g'}
+                            </Text>
+                          </View>
+                        </View>
+                      </View>
+                    );
+                  })}
+                </View>
+              )}
+
+              {/* Trends */}
+              {todaysScansCount > 3 && trends && trends.length > 0 && (
+                <View style={styles.adviceContainer}>
+                  <View style={styles.adviceHeader}>
+                    <MaterialCommunityIcons name="trending-up" size={24} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+                    <Text style={styles.sectionTitle}>Weekly Trends</Text>
+                  </View>
+                  {trends.map((trend, idx) => (
+                    <View key={idx} style={styles.trendCard}>
+                      <View style={styles.trendIconContainer}>
+                        <View style={[styles.trendIcon, { backgroundColor: `${trend.color}20` }]}>
+                          <MaterialCommunityIcons name={trend.icon} size={20} color={trend.color} />
+                        </View>
+                        <View style={[styles.trendStatusDot, { backgroundColor: getTrendStatusColor(trend.status, colorScheme) }]} />
+                      </View>
+                      <View style={styles.trendContent}>
+                        <View style={styles.trendHeader}>
+                          <Text style={styles.trendMacro}>{capitalizeFirstLetter(trend.macro)}</Text>
+                          {trend.status !== 'new' && (
+                            <View style={[styles.trendChange, { backgroundColor: getTrendStatusColor(trend.status, colorScheme) + '20' }]}>
+                              <Text style={[styles.trendChangeText, { color: getTrendStatusColor(trend.status, colorScheme) }]}>
+                                {trend.changePercent > 0 ? '+' : ''}{trend.changePercent}%
+                              </Text>
+                            </View>
+                          )}
+                        </View>
+                        <Text style={styles.trendMessage}>{trend.message}</Text>
+                        <View style={styles.trendStats}>
+                          <Text style={styles.trendStatsText}>
+                            Last week avg: <Text style={styles.trendStatsValue}>{trend.lastWeekAvg}{trend.macro === 'calories' ? ' kcal' : 'g'}</Text>
+                          </Text>
+                          {trend.goal > 0 && (
+                            <Text style={styles.trendStatsText}>
+                              Goal: <Text style={styles.trendStatsValue}>{trend.goal}{trend.macro === 'calories' ? ' kcal' : 'g'}</Text>
+                            </Text>
+                          )}
+                        </View>
+                      </View>
+                    </View>
+                  ))}
+                </View>
+              )}
+
+              {/* Single FAQ Accordion */}
+              <View style={styles.faqContainer}>
+                <TouchableOpacity style={styles.faqTitleContainer} onPress={toggleFaq}>
+                  <Ionicons
+                    name={faqOpen ? 'chevron-up' : 'chevron-down'}
+                    size={24}
+                    color={colorScheme === 'dark' ? '#FFF' : '#000'}
+                  />
+                  <Text style={styles.faqTitle}>
+                    Why do the bar chart and Today's Progress show different percentages?
+                  </Text>
+                </TouchableOpacity>
+                {faqOpen && (
+                  <AnimatedAnswer
+                    text={'Today\'s Progress averages each macro\'s percentage (with adjustments if over 100%), while the bar chart compares total macros to their goals. This creates different percentages: the bar chart is technically more accurate, but Today\'s Progress better reflects your effort.'}
+                    colorScheme={colorScheme}
+                  />
+                )}
+              </View>
+
+              {/* Disclaimer */}
+              <View style={styles.disclaimerContainer}>
+                <Text style={styles.disclaimerText}>
+                  Your data is stored locally and is not shared. Learn more about BMI{' '}
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => Linking.openURL('https://en.wikipedia.org/wiki/Body_mass_index')}
+                  >
+                    here
+                  </Text>
+                  {' '}and BMR{' '}
+                  <Text
+                    style={styles.linkText}
+                    onPress={() => Linking.openURL('https://en.wikipedia.org/wiki/Basal_metabolic_rate')}
+                  >
+                    here
+                  </Text>
+                  .
+                </Text>
+              </View>
             </View>
           </ScrollView>
         </>
@@ -1947,18 +1891,36 @@ function capitalizeFirstLetter(str) {
 /* -------------------------------------------------------------------------- */
 /*                             getDynamicStyles                                */
 /* -------------------------------------------------------------------------- */
+const getTrendStatusColor = (status, colorScheme) => {
+  const colors = {
+    improved: '#4CAF50',    // Green
+    warning: '#FF9800',     // Orange
+    increased: '#2196F3',   // Blue
+    decreased: '#E91E63',   // Pink
+    neutral: colorScheme === 'dark' ? '#999' : '#666',
+    stable: '#9C27B0',      // Purple
+    new: '#00BCD4',         // Cyan
+  };
+  return colors[status] || colors.neutral;
+};
+
 const getDynamicStyles = colorScheme =>
   StyleSheet.create({
     safeArea: {
       flex: 1,
       backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
+    headerContainer: {
+      position: 'relative',
+      zIndex: 10,
+    },
     header: {
       paddingTop: isIphoneSE() ? 12 : 10,
       paddingBottom: 8,
-      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+      backgroundColor: 'transparent',
       alignItems: 'flex-start',
       marginLeft: 25,
+      zIndex: 10,
     },
     title: {
       fontSize: 32,
@@ -1967,17 +1929,23 @@ const getDynamicStyles = colorScheme =>
     },
     container: {
       flex: 1,
-      paddingHorizontal: 20,
+      paddingHorizontal: 0, // Remove horizontal padding from main container
     },
     weekScrollContainer: {
       height: 300,
       backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
       position: 'relative',
       paddingBottom: 50,
+      marginBottom: 20,
+      width: '100%', // Ensure full width
     },
     weekContainer: {
       width,
       alignItems: 'center',
+    },
+    // Add padding to content below the graph
+    contentContainer: {
+      paddingHorizontal: 20,
     },
     dateRangeContainer: {
       flexDirection: 'row',
@@ -2028,21 +1996,25 @@ const getDynamicStyles = colorScheme =>
       marginBottom: 8,
     },
     barPercentText: {
-      left: 3.5,
       position: 'absolute',
-      fontSize: 12,
+      fontSize: 11, // Slightly smaller font
       fontWeight: '700',
       marginBottom: 12,
+      textAlign: 'center',
+      width: 40, // Fixed width to match bar width
+      left: -5, // Adjust left position to center the text above the bar
     },
 
     /* Today's Progress */
     goalsInfoContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#1b1b1d' : '#EEE',
-      borderRadius: 15,
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F8F8F8',
+      borderRadius: 20,
       padding: 20,
-      marginTop: 20,
+      marginTop: 0,
       marginBottom: 20,
       minHeight: 170,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#F0F0F0',
     },
     goalsInfoTitle: {
       fontSize: height >= 926 ? 20 : 18,
@@ -2074,58 +2046,182 @@ const getDynamicStyles = colorScheme =>
 
     /* Over-limit breakdown */
     overLimitContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f5cfcf',
-      borderRadius: 15,
-      padding: 15,
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F8F8F8',
+      borderRadius: 20,
+      padding: 20,
       marginBottom: 20,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#F0F0F0',
+    },
+    overLimitHeader: {
+      marginBottom: 16,
+    },
+    overLimitTitleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
     },
     overLimitTitle: {
-      fontSize: 18,
-      color: colorScheme === 'dark' ? '#f88' : '#900',
-      fontWeight: 'bold',
-      marginBottom: 10,
+      fontSize: 20,
+      fontWeight: '700',
+      color: colorScheme === 'dark' ? '#FFD700' : '#FF6B6B',
+      marginLeft: 8,
+    },
+    overLimitSubtitle: {
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      marginLeft: 32,
     },
     overLimitRow: {
-      marginBottom: 10,
+      marginBottom: 16,
+      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFF',
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#F0F0F0',
     },
-    overLimitMacro: {
+    overLimitMacroHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+    },
+    overLimitIconContainer: {
+      width: 36,
+      height: 36,
+      borderRadius: 18,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    overLimitMacroInfo: {
+      flex: 1,
+    },
+    overLimitMacroName: {
       fontSize: 16,
-      color: colorScheme === 'dark' ? '#faa' : '#900',
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      marginBottom: 2,
+    },
+    overLimitPercentage: {
+      fontSize: 14,
       fontWeight: '600',
     },
-    overLimitFood: {
-      fontSize: 14,
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
+    overLimitDetail: {
+      marginLeft: 48,
     },
-    overLimitReason: {
-      fontSize: 14,
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
+    overLimitDetailLabel: {
+      fontSize: 13,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      marginBottom: 6,
     },
-    highlightMacro: {
-      color: 'red',
-      fontWeight: '700',
+    overLimitFoodContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    overLimitFoodName: {
+      fontSize: 15,
+      fontWeight: '500',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      flex: 1,
+      marginRight: 8,
+    },
+    overLimitMacroValue: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
     },
 
     /* Trends & Advice */
     adviceContainer: {
       marginBottom: 30,
       position: 'relative',
-      backgroundColor: colorScheme === 'dark' ? '#1b1b1d' : '#EEE',
-      borderRadius: 15,
-      padding: 15,
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F8F8F8',
+      borderRadius: 20,
+      padding: 20,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#F0F0F0',
+    },
+    adviceHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 16,
     },
     sectionTitle: {
-      fontSize: 18,
+      fontSize: 20,
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      marginBottom: 10,
-      fontWeight: '400',
-      textAlign: 'center',
+      fontWeight: '600',
+      marginLeft: 8,
     },
-    adviceText: {
+    trendCard: {
+      flexDirection: 'row',
+      marginBottom: 16,
+      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFF',
+      borderRadius: 16,
+      padding: 16,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#F0F0F0',
+    },
+    trendIconContainer: {
+      position: 'relative',
+      marginRight: 12,
+    },
+    trendIcon: {
+      width: 40,
+      height: 40,
+      borderRadius: 20,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    trendStatusDot: {
+      width: 12,
+      height: 12,
+      borderRadius: 6,
+      position: 'absolute',
+      bottom: 1,
+      right: -2,
+      borderWidth: 2,
+      borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#F8F8F8',
+    },
+    trendContent: {
+      flex: 1,
+    },
+    trendHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    trendMacro: {
       fontSize: 16,
+      fontWeight: '600',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
-      marginBottom: 10,
-      textAlign: 'center',
+      marginRight: 8,
+    },
+    trendChange: {
+      paddingHorizontal: 8,
+      paddingVertical: 4,
+      borderRadius: 12,
+    },
+    trendChangeText: {
+      fontSize: 13,
+      fontWeight: '600',
+    },
+    trendMessage: {
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#CCC' : '#666',
+      marginBottom: 8,
+    },
+    trendStats: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+    },
+    trendStatsText: {
+      fontSize: 13,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+    },
+    trendStatsValue: {
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      fontWeight: '600',
     },
 
     /* Frequently Consumed */

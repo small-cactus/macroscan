@@ -10,6 +10,7 @@ import {
   Alert,
   Dimensions,
   Platform,
+  Image,
 } from 'react-native';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
@@ -45,6 +46,7 @@ const NoInternetScreen = () => {
   const [isConnected, setIsConnected] = useState(false);
   const [secondsDisconnected, setSecondsDisconnected] = useState(0);
   const fadeAnim = useState(new Animated.Value(0))[0];
+  const [buttonScaleAnim] = useState(new Animated.Value(1));
 
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
@@ -99,8 +101,22 @@ const NoInternetScreen = () => {
     }, [isConnected, navigation])
   );
 
+  const handlePressIn = () => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 0.95,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const handlePressOut = () => {
+    Animated.spring(buttonScaleAnim, {
+      toValue: 1,
+      useNativeDriver: true,
+    }).start();
+  };
+
   const handleRetry = async () => {
-    await Haptics.selectionAsync();
+    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     if (isConnected) {
       navigation.reset({
         index: 0,
@@ -117,69 +133,88 @@ const NoInternetScreen = () => {
 
   return (
     <View style={styles.View}>
-      <View style={styles.logoContainer}>
-        <View style={styles.logoBackground}>
-          <Ionicons
-            name={isConnected ? "cloud-done-outline" : "cloud-offline-outline"}
-            size={125}
-            color={colorScheme === 'dark' ? '#333' : '#DDD'}
-            style={styles.logo}
-          />
-        </View>
-      </View>
-      <Text style={styles.title}>
-        {isConnected ? 'Connection Restored' : 'No Internet Connection'}
-      </Text>
-      <Text style={styles.description}>
-        {isConnected
-          ? 'You are now connected to the internet. Click Go Back to continue using MacroScan!'
-          : 'It seems that you are not connected to the internet. Please check your connection to continue using MacroScan.'}
-      </Text>
-      <View style={styles.container}>
-        <TouchableOpacity
-          style={styles.buttonTouchable}
-          onPress={handleRetry}>
-          <LinearGradient
-            colors={['#101010', '#555']}
-            style={styles.button}
-            start={[1, 1.3]}
-            end={[1, 0]}>
-            <View style={styles.buttonContent}>
-              <Text style={styles.buttonText}>
-                {isConnected ? 'Go Back' : 'Retry'}
-              </Text>
-              <FontAwesome
-                name="arrow-right"
-                size={16}
-                color={colorScheme === 'dark' ? '#d8d8d8' : '#fff'}
-                style={styles.arrowIcon}
+      <View style={styles.contentContainer}>
+        <View style={styles.headerContainer}>
+          <View style={styles.headerContent}>
+            <View style={styles.headerLogo}>
+              <Image 
+                source={require('../assets/icon.png')} 
+                style={{width: 24, height: 24}}
+                resizeMode="contain"
               />
             </View>
-          </LinearGradient>
-        </TouchableOpacity>
-        <TouchableOpacity
-          style={styles.secondaryButtonTouchable}
-          onPress={openSettings}>
-          <View style={styles.secondaryButton}>
-            <View style={styles.buttonContent}>
-              <Text style={styles.secondaryButtonText}>
-                Open Internet Settings
-              </Text>
-              <FontAwesome
-                name="cog"
-                size={16}
-                color={colorScheme === 'dark' ? '#d8d8d8' : '#fff'}
-                style={styles.arrowIcon}
-              />
-            </View>
+            <Text style={styles.headerText}>MacroScan</Text>
           </View>
-        </TouchableOpacity>
+        </View>
+
+        <View style={styles.logoContainer}>
+          <View style={styles.logoBackground}>
+            <Ionicons
+              name={isConnected ? "cloud-done-outline" : "cloud-offline-outline"}
+              size={isIphoneSE() ? 110 : 125}
+              color={colorScheme === 'dark' ? '#333' : '#DDD'}
+              style={styles.logo}
+            />
+          </View>
+        </View>
+
+        <View style={styles.textContainer}>
+          <Text style={styles.title}>
+            {isConnected ? 'Connection Restored' : 'No Internet Connection'}
+          </Text>
+          <Text style={styles.description}>
+            {isConnected
+              ? 'You are now connected to the internet. Click Go Back to continue using MacroScan!'
+              : 'It seems that you are not connected to the internet. Please check your connection to continue using MacroScan.'}
+          </Text>
+        </View>
+
+        <View style={styles.buttonContainer}>
+          <Animated.View style={[
+            styles.buttonTouchable,
+            { transform: [{ scale: buttonScaleAnim }] }
+          ]}>
+            <TouchableOpacity
+              onPress={handleRetry}
+              onPressIn={handlePressIn}
+              onPressOut={handlePressOut}
+            >
+              <LinearGradient
+                colors={colorScheme === 'dark' ? ['#2a2a2a', '#1a1a1a'] : ['#000', '#333']}
+                style={styles.button}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <View style={styles.buttonContent}>
+                  <Text style={styles.buttonText}>
+                    {isConnected ? 'Go Back' : 'Retry'}
+                  </Text>
+                  <FontAwesome
+                    name="arrow-right"
+                    size={16}
+                    color={colorScheme === 'dark' ? '#d8d8d8' : '#fff'}
+                    style={styles.arrowIcon}
+                  />
+                </View>
+              </LinearGradient>
+            </TouchableOpacity>
+          </Animated.View>
+
+          <TouchableOpacity
+            style={styles.secondaryButton}
+            onPress={openSettings}>
+            <Text style={styles.secondaryButtonText}>
+              Open Internet Settings
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        <Animated.View style={[styles.timerContainer, { opacity: fadeAnim }]}>
+          <Text style={styles.timerText}>
+            You've been disconnected for {secondsDisconnected} seconds
+          </Text>
+        </Animated.View>
       </View>
-      <Animated.View style={[styles.timerContainer, { opacity: fadeAnim }]}>
-        <Text style={styles.timerText}>
-          You've been disconnected for {secondsDisconnected} seconds
-        </Text>
-      </Animated.View>
     </View>
   );
 };
@@ -187,100 +222,83 @@ const NoInternetScreen = () => {
 const getDynamicStyles = (colorScheme) =>
   StyleSheet.create({
     View: {
-      flexGrow: 1,
+      flex: 1,
       backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
-    container: {
-      justifyContent: 'center',
+    contentContainer: {
+      flex: 1,
       alignItems: 'center',
-      padding: 0,
-      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+      justifyContent: 'space-between',
+      paddingVertical: Platform.OS === 'ios' ? 60 : 40,
+    },
+    textContainer: {
+      alignItems: 'center',
+      paddingHorizontal: 20,
+    },
+    buttonContainer: {
+      width: '100%',
+      paddingHorizontal: 24,
+      alignItems: 'center',
     },
     logoContainer: {
-      marginTop: isIphoneSE() ? 45 : 100,
       alignItems: 'center',
-      marginBottom: '0%',
+      marginTop: Platform.OS === 'ios' ? 140 : 80,
     },
     logoBackground: {
       backgroundColor: '#FFF',
       borderRadius: 32,
       padding: 0,
-      shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
-      shadowOffset: { width: 0, height: 15 },
-      shadowOpacity: 0.25,
-      shadowRadius: 15.84,
-      elevation: 10,
     },
     logo: {
       alignSelf: 'center',
+      padding: 16,
     },
     title: {
-      fontSize: isIphoneSE() ? 28 : 30,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#fff' : '#333',
+      fontSize: isIphoneSE() ? 25 : 35,
+      fontWeight: '800',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
       textAlign: 'center',
-      marginBottom: 20,
-      marginTop: '5%',
-      zIndex: 1,
+      marginBottom: 16,
+      letterSpacing: -0.5,
+      padding: 4,
     },
     description: {
-      fontSize: 16,
-      color: colorScheme === 'dark' ? '#EEE' : '#666',
+      fontSize: 18,
+      fontWeight: '500',
+      color: colorScheme === 'dark' ? '#999' : '#666',
       textAlign: 'center',
-      marginBottom: '10%',
+      marginBottom: 250,
+      letterSpacing: 0.2,
       paddingHorizontal: '5%',
     },
     buttonTouchable: {
       width: '100%',
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderRadius: 20,
+      maxWidth: 400,
     },
     button: {
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-      borderRadius: 20,
-      borderWidth: 2,
-      borderColor: colorScheme === 'dark' ? '#222' : '#bbb',
-      padding: 12,
-      height: 55,
-      maxHeight: 60,
-      paddingHorizontal: 25,
-      shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.8,
-      shadowRadius: 15,
-      elevation: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
+      borderRadius: 16,
+      padding: 16,
+      width: '100%',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
     },
     buttonText: {
-      color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
-      textAlign: 'center',
+      color: '#fff',
       fontSize: 18,
       fontWeight: '600',
-    },
-    secondaryButtonTouchable: {
-      marginTop: 20,
-      width: '100%',
-      alignItems: 'center',
-      borderRadius: 20,
-      marginBottom: '10%',
+      letterSpacing: 0.3,
     },
     secondaryButton: {
-      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#444',
-      borderRadius: 20,
+      marginTop: 20,
       padding: 12,
-      height: 55,
-      maxHeight: 60,
-      paddingHorizontal: 25,
-      justifyContent: 'center',
-      alignItems: 'center',
     },
     secondaryButtonText: {
-      color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
+      fontSize: 15,
+      color: colorScheme === 'dark' ? '#999' : '#666',
       textAlign: 'center',
-      fontSize: 18,
-      fontWeight: '600',
     },
     buttonContent: {
       flexDirection: 'row',
@@ -291,12 +309,45 @@ const getDynamicStyles = (colorScheme) =>
       marginLeft: 8,
     },
     timerContainer: {
-      marginTop: 20,
+      position: 'absolute',
+      bottom: 20,
       alignItems: 'center',
     },
     timerText: {
-      fontSize: 16,
-      color: colorScheme === 'dark' ? '#CCC' : '#333',
+      fontSize: 15,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+    },
+    headerContainer: {
+      position: 'absolute',
+      top: Platform.OS === 'ios' ? 60 : 40,
+      left: 24,
+      backgroundColor: colorScheme === 'dark' ? '#1a1a1a' : '#f5f5f5',
+      borderRadius: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#e0e0e0',
+      zIndex: 1,
+      alignSelf: 'flex-start',
+    },
+    headerContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    headerLogo: {
+      width: 30,
+      height: 30,
+      borderRadius: 8,
+      backgroundColor: '#fff',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    headerText: {
+      fontSize: 20,
+      fontWeight: '700',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+      marginLeft: 12,
+      letterSpacing: 0.3,
     },
   });
 

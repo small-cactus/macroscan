@@ -552,7 +552,7 @@ const stopLoadingAnimation = () => {
                     isSubscribedPlus = true;
                   }
                 } else {
-                  console.log('Receipt validation failed:', data.message);
+                  console.error('Receipt validation failed:', data.message);
                 }
               } else {
                 const responseText = await response.text();
@@ -694,7 +694,7 @@ const stopLoadingAnimation = () => {
     const contentHeight = event.nativeEvent.contentSize.height;
     const scrollViewHeight = event.nativeEvent.layoutMeasurement.height;
   
-    const shouldShowIndicator = offsetY + scrollViewHeight < contentHeight - 150;
+    const shouldShowIndicator = offsetY + scrollViewHeight < contentHeight - 20;
   
     if (shouldShowIndicator !== showScrollIndicator) {
       setShowScrollIndicator(shouldShowIndicator);
@@ -1865,12 +1865,7 @@ It doesn't matter if the product name is missing, this data is always from the i
   // Update the handleTabPress function
   const handleTabPress = (tab) => {
     if (!isTabsDisabled) {
-      // Configure layout animation
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      
-      // Fade out current tab content
       fadeOutTab(tab);
-      
       // Animate the tab indicator
       const tabIndex = ['Nutrition', 'Ingredients', 'Details'].indexOf(tab);
       Animated.parallel([
@@ -1970,247 +1965,32 @@ It doesn't matter if the product name is missing, this data is always from the i
     </Animated.View>
   );
 
-  // Move animation values to component level
-  const nutrientFadeAnim = useRef(new Animated.Value(0)).current;
-  const nutrientScaleAnim = useRef(new Animated.Value(0.9)).current;
-  const nutrientProgressAnim = useRef(new Animated.Value(0)).current;
+  const renderNutritionTab = () => (
+    <View style={styles.tabContentContainer}>
+      {renderNutrientRow('Calories', foodData.calories)}
+      {renderSeparator()}
+      {renderNutrientRow('Proteins', foodData.proteins)}
+      {renderSeparator()}
+      {renderNutrientRow('Carbohydrates', foodData.carbohydrates)}
+      {renderSeparator()}
+      {renderNutrientRow('Fat', foodData.fats)}
+      {renderSeparator()}
+      {renderNutrientRow('Fiber', foodData.fiber)}
+      {renderSeparator()}
+      {renderNutrientRow('Sodium', foodData.sodium)}
+    </View>
+  );
 
-  // Add new animated values for each card
-  const cardAnimations = useRef([
-    new Animated.Value(0), // calories
-    new Animated.Value(0), // proteins
-    new Animated.Value(0), // carbs
-    new Animated.Value(0), // fats
-    new Animated.Value(0), // fiber
-    new Animated.Value(0)  // sodium
-  ]).current;
-
-  // Add effect to handle nutrient animations
-  useEffect(() => {
-    if (foodData && activeTab === 'Nutrition') {
-      // Animate cards appearing with stagger
-      Animated.stagger(100, 
-        cardAnimations.map(anim =>
-          Animated.spring(anim, {
-            toValue: 1,
-            tension: 50,
-            friction: 7,
-            useNativeDriver: true
-          })
-        )
-      ).start();
-
-      // Animate progress bars
-      Animated.timing(nutrientProgressAnim, {
-        toValue: 1,
-        duration: 800,
-        delay: 200,
-        useNativeDriver: false,
-      }).start();
-    } else {
-      // Reset animations when tab changes or data is cleared
-      cardAnimations.forEach(anim => anim.setValue(0));
-      nutrientProgressAnim.setValue(0);
-    }
-  }, [foodData, activeTab]);
-
-  const macroColors = {
-    Calories: '#FF4500',  // Orange-red
-    Proteins: '#3CB371',  // Medium sea green
-    Carbohydrates: '#FFA500',  // Orange
-    Fats: '#6495ED',  // Cornflower blue
-    Fiber: '#9370DB',  // Medium purple
-    Sodium: '#20B2AA',  // Light sea green
-  };
-
-  const macroIcons = {
-    Calories: 'flame',
-    Proteins: 'barbell-outline',
-    Carbohydrates: 'leaf-outline',
-    Fats: 'water-outline',  // Fixed key name to match the data
-    Fiber: 'nutrition-outline',
-    Sodium: 'medical-outline'  // Changed to a valid icon name
-  };
+  const renderNutrientRow = (label, data) => (
+    <View style={styles.nutrientRow}>
+      <Text style={styles.nutrientLabel}>{label}</Text>
+      <Text style={styles.nutrientValue}>
+        {data.amount} {label === 'Calories' ? 'kcal' : label === 'Sodium' ? 'mg' : 'g'} (±{data.marginOfErrorPercent}%)
+      </Text>
+    </View>
+  );
 
   const renderSeparator = () => <View style={styles.separator} />;
-
-  // Add state for pagination
-  const [activePage, setActivePage] = useState(0);
-  const scrollX = useRef(new Animated.Value(0)).current;
-
-  const renderNutritionTab = () => {
-    if (!foodData) return null;
-    
-    // Filter out non-nutrient keys and split into two pages
-    const nutrients = Object.entries(foodData).filter(([key, data]) => {
-      return data && !['name', 'class', 'type', 'details', 'ingredients'].includes(key);
-    });
-
-    const firstHalf = nutrients.slice(0, 3);
-    const secondHalf = nutrients.slice(3);
-    const pages = [firstHalf, secondHalf];
-
-    const renderPage = (items) => (
-      <View style={styles.macroGridContainer}>
-        {items.map(([key, data], index) => {
-          const label = key.charAt(0).toUpperCase() + key.slice(1);
-          if (!macroColors[label] || !macroIcons[label]) {
-            return null;
-          }
-
-          return (
-            <Animated.View 
-              key={key} 
-              style={[
-                styles.macroCard,
-                {
-                  opacity: cardAnimations[index],
-                  transform: [
-                    {
-                      scale: cardAnimations[index].interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.8, 1],
-                      }),
-                    },
-                    {
-                      translateY: cardAnimations[index].interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [50, 0],
-                      }),
-                    },
-                  ],
-                },
-              ]}
-            >
-              <View style={styles.macroHeaderContainer}>
-                <View style={styles.iconLabelContainer}>
-                  <View style={[styles.iconContainer, { backgroundColor: macroColors[label] }]}>
-                    <Icon name={macroIcons[label]} size={20} color="#FFF" />
-                  </View>
-                  <Text style={styles.macroLabel}>{label}</Text>
-                </View>
-                
-                <View style={styles.macroValueContainer}>
-                  <Text style={styles.macroValue}>
-                    {data.amount}
-                    <Text style={styles.macroUnit}>
-                      {label === 'Calories' ? ' kcal' : label === 'Sodium' ? ' mg' : 'g'}
-                    </Text>
-                  </Text>
-                </View>
-              </View>
-
-              <View style={styles.errorBarContainer}>
-                <View style={[styles.errorBar, { backgroundColor: macroColors[label] + '40' }]}>
-                  <Animated.View 
-                    style={[
-                      styles.errorBarFill,
-                      { 
-                        backgroundColor: macroColors[label],
-                        width: nutrientProgressAnim.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: ['0%', `${100 - (data.marginOfErrorPercent || 0)}%`],
-                        }),
-                      }
-                    ]} 
-                  />
-                </View>
-                <Animated.Text 
-                  style={[
-                    styles.errorText,
-                    {
-                      opacity: cardAnimations[index],
-                    }
-                  ]}
-                >
-                  ±{data.marginOfErrorPercent || 0}%
-                </Animated.Text>
-              </View>
-            </Animated.View>
-          );
-        })}
-      </View>
-    );
-
-    return (
-      <View style={styles.tabContentContainer}>
-        <ScrollView 
-          horizontal 
-          pagingEnabled
-          showsHorizontalScrollIndicator={false}
-          onScroll={(event) => {
-            const offsetX = event.nativeEvent.contentOffset.x;
-            scrollX.setValue(offsetX);
-          }}
-          onMomentumScrollEnd={(event) => {
-            const offsetX = event.nativeEvent.contentOffset.x;
-            const page = Math.round(offsetX / width);
-            setActivePage(page);
-            // Animate to exact position
-            Animated.spring(scrollX, {
-              toValue: page * width,
-              useNativeDriver: false,
-              tension: 50,
-              friction: 7
-            }).start();
-          }}
-          scrollEventThrottle={16}
-        >
-          {pages.map((items, index) => (
-            <View key={index} style={styles.nutrientPage}>
-              {renderPage(items)}
-            </View>
-          ))}
-        </ScrollView>
-
-        <View style={styles.paginationDots}>
-          {pages.map((_, index) => {
-            const inputRange = [
-              (index - 1) * width,
-              index * width,
-              (index + 1) * width,
-            ];
-
-            const dotWidth = scrollX.interpolate({
-              inputRange,
-              outputRange: [8, 16, 8],
-              extrapolate: 'clamp',
-            });
-
-            const opacity = scrollX.interpolate({
-              inputRange,
-              outputRange: [0.5, 1, 0.5],
-              extrapolate: 'clamp',
-            });
-
-            const backgroundColor = scrollX.interpolate({
-              inputRange,
-              outputRange: [
-                colorScheme === 'dark' ? '#444' : '#ccc',
-                colorScheme === 'dark' ? '#fff' : '#000',
-                colorScheme === 'dark' ? '#444' : '#ccc',
-              ],
-              extrapolate: 'clamp',
-            });
-
-            return (
-              <Animated.View
-                key={index}
-                style={[
-                  styles.paginationDot,
-                  {
-                    width: dotWidth,
-                    opacity,
-                    backgroundColor,
-                  },
-                ]}
-              />
-            );
-          })}
-        </View>
-      </View>
-    );
-  };
 
   const renderIngredientsTab = () => (
     <View style={styles.tabContentContainer}>
@@ -2243,45 +2023,12 @@ It doesn't matter if the product name is missing, this data is always from the i
     </View>
   );
 
-  // Add these with other animation refs at component level
-  const buttonPositionAnim = useRef(new Animated.Value(0)).current;
-  const buttonOpacityAnim = useRef(new Animated.Value(1)).current;
-  const floatingButtonOpacityAnim = useRef(new Animated.Value(0)).current;
-
-  // Add this effect to handle button animation timing
-  useEffect(() => {
-    if (foodData) {
-      // Wait 3 seconds before animating
-      const timer = setTimeout(() => {
-        Animated.parallel([
-          // Fade out original buttons
-          Animated.timing(buttonOpacityAnim, {
-        toValue: 0,
-            duration: 300,
-        useNativeDriver: true,
-          }),
-          // Fade in floating buttons
-          Animated.timing(floatingButtonOpacityAnim, {
-            toValue: 1,
-            duration: 300,
-            useNativeDriver: true,
-          }),
-        ]).start();
-      }, 3000);
-
-      return () => clearTimeout(timer);
-    } else {
-      // Reset animations when food data is cleared
-      buttonOpacityAnim.setValue(1);
-      floatingButtonOpacityAnim.setValue(0);
-    }
-  }, [foodData]);
-
-  // Update the renderButtons function
   const renderButtons = () => {
+    // Separate Animated.Values for each button
     const scaleAnimScan = useRef(new Animated.Value(1)).current;
     const scaleAnimChoose = useRef(new Animated.Value(1)).current;
 
+    // Handlers for Scan Meal Button
     const onPressInScan = () => {
       Animated.spring(scaleAnimScan, {
         toValue: 0.95,
@@ -2298,6 +2045,7 @@ It doesn't matter if the product name is missing, this data is always from the i
       }).start();
     };
 
+    // Handlers for Choose Photo Button
     const onPressInChoose = () => {
       Animated.spring(scaleAnimChoose, {
         toValue: 0.95,
@@ -2315,7 +2063,8 @@ It doesn't matter if the product name is missing, this data is always from the i
     };
 
     return (
-      <View style={[styles.buttonContainer, !foodData && styles.buttonContainerNoFood]}>
+      <View style={styles.buttonContainer}>
+        {/* Choose Photo Button */}
         <Pressable
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -2346,7 +2095,8 @@ It doesn't matter if the product name is missing, this data is always from the i
           </Animated.View>
         </Pressable>
 
-        <Pressable
+                {/* Scan Meal Button */}
+                <Pressable
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             takePhoto();
@@ -2538,266 +2288,275 @@ It doesn't matter if the product name is missing, this data is always from the i
 
   return (
     <View style={styles.container}>
-      <AnimatedTextFoodScan
-        text={
-          foodData
-            ? foodData.name.length > 23
-              ? foodData.name.slice(0, 23) + '...'
-              : foodData.name
-            : noFoodFound
-            ? 'No Food Found'
-            : ErrorOccured
-            ? "Couldn't Process"
-            : 'No Image Selected'
-        }
-        colorScheme={colorScheme}
-        style={styles.title}
-      />
-      <AnimatedTextFoodScan
-        text={
-          foodData
-            ? `${foodData.class} • ${foodData.type}`
-            : ErrorOccured
-            ? 'Something went wrong, please try again'
-            : 'Take clear, centered, and level photos.'
-        }
-        colorScheme={colorScheme}
-        style={styles.subtitle}
-      />
-      <View style={styles.mainContentContainer}>
-        <View style={styles.imageContainer}>
-          {showPlaceholder ? (
-            <Animated.View
-              style={[
-                styles.placeholderContainer,
-                { opacity: fadeAnimPlaceholder }
-              ]}
-            >
-              <Text style={styles.placeholderText}>You haven't scanned anything yet</Text>
-            </Animated.View>
-          ) : (
-            <View style={styles.imageWrapper}>
-              <Animated.Image
-                source={{ uri: image }}
-                style={[styles.foodImage, { opacity: fadeAnimImage }]}
-              />
-              {hadBarcode && (
-                <TouchableOpacity 
-                  style={styles.barcodeIconContainer}
-                  onPress={() => {
-                    Alert.alert(
-                      "Barcode Detected",
-                      "This scan's results were enhanced using barcode data for improved accuracy.",
-                      [{ text: "OK" }]
-                    );
-                  }}
-                >
-                  <MaterialCommunityIcons 
-                    name="barcode-scan" 
-                    size={30} 
-                    color="#fff" 
-                  />
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
-          <View style={styles.controlsOverlay}>
-            <TouchableOpacity
-              style={styles.chipContainer}
-              onPress={() => {
-                let message = '';
-                if (selectedMode === 'accurate') {
-                  if (isFirstDayUnlimited || isSubscribed) {
-                    message = 'Accurate Scans: ∞ (Unlimited Plan)';
-                  } else if (isSubscribedPlus) {
-                    message = `Plus plan: ${20 - scanCount} total scans left. (Accurate scans are unlimited)`;
-                  } else {
-                    message = `Accurate Scans Left Today: ${Math.max(0, 1 - freeAccurateScansUsed)}`;
-                  }
+  <AnimatedTextFoodScan
+    text={
+      foodData
+        ? foodData.name.length > 23
+          ? foodData.name.slice(0, 23) + '...'
+          : foodData.name
+        : noFoodFound
+        ? 'No Food Found'
+        : ErrorOccured
+        ? "Couldn't Process"
+        : 'No Image Selected'
+    }
+    colorScheme={colorScheme}
+    style={styles.title}
+  />
+  <AnimatedTextFoodScan
+    text={
+      foodData
+        ? `${foodData.class} • ${foodData.type}`
+        : ErrorOccured
+        ? 'Something went wrong, please try again'
+        : 'Take clear, centered, and level photos.'
+    }
+    colorScheme={colorScheme}
+    style={styles.subtitle}
+  />
+      <View style={styles.imageContainer}>
+        <View style={styles.controlsOverlay}>
+          <TouchableOpacity
+            style={styles.chipContainer}
+            onPress={() => {
+              let message = '';
+              if (selectedMode === 'accurate') {
+                if (isFirstDayUnlimited || isSubscribed) {
+                  message = 'Accurate Scans: ∞ (Unlimited Plan)';
+                } else if (isSubscribedPlus) {
+                  message = `Plus plan: ${20 - scanCount} total scans left. (Accurate scans are unlimited)`;
                 } else {
-                  if (isFirstDayUnlimited || isSubscribed) {
-                    message = isSubscribed 
-                      ? "You have unlimited scans because you're subscribed."
-                      : "You have unlimited scans because today is your first day using the app.";
-                  } else if (isSubscribedPlus) {
-                    message = `You have used ${scanCount} of 20 scans today.`;
-                  } else {
-                    message = `You have used ${scanCount} of 5 scans today.`;
-                  }
+                  message = `Accurate Scans Left Today: ${Math.max(0, 1 - freeAccurateScansUsed)}`;
                 }
-                Alert.alert("Scan Limit", message);
-              }}
-            >
-              <BlurView
-                intensity={50}
-                tint={colorScheme === 'dark' ? 'dark' : 'light'}
-                style={styles.chip}
-              >
-                <View style={styles.chipContent}>
-                  <Text style={[styles.chipLabel, { color: colorScheme === 'dark' ? '#fff' : '#000' }]}>Scans:</Text>
-                  {isFirstDayUnlimited || isSubscribed ? (
-                    <FontAwesomeIcon
-                      icon={faInfinity}
-                      size={18}
-                      color={colorScheme === 'dark' ? '#fff' : '#000'}
-                    />
-                  ) : (
-                    <Text style={[styles.chipText, { color: colorScheme === 'dark' ? '#fff' : '#000' }]}>
-                      {selectedMode === 'accurate' 
-                        ? Math.max(0, 1 - freeAccurateScansUsed)
-                        : isSubscribedPlus 
-                          ? (20 - scanCount) 
-                          : (5 - scanCount)}
-                    </Text>
-                  )}
-                </View>
-              </BlurView>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              style={styles.chipContainer} 
-              onPress={handleModeChipPress}
-            >
-              <BlurView
-                intensity={selectedMode === 'accurate' ? 50 : 50}
-                tint={colorScheme === 'dark' ? 'dark' : 'light'}
-                style={[
-                  styles.chip,
-                  selectedMode === 'accurate' && styles.chipAccurate
-                ]}
-              >
-                <View style={styles.chipContent}>
-                  <Icon 
-                    name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
-                    size={16} 
-                    color={colorScheme === 'dark' ? '#fff' : '#000'} 
-                  />
-                  <Animated.Text style={[
-                    styles.chipText, 
-                    { 
-                      opacity: chipTextOpacity,
-                      color: colorScheme === 'dark' ? '#fff' : '#000'
-                    }
-                  ]}>
-                    {selectedMode === 'fast' ? 'Fast' : 'Accurate'}
-                  </Animated.Text>
-                </View>
-              </BlurView>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <View style={styles.tabContainer}>
-          {/* Add the sliding indicator */}
-          {!isTabsDisabled && (
-            <Animated.View
-              style={[
-                styles.tabIndicator,
-                {
-                  transform: [{
-                    translateX: tabIndicatorAnim.interpolate({
-                      inputRange: [0, 1, 2],
-                      outputRange: [width * 0.05, width * 0.36, width * 0.67], // Adjusted positions
-                    })
-                  }],
-                  width: 90, // Fixed width for the indicator
-                  opacity: isTabsDisabled ? 0 : 1,
+              } else {
+                if (isFirstDayUnlimited || isSubscribed) {
+                  message = isSubscribed 
+                    ? "You have unlimited scans because you're subscribed."
+                    : "You have unlimited scans because today is your first day using the app.";
+                } else if (isSubscribedPlus) {
+                  message = `You have used ${scanCount} of 20 scans today.`;
+                } else {
+                  message = `You have used ${scanCount} of 5 scans today.`;
                 }
-              ]}
-            />
-          )}
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === 'Nutrition' && styles.activeTabButton,
-              isTabsDisabled && styles.disabledTabButton
-            ]}
-            onPress={() => handleTabPress('Nutrition')}
-            disabled={isTabsDisabled}
-          >
-            <Text style={[
-              styles.tabButtonText,
-              activeTab === 'Nutrition' && styles.activeTabButtonText,
-              isTabsDisabled && styles.disabledTabButtonText
-            ]}>Nutrition</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === 'Ingredients' && styles.activeTabButton,
-              isTabsDisabled && styles.disabledTabButton
-            ]}
-            onPress={() => handleTabPress('Ingredients')}
-            disabled={isTabsDisabled}
-          >
-            <Text style={[
-              styles.tabButtonText,
-              activeTab === 'Ingredients' && styles.activeTabButtonText,
-              isTabsDisabled && styles.disabledTabButtonText
-            ]}>Ingredients</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity
-            style={[
-              styles.tabButton,
-              activeTab === 'Details' && styles.activeTabButton,
-              isTabsDisabled && styles.disabledTabButton
-            ]}
-            onPress={() => handleTabPress('Details')}
-            disabled={isTabsDisabled}
-          >
-            <Text style={[
-              styles.tabButtonText,
-              activeTab === 'Details' && styles.activeTabButtonText,
-              isTabsDisabled && styles.disabledTabButtonText
-            ]}>Details</Text>
-          </TouchableOpacity>
-        </View>
-
-        {foodData ? (
-          <ScrollView
-            ref={scrollViewRef}
-            contentContainerStyle={styles.scrollContainer}
-            style={styles.scrollViewStyle}
-            onScroll={handleScroll}
-            scrollEventThrottle={16}
-          >
-            <Animated.View style={{ opacity: tabFadeAnim }}>
-              {activeTab === 'Nutrition' && renderNutritionTab()}
-              {activeTab === 'Ingredients' && renderIngredientsTab()}
-              {activeTab === 'Details' && renderDetailsTab()}
-            </Animated.View>
-            {renderButtons()}
-          </ScrollView>
-        ) : (
-          <View style={styles.noContentContainer}>
-            <AnimatedTextFoodScanFast
-              text={
-                noFoodFound
-                  ? "The image you scanned doesn't appear to have any food in it. If it is an image of food, try taking a photo with better lighting or zoom out."
-                  : ErrorOccured
-                  ? 'An error occurred while processing the image. We aren\'t sure what happened, but it\'s likely to work again. Please try again.'
-                  : 'The nutrient data and ingredients of food you scan will appear here.'
               }
-              colorScheme={colorScheme}
-              style={styles.placeholderTextInScroll}
-            />
-            {renderButtons()}
-          </View>
-        )}
-
-        {activeTab === 'Ingredients' && foodData && (
-          <Animated.View
-            style={[styles.scrollIndicator, { opacity: scrollIndicatorOpacity }]}
-            pointerEvents={showScrollIndicator ? 'auto' : 'none'}
+              Alert.alert("Scan Limit", message);
+            }}
           >
-            <TouchableOpacity onPress={scrollToBottom}>
-              <Entypo name="chevron-down" size={32} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
-            </TouchableOpacity>
+            <LinearGradient
+              colors={colorScheme === 'dark' 
+                ? ['rgba(0, 0, 0, 1)', 'rgba(30, 30, 30, 0.85)']
+                : ['rgba(60, 60, 60, 0.95)', 'rgba(140, 140, 140, 0.95)']}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.chip}
+            >
+              <View style={styles.chipContent}>
+                <Text style={[styles.chipLabel, { color: colorScheme === 'dark' ? '#fff' : '#fff' }]}>Scans:</Text>
+                {isFirstDayUnlimited || isSubscribed ? (
+                  <FontAwesomeIcon
+                    icon={faInfinity}
+                    size={18}
+                    color={colorScheme === 'dark' ? '#fff' : '#fff'}
+                  />
+                ) : (
+                  <Text style={[styles.chipText, { color: colorScheme === 'dark' ? '#fff' : '#fff' }]}>
+                    {selectedMode === 'accurate' 
+                      ? Math.max(0, 1 - freeAccurateScansUsed)
+                      : isSubscribedPlus 
+                        ? (20 - scanCount) 
+                        : (5 - scanCount)}
+                  </Text>
+                )}
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity 
+            style={styles.chipContainer} 
+            onPress={handleModeChipPress}
+          >
+            <LinearGradient
+              colors={
+                selectedMode === 'accurate' 
+                  ? colorScheme === 'dark'
+                    ? ['rgba(25, 72, 110, 0.95)', 'rgba(40, 90, 140, 0.95)']
+                    : ['rgba(70, 120, 220, 0.95)', 'rgba(40, 90, 180, 0.95)']
+                  : colorScheme === 'dark'
+                    ? ['rgba(0, 0, 0, 0.85)', 'rgba(20, 20, 20, 0.95)']
+                    : ['rgba(40, 40, 40, 0.95)', 'rgba(80, 80, 80, 0.95)']
+              }
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={[styles.chip, selectedMode === 'accurate' && styles.chipAccurate]}
+            >
+              <View style={styles.chipContent}>
+                <Icon 
+                  name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
+                  size={16} 
+                  color={colorScheme === 'dark' ? '#fff' : selectedMode === 'accurate' ? '#fff' : '#fff'} 
+                />
+                <Animated.Text style={[
+                  styles.chipText, 
+                  { 
+                    opacity: chipTextOpacity,
+                    color: colorScheme === 'dark' ? '#fff' : selectedMode === 'accurate' ? '#fff' : '#fff'
+                  }
+                ]}>
+                  {selectedMode === 'fast' ? 'Fast' : 'Accurate'}
+                </Animated.Text>
+              </View>
+            </LinearGradient>
+          </TouchableOpacity>
+        </View>
+
+        {showPlaceholder ? (
+          <Animated.View
+            style={[
+              styles.placeholderContainer,
+              { opacity: fadeAnimPlaceholder }
+            ]}
+          >
+            <Text style={styles.placeholderText}>You haven't scanned anything yet</Text>
           </Animated.View>
+        ) : (
+          <View style={styles.imageWrapper}>
+            <Animated.Image
+              source={{ uri: image }}
+              style={[styles.foodImage, { opacity: fadeAnimImage }]}
+            />
+            {hadBarcode && (
+              <TouchableOpacity 
+                style={styles.barcodeIconContainer}
+                onPress={() => {
+                  Alert.alert(
+                    "Barcode Detected",
+                    "This scan's results were enhanced using barcode data for improved accuracy.",
+                    [{ text: "OK" }]
+                  );
+                }}
+              >
+                <MaterialCommunityIcons 
+                  name="barcode-scan" 
+                  size={30} 
+                  color="#fff" 
+                />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
       </View>
+
+      <View style={styles.tabContainer}>
+        {/* Add the sliding indicator */}
+        {!isTabsDisabled && (
+          <Animated.View
+            style={[
+              styles.tabIndicator,
+              {
+                transform: [{
+                  translateX: tabIndicatorAnim.interpolate({
+                    inputRange: [0, 1, 2],
+                    outputRange: [width * 0.05, width * 0.36, width * 0.67], // Adjusted positions
+                  })
+                }],
+                width: 90, // Fixed width for the indicator
+                opacity: isTabsDisabled ? 0 : 1,
+              }
+            ]}
+          />
+        )}
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === 'Nutrition' && styles.activeTabButton,
+            isTabsDisabled && styles.disabledTabButton
+          ]}
+          onPress={() => handleTabPress('Nutrition')}
+          disabled={isTabsDisabled}
+        >
+          <Text style={[
+            styles.tabButtonText,
+            activeTab === 'Nutrition' && styles.activeTabButtonText,
+            isTabsDisabled && styles.disabledTabButtonText
+          ]}>Nutrition</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === 'Ingredients' && styles.activeTabButton,
+            isTabsDisabled && styles.disabledTabButton
+          ]}
+          onPress={() => handleTabPress('Ingredients')}
+          disabled={isTabsDisabled}
+        >
+          <Text style={[
+            styles.tabButtonText,
+            activeTab === 'Ingredients' && styles.activeTabButtonText,
+            isTabsDisabled && styles.disabledTabButtonText
+          ]}>Ingredients</Text>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          style={[
+            styles.tabButton,
+            activeTab === 'Details' && styles.activeTabButton,
+            isTabsDisabled && styles.disabledTabButton
+          ]}
+          onPress={() => handleTabPress('Details')}
+          disabled={isTabsDisabled}
+        >
+          <Text style={[
+            styles.tabButtonText,
+            activeTab === 'Details' && styles.activeTabButtonText,
+            isTabsDisabled && styles.disabledTabButtonText
+          ]}>Details</Text>
+        </TouchableOpacity>
+      </View>
+
+      {foodData ? (
+        <ScrollView
+          ref={scrollViewRef}
+          contentContainerStyle={styles.scrollContainer}
+          style={styles.scrollViewStyle}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+        >
+          <Animated.View style={{ opacity: tabFadeAnim }}>
+            {activeTab === 'Nutrition' && renderNutritionTab()}
+            {activeTab === 'Ingredients' && renderIngredientsTab()}
+            {activeTab === 'Details' && renderDetailsTab()}
+          </Animated.View>
+          {renderButtons()}
+        </ScrollView>
+      ) : (
+<View style={styles.noContentContainer}>
+  <AnimatedTextFoodScanFast
+    text={
+      noFoodFound
+        ? "The image you scanned doesn't appear to have any food in it. If it is an image of food, try taking a photo with better lighting or zoom out."
+        : ErrorOccured
+        ? 'An error occurred while processing the image. We aren\'t sure what happened, but it\'s likely to work again. Please try again.'
+        : 'The nutrient data and ingredients of food you scan will appear here.'
+    }
+    colorScheme={colorScheme}
+    style={styles.placeholderTextInScroll}
+  />
+</View>
+      )}
+
+      {!foodData && renderButtons()}
+
+      {activeTab === 'Ingredients' && foodData && (
+  <Animated.View
+    style={[styles.scrollIndicator, { opacity: scrollIndicatorOpacity }]}
+    pointerEvents={showScrollIndicator ? 'auto' : 'none'}
+  >
+    <TouchableOpacity onPress={scrollToBottom}>
+      <Entypo name="chevron-down" size={32} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+    </TouchableOpacity>
+  </Animated.View>
+)}
 
       <Modal
   transparent={true}
@@ -2942,847 +2701,649 @@ It doesn't matter if the product name is missing, this data is always from the i
   );
 };
 
-  const getDynamicStyles = (colorScheme) => StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
-      paddingTop: isIphoneSE() ? 0 : 40,
-    },
-    mainContentContainer: {
-      flex: 1,
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      paddingHorizontal: 20,
-      paddingVertical: 10,
-      marginTop: 'auto',
-      backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
-    },
-    buttonContainerNoFood: {
-    marginBottom: -80, // Add bottom margin when no food is present
-    },
-    scrollContainer: {
-      flexGrow: 1,
-      paddingHorizontal: 16,
-    paddingBottom: 100, // Space for buttons
-      minHeight: '100%', // This ensures content fills the space
-    },
-    noContentContainer: {
-      flex: 1,
-      justifyContent: 'center', // Changed from 'space-between' to 'center'
-      alignItems: 'center',
-      paddingHorizontal: 35,
-    gap: 160, // Add gap to create space between text and buttons
-    },
-    scanCounterContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 16,
-      marginTop: 8,
-    },
-    scanCounter: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-      borderRadius: 20,
-      paddingHorizontal: 16,
-      borderWidth: 1.5,
-      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
-    },
-    scanCounterContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 5,
-    },
-    scanCounterText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
-    },
-    scanCounterLabel: {
-      fontSize: 16,
-      color: colorScheme === 'dark' ? '#888' : '#666',
-      marginRight: 4,
-    },
-    modeChip: {
-      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f0f0f0',
-      paddingHorizontal: 12,
-      borderRadius: 15,
-      marginTop: 8,
-      borderWidth: 1.5,
-      borderColor: colorScheme === 'dark' ? '#3a3a3d' : '#e0e0e0',
-      width: 100,
-    },
-    modeChipAccurate: {
-      backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
-      borderColor: colorScheme === 'dark' ? '#234b6b' : '#b8d6f3',
-    },
-    modeChipText: {
-      color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
-      fontSize: 12,
-      fontWeight: '500',
-    },
-    modeIcon: {
-      marginRight: 8,
-    },
-    feedbackContainer: {
-      flexDirection: 'column',
-      justifyContent: 'center',
-      alignItems: 'center',
-      padding: '2.5%',
-      width: '100%',
-      position: 'absolute',
-      bottom: 80,
-    },
-    feedbackText: {
-      fontSize: 15.5,
-      color: colorScheme === 'dark' ? '#AAAAAA' : '#666666',
-      marginBottom: 10,
-    },
-    iconButtonContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      width: '100%',
-    },
-    icon: {
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
+    paddingTop: isIphoneSE() ? 0 : 40,
+  },
+  scanCounterContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 16,
+    marginTop: 8,
+  },
+  scanCounter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+    borderRadius: 20,
+    paddingHorizontal: 16,
+    borderWidth: 1.5,
+    borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+  },
+  scanCounterContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  scanCounterText: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
+  },
+  scanCounterLabel: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#888' : '#666',
+    marginRight: 4,
+  },
+  modeChip: {
+    backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f0f0f0',
+    paddingHorizontal: 12,
+    borderRadius: 15,
+    marginTop: 8,
+    borderWidth: 1.5,
+    borderColor: colorScheme === 'dark' ? '#3a3a3d' : '#e0e0e0',
+    width: 100,
+  },
+  modeChipAccurate: {
+    backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
+    borderColor: colorScheme === 'dark' ? '#234b6b' : '#b8d6f3',
+  },
+  modeChipText: {
+    color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
+    fontSize: 12,
+    fontWeight: '500',
+  },
+  modeIcon: {
+    marginRight: 8,
+  },
+  feedbackContainer: {
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: '2.5%',
+    width: '100%',
+    position: 'absolute',
+    bottom: 80,
+  },
+  feedbackText: {
+    fontSize: 15.5,
+    color: colorScheme === 'dark' ? '#AAAAAA' : '#666666',
+    marginBottom: 10,
+  },
+  iconButtonContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+  },
+  icon: {
     marginRight: 10, // Space between icon and text
+  },
+  iconButton: {
+    padding: 3,
+    marginHorizontal: 30,
+    backgroundColor: colorScheme === 'dark' ? '#e9e9e9' : '#DDD',
+    borderRadius: 100,
+  },
+  inputModalView: {
+    margin: 20,
+    backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFFFFF',
+    borderRadius: 40,
+    padding: 25,
+    alignItems: 'center',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#999',
+    shadowOffset: {
+      width: 0,
+      height: 1,
     },
-    iconButton: {
-      padding: 3,
-      marginHorizontal: 30,
-      backgroundColor: colorScheme === 'dark' ? '#e9e9e9' : '#DDD',
-      borderRadius: 100,
+    shadowOpacity: 100,
+    shadowRadius: 90,
+    elevation: 100,
+  },
+  input: {
+    height: 40,
+    margin: 12,
+    borderWidth: 2,
+    padding: 10,
+    width: 300,
+    borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#CCCCCC',
+    color: colorScheme === 'dark' ? '#c5c5c5' : '#333333',
+    borderRadius: 15,
+  },
+  inputModalButton: {
+    backgroundColor: colorScheme === 'dark' ? '#2d2d2d' : '#F0F0F0',
+    borderRadius: 90,
+    padding: '4%',
+    paddingHorizontal: '15%',
+    elevation: 2,
+    marginTop: '3%',
+  },
+  inputModalButtonText: {
+    color: colorScheme === 'dark' ? 'white' : 'black',
+    fontSize: 15,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  buttonContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  inputModalText: {
+    marginBottom: '2%',
+    textAlign: 'center',
+    fontSize: 15,
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#e9e9e9' : '#333333',
+  },
+  noContentContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 35,
+  },
+  placeholderTextInScroll: {
+    color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
+    fontSize: 16,
+    fontWeight: '400',
+    textAlign: 'center',
+  },
+  scrollIndicator: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    borderRadius: 200,
+    padding: 3,
+  },
+  title: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+    textAlign: 'center',
+    marginBottom: 4,
+    marginTop: 20,
+    marginHorizontal: 25,
+  },
+  subtitle: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#888888' : '#555555',
+    textAlign: 'center',
+    marginBottom: 16,
+    marginHorizontal: 25,
+  },
+  scrollViewStyle: {
+    flex: 1,
+  },
+  foodImage: {
+    width: '100%',
+    height: '100%',
+    borderRadius: 24,
+  },
+  placeholderContainer: {
+    width: '100%',
+    justifyContent: 'center',
+    alignItems: 'center',
+    height: '100%',
+    borderRadius: 24,
+    backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
+  },
+  placeholderText: {
+    color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 16,
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
+    marginHorizontal: 15,
+    borderRadius: 20,
+    paddingVertical: 6,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+    position: 'relative',
+    overflow: 'hidden',
+  },
+  tabIndicator: {
+    position: 'absolute',
+    bottom: 4,
+    height: 3,
+    backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+    borderRadius: 90,
+  },
+  tabButton: {
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  activeTabButton: {
+    // Remove the border bottom since we're using the sliding indicator
+  },
+  tabButtonText: {
+    color: colorScheme === 'dark' ? '#666' : '#888',
+    fontSize: 16,
+    fontWeight: '400',
+  },
+  activeTabButtonText: {
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    fontWeight: '500',
+  },
+  scrollContainer: {
+    paddingBottom: 100,
+    flexGrow: 1,
+    paddingHorizontal: 16,
+  },
+  tabContentContainer: {
+    backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
+    borderRadius: 25,
+    padding: 16,
+    marginBottom: 16,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+  },
+  separator: {
+    height: 4,
+    backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
+    marginVertical: 8,
+    marginBottom: 16,
+    borderRadius: 900,
+  },
+  nutrientRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 2,
+  },
+  nutrientLabel: {
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    fontSize: 17,
+    fontWeight: '400',
+  },
+  nutrientValue: {
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    fontSize: 16,
+    fontWeight: '500',
+  },
+  ingredientItem: {
+    marginBottom: 5,
+  },
+  ingredientName: {
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginBottom: 4,
+  },
+  ingredientDescription: {
+    color: '#888888',
+    fontSize: 14,
+  },
+  detailText: {
+    color: colorScheme === 'dark' ? '#ccc' : '#555',
+    fontSize: 16,
+    marginBottom: 20,
+  },
+  detailPrepTime: {
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  detailServingSize: {
+    color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+    fontSize: 16,
+    fontWeight: '500',
+    marginBottom: 8,
+  },
+  wikipediaLink: {
+    color: '#3498DB',
+    fontSize: 16,
+    textDecorationLine: 'underline',
+    marginTop: 0,
+  },
+  ingredientDescriptionNote: {
+    color: '#888888',
+    fontSize: 14,
+    marginBottom: 10,
+    textAlign: 'center',
+  },
+  buttonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+  },
+  button: {
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: colorScheme === 'dark' ? '#222' : '#bbb',
+    padding: 12,
+    paddingHorizontal: 20,
+    shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.8,
+    shadowRadius: 15,
+    elevation: 1,
+  },
+  buttonText: {
+    color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
+    textAlign: 'center',
+    fontSize: 16,
+  },
+  feedbackContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 0,
+    right: 0,
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  feedbackText: {
+    color: '#888888',
+    fontSize: 14,
+    marginBottom: 8,
+  },
+  feedbackButtons: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  feedbackButton: {
+    backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCC',
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginHorizontal: 8,
+  },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)', // Slightly transparent background
+  },
+  loadingTextContainer: {
+    height: 30,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginTop: 10,
+  },
+  loadingText: {
+    color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
+    fontWeight: '500',
+    fontSize: 16,
+    textAlign: 'center',
+  },
+  scrollPlaceholderContainer: {
+    flexGrow: 1,
+    marginBottom: 450,
+    marginHorizontal: 35,
+    justifyContent: 'center',
+    alignItems: 'center',
+    textAlign: 'center',
+    paddingBottom: 100,
+  },
+  imageContainer: {
+    width: '90%',
+    height: 200,
+    borderRadius: 24,
+    marginBottom: 16,
+    backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
+    marginHorizontal: 20,
+    position: 'relative', // Add this to position children absolutely
+  },
+  imageWrapper: {
+    width: '100%',
+    height: '100%',
+    position: 'relative',
+  },
+  controlsOverlay: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    zIndex: 2,
+  },
+  tooltip: {
+    position: 'absolute',
+    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+    borderRadius: 20,
+    padding: 10,
+    top: -80,
+    left: '50%',
+    transform: [{ translateX: -75 }],
+    width: 180,
+    alignItems: 'center',
+  },
+  tooltipText: {
+    color: '#FFFFFF',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  barcodeIconContainer: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    backgroundColor: 'rgba(0, 0, 0, 0.7)',
+    borderRadius: 14,
+    padding: 7,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
     },
-    inputModalView: {
-      margin: 20,
-      backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFFFFF',
-      borderRadius: 40,
-      padding: 25,
-      alignItems: 'center',
-      shadowColor: colorScheme === 'dark' ? '#000' : '#999',
-      shadowOffset: {
-        width: 0,
-        height: 1,
-      },
-      shadowOpacity: 100,
-      shadowRadius: 90,
-      elevation: 100,
-    },
-    input: {
-      height: 40,
-      margin: 12,
-      borderWidth: 2,
-      padding: 10,
-      width: 300,
-      borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#CCCCCC',
-      color: colorScheme === 'dark' ? '#c5c5c5' : '#333333',
-      borderRadius: 15,
-    },
-    inputModalButton: {
-      backgroundColor: colorScheme === 'dark' ? '#2d2d2d' : '#F0F0F0',
-      borderRadius: 90,
-      padding: '4%',
-      paddingHorizontal: '15%',
-      elevation: 2,
-      marginTop: '3%',
-    },
-    inputModalButtonText: {
-      color: colorScheme === 'dark' ? 'white' : 'black',
-      fontSize: 15,
-      fontWeight: '500',
-      textAlign: 'center',
-    },
-    buttonContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    inputModalText: {
-      marginBottom: '2%',
-      textAlign: 'center',
-      fontSize: 15,
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#e9e9e9' : '#333333',
-    },
-    scrollViewStyle: {
-      flex: 1,
-      borderRadius: 25,
-    },
-    title: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-      textAlign: 'center',
-      marginBottom: 4,
-      marginTop: 30,
-      marginHorizontal: 25,
-    },
-    subtitle: {
-      fontSize: 16,
-      color: colorScheme === 'dark' ? '#888888' : '#555555',
-      textAlign: 'center',
-      marginBottom: 10,
-      marginHorizontal: 25,
-    },
-    scrollContainer: {
-      paddingBottom: 100,
-      flexGrow: 1,
-      paddingHorizontal: 16,
-    },
-    floatingButtonWrapper: {
-      width: '100%',
-    },
-    button: {
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-      borderRadius: 20,
-      borderWidth: 2,
-      borderColor: colorScheme === 'dark' ? '#222' : '#bbb',
-      padding: 12,
-      paddingHorizontal: 20,
-      shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.8,
-      shadowRadius: 15,
-      elevation: 1,
-    },
-    buttonText: {
-      color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
-      textAlign: 'center',
-      fontSize: 16,
-    },
-    foodImage: {
-      width: '100%',
-      height: '100%',
-      borderRadius: 24,
-    },
-    placeholderContainer: {
-      width: '100%',
-      justifyContent: 'center',
-      alignItems: 'center',
-      height: '100%',
-      borderRadius: 24,
-      backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
-    },
-    placeholderText: {
-      color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
-      fontSize: 16,
-      fontWeight: '400',
-    },
-    tabContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      marginBottom: 16,
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
-      marginHorizontal: 15,
-      borderRadius: 20,
-      paddingVertical: 6,
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
-      position: 'relative',
-      overflow: 'hidden',
-    },
-    tabIndicator: {
-      position: 'absolute',
-      bottom: 4,
-      height: 3,
-      backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-      borderRadius: 90,
-    },
-    tabButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
-      flex: 1,
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    activeTabButton: {
-      // Remove the border bottom since we're using the sliding indicator
-    },
-    tabButtonText: {
-      color: colorScheme === 'dark' ? '#666' : '#888',
-      fontSize: 16,
-      fontWeight: '400',
-    },
-    activeTabButtonText: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontWeight: '500',
-    },
-    tabContentContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
-      borderRadius: 24,
-      overflow: 'hidden',
-      marginBottom: 16,
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
-    },
-    separator: {
-      height: 4,
-      backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
-      marginVertical: 8,
-      marginBottom: 16,
-      borderRadius: 900,
-      marginHorizontal: 16,
-    },
-    nutrientRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      paddingVertical: 2,
-    },
-    nutrientLabel: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 17,
-      fontWeight: '400',
-    },
-    nutrientValue: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
-      fontWeight: '500',
-    },
-    ingredientItem: {
-      marginBottom: 5,
-      paddingHorizontal: 16,
-    },
-    ingredientName: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
-      fontWeight: 'bold',
-      marginBottom: 4,
-    },
-    ingredientDescription: {
-      color: '#888888',
-      fontSize: 14,
-      paddingBottom: 8,
-
-    },
-    detailText: {
-      color: colorScheme === 'dark' ? '#ccc' : '#555',
-      fontSize: 16,
-      marginBottom: 20,
-      padding: 16,
-    },
-    detailPrepTime: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
-      fontWeight: '500',
-      marginBottom: 8,
-      paddingHorizontal: 16,
-    },
-    detailServingSize: {
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
-      fontWeight: '500',
-      marginBottom: 8,
-      paddingHorizontal: 16,
-    },
-    wikipediaLink: {
-      color: '#3498DB',
-      fontSize: 16,
-      textDecorationLine: 'underline',
-      marginTop: 0,
-      padding: 16,
-    },
-    ingredientDescriptionNote: {
-      color: '#888888',
-      fontSize: 14,
-      marginBottom: 10,
-      textAlign: 'center',
-      padding: 16,
-      paddingBottom: 0,
-    },
-    feedbackContainer: {
-      position: 'absolute',
-      bottom: 20,
-      left: 0,
-      right: 0,
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    feedbackText: {
-      color: '#888888',
-      fontSize: 14,
-      marginBottom: 8,
-    },
-    feedbackButtons: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-    },
-    feedbackButton: {
-      backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCC',
-      width: 40,
-      height: 40,
-      borderRadius: 20,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginHorizontal: 8,
-    },
-    modalBackground: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.2)', // Slightly transparent background
-    },
-    loadingTextContainer: {
-      height: 30,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: 10,
-    },
-    loadingText: {
-      color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
-      fontWeight: '500',
-      fontSize: 16,
-      textAlign: 'center',
-    },
-    scrollPlaceholderContainer: {
-      flexGrow: 1,
-      marginBottom: 450,
-      marginHorizontal: 35,
-      justifyContent: 'center',
-      alignItems: 'center',
-      textAlign: 'center',
-      paddingBottom: 100,
-    },
-    imageContainer: {
-      width: '90%',
-      height: 200,
-      borderRadius: 24,
-      marginBottom: 16,
-      backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
-      marginHorizontal: 20,
-      position: 'relative', // Add this to position children absolutely
-    },
-    imageWrapper: {
-      width: '100%',
-      height: '100%',
-      position: 'relative',
-    },
-    controlsOverlay: {
-      position: 'absolute',
-      top: 12,
-      left: 12,
-      right: 12,
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      zIndex: 2,
-    },
-    tooltip: {
-      position: 'absolute',
-      backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      borderRadius: 20,
-      padding: 10,
-      top: -80,
-      left: '50%',
-      transform: [{ translateX: -75 }],
-      width: 180,
-      alignItems: 'center',
-    },
-    tooltipText: {
-      color: '#FFFFFF',
-      fontSize: 14,
-      textAlign: 'center',
-    },
-    barcodeIconContainer: {
-      position: 'absolute',
-      bottom: 10,
-      left: 10,
-      backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      borderRadius: 14,
-      padding: 7,
-      flexDirection: 'row',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-      elevation: 5,
-      // Add these to show it's interactive
-      opacity: 1,
-      activeOpacity: 0.7,
-    },
-    processingTimeText: {
-      color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
-      fontWeight: '400',
-      fontSize: 14,
-      textAlign: 'center',
-      marginTop: 8,
-    },
-    chip: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 15,
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
-      overflow: 'hidden',
-    },
-    chipContainer: {
-      borderRadius: 15,
-      overflow: 'hidden',
-    },
-    chipAccurate: {
-      borderColor: 'rgba(66, 135, 245, 0.4)',
-      backgroundColor: 'rgba(66, 135, 245, 0.1)',
-    },
-    chipContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 6,
-      justifyContent: 'center', // Add this to keep content centered during animation
-    },
-    chipLabel: {
-      fontSize: 14,
-      fontWeight: '400',
-    },
-    chipText: {
-      fontSize: 14,
-      fontWeight: '500',
-    },
-    scrollIndicatorOpacity: {
-      position: 'absolute',
-      bottom: 20,
-      alignSelf: 'center',
-      backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
-      shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 1,
-      shadowRadius: 10,
-      borderRadius: 200,
-      padding: 3,
-    },
-    modalBackground: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    loadingCard: {
-      width: '90%',
-      maxWidth: 400,
-      alignItems: 'center',
-      paddingVertical: 30,
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    // Add these to show it's interactive
+    opacity: 1,
+    activeOpacity: 0.7,
+  },
+  processingTimeText: {
+    color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
+    fontWeight: '400',
+    fontSize: 14,
+    textAlign: 'center',
+    marginTop: 8,
+  },
+  chip: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 15,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.3)',
+    overflow: 'hidden',
+  },
+  chipContainer: {
+    borderRadius: 15,
+    overflow: 'hidden',
+  },
+  chipAccurate: {
+    borderColor: 'rgba(66, 135, 245, 0.6)',
+  },
+  chipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    justifyContent: 'center', // Add this to keep content centered during animation
+  },
+  chipLabel: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '400',
+  },
+  chipText: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: '500',
+  },
+  scrollIndicatorOpacity: {
+    position: 'absolute',
+    bottom: 20,
+    alignSelf: 'center',
+    backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
+    shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 1,
+    shadowRadius: 10,
+    borderRadius: 200,
+    padding: 3,
+  },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  loadingCard: {
+    width: '90%',
+    maxWidth: 400,
+    alignItems: 'center',
+    paddingVertical: 30,
     borderRadius: 25, // Match your existing rounded corners
-      overflow: 'hidden', // Ensure the blur effect respects the border radius
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.2)',
-    },
-    loadingHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    modeIndicator: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 12,
-    },
-    modeText: {
-      color: colorScheme === 'dark' ? '#fff' : '#000',
-      marginLeft: 8,
-      fontWeight: '500',
-    },
-    scanCounter: {
-      backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 12,
-    },
-    scanCounterText: {
-      color: colorScheme === 'dark' ? '#fff' : '#fff',
-      fontWeight: '500',
-    },
-    loadingContent: {
-      alignItems: 'center',
-      marginBottom: 30,
-    },
-    loadingTextContainer: {
-      marginTop: 20,
-      alignItems: 'center',
-      paddingHorizontal: 20,
-    },
-    estimatedTimeContainer: {
-      borderTopWidth: 1,
-      borderTopColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-      paddingTop: 16,
-      marginTop: 8,
-    },
-    estimatedTimeText: {
-      color: colorScheme === 'dark' ? '#999' : '#666',
-      fontSize: 14,
-      textAlign: 'center',
-    },
-    modalBackground: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      backgroundColor: 'rgba(0, 0, 0, 0.2)',
-    },
-    loadingCard: {
-      width: '90%',
-      maxWidth: 400,
-      alignItems: 'center',
-      paddingVertical: 30,
-    },
-    modeBadgeContainer: {
-      width: '100%',
-      alignItems: 'center',
-      marginBottom: 30,
-    },
-    modeBadge: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      borderRadius: 20,
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
-      backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
-      overflow: 'hidden',
-    },
-    modeBadgeText: {
-      color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 18,
-      fontWeight: '600',
-      marginLeft: 10,
-    },
-    loadingContent: {
-      alignItems: 'center',
-      marginBottom: 30,
-    },
-    loadingTextContainer: {
-      marginTop: 20,
-      alignItems: 'center',
-      paddingHorizontal: 20,
-    },
-    loadingText: {
-      color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 16,
-      fontWeight: '500',
-      textAlign: 'center',
-    },
-    infoCardsContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      flexWrap: 'wrap',
-      gap: 10,
-      paddingHorizontal: 20,
-    },
-    infoCard: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 16,
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
-      backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
-      overflow: 'hidden',
-    },
-    infoCardText: {
-      color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 15,
-      fontWeight: '500',
-      marginLeft: 8,
-    },
-    logo: {
-      width: 60,
-      height: 60,
-      position: 'absolute',
-      top: isIphoneSE() ? 10 : 50,
-      left: 20,
-    },
-    macroGridContainer: {
-      flexDirection: 'column',
-      justifyContent: 'flex-start',
-      padding: 8,
-      gap: 5,
-    },
-
-    macroCard: {
-      width: '100%',
-      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 18,
-      padding: 12,
-      height: 100,
-      marginBottom: 5,
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#E5E5E5',
-      flexDirection: 'column',
-      justifyContent: 'flex-start',
-    },
-
-    macroHeaderContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      width: '100%',
-      marginBottom: 8,
-    },
-
-    iconLabelContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-
-    iconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 100,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 8,
-      marginLeft: 5,
-    },
-
-    macroLabel: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-    },
-
-    macroValueContainer: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      marginRight: 10,
-    },
-
-    macroValue: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-    },
-
-    macroUnit: {
-      fontSize: 14,
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#999999' : '#666666',
-      marginLeft: 4,
-    },
-
-    errorBarContainer: {
-      position: 'absolute',
-      bottom: 0,
-      left: 20,
-      right: 0,
-      flexDirection: 'row',
-      alignItems: 'center',
-      width: '95%',
-      gap: 8,
-      marginTop: 8,
-      paddingBottom: 10,
-    },
-
-    errorBar: {
-      height: 10,
-      borderRadius: 100,
-      flex: 1,
-      overflow: 'hidden',
-    },
-
-    errorBarFill: {
-      position: 'absolute',
-      left: 0,
-      top: 0,
-      bottom: 0,
-      borderRadius: 100,
-    },
-
-    errorText: {
-      fontSize: 12,
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#999999' : '#666666',
-      minWidth: 45,
-      textAlign: 'right',
-    },
-
-    floatingButtonContainer: {
-      position: 'absolute',
-      bottom: 20,
-      left: 0,
-      right: 0,
-      zIndex: 1000,
-    },
-
-    floatingButton: {
-      shadowColor: colorScheme === 'dark' ? '#000' : '#666',
-      shadowOffset: {
-        width: 0,
-        height: 4,
-      },
-      shadowOpacity: 0.3,
-      shadowRadius: 4.65,
-      elevation: 8,
-      zIndex: 1000,
-    },
-
-    buttonsWrapper: {
-      width: '100%',
-      paddingHorizontal: 20,
-      marginBottom: 20,
-    },
-
-    buttonContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
-      width: '100%',
-    },
-
-    floatingButton: {
-      shadowColor: colorScheme === 'dark' ? '#000' : '#666',
-      shadowOffset: {
-        width: 0,
-        height: 4,
-      },
-      shadowOpacity: 0.3,
-      shadowRadius: 4.65,
-      elevation: 8,
-      zIndex: 1000,
-    },
-
-    nutrientPage: {
-    width: width - 34, // Account for container padding
-      alignItems: 'center',
-    },
-
-    paginationDots: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginTop: -2,
-      marginBottom: 8,
-      gap: 8,
-    },
-
-    paginationDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    placeholderTextInScroll: {
-      color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
-      fontSize: 16,
-      fontWeight: '400',
-      textAlign: 'center',
-    },
-    scrollIndicator: {
-      position: 'absolute',
-      bottom: 20,
-      alignSelf: 'center',
-      backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
-      shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 1,
-      shadowRadius: 10,
-      borderRadius: 200,
-      padding: 3,
-    },
-  });
+    overflow: 'hidden', // Ensure the blur effect respects the border radius
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.2)',
+  },
+  loadingHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 24,
+  },
+  modeIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  modeText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    marginLeft: 8,
+    fontWeight: '500',
+  },
+  scanCounter: {
+    backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+  },
+  scanCounterText: {
+    color: colorScheme === 'dark' ? '#fff' : '#fff',
+    fontWeight: '500',
+  },
+  loadingContent: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  loadingTextContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  estimatedTimeContainer: {
+    borderTopWidth: 1,
+    borderTopColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    paddingTop: 16,
+    marginTop: 8,
+  },
+  estimatedTimeText: {
+    color: colorScheme === 'dark' ? '#999' : '#666',
+    fontSize: 14,
+    textAlign: 'center',
+  },
+  modalBackground: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.2)',
+  },
+  loadingCard: {
+    width: '90%',
+    maxWidth: 400,
+    alignItems: 'center',
+    paddingVertical: 30,
+  },
+  modeBadgeContainer: {
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  modeBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
+    overflow: 'hidden',
+  },
+  modeBadgeText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 18,
+    fontWeight: '600',
+    marginLeft: 10,
+  },
+  loadingContent: {
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  loadingTextContainer: {
+    marginTop: 20,
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  loadingText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center',
+  },
+  infoCardsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    flexWrap: 'wrap',
+    gap: 10,
+    paddingHorizontal: 20,
+  },
+  infoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
+    backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
+    overflow: 'hidden',
+  },
+  infoCardText: {
+    color: colorScheme === 'dark' ? '#fff' : '#000',
+    fontSize: 15,
+    fontWeight: '500',
+    marginLeft: 8,
+  },
+});
 
 export default FoodScanScreen;

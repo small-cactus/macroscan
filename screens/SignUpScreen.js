@@ -23,6 +23,13 @@ import AnimatedTextLoading from './AnimatedTextLoading';
 
 const { width, height } = Dimensions.get('window');
 
+// Calculate scale factor based on screen size
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
+
 const isIphoneSE = () => {
   const smallIphoneDimensions = [
     { width: 320, height: 568 },
@@ -225,80 +232,80 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     flex: 1,
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: Platform.OS === 'ios' ? 60 : 40,
+    paddingVertical: (Platform.OS === 'ios' ? 60 : 40) * scale,
   },
   textContainer: {
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 20 * scale,
   },
   buttonContainer: {
     width: '100%',
-    paddingHorizontal: 24,
+    paddingHorizontal: 24 * scale,
     alignItems: 'center',
   },
   title: {
-    fontSize: isIphoneSE() ? 25 : 35,
+    fontSize: 35 * scale,
     fontWeight: '800',
     color: colorScheme === 'dark' ? '#fff' : '#000',
     textAlign: 'center',
-    marginBottom: 16,
-    letterSpacing: -0.5,
-    padding: 4,
+    marginBottom: 16 * scale,
+    letterSpacing: -0.5 * scale,
+    padding: 4 * scale,
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: Platform.OS === 'ios' ? 100 : 0,
+    marginTop: (Platform.OS === 'ios' ? 100 : 0) * scale,
   },
   logoBackground: {
     backgroundColor: '#FFF',
-    borderRadius: 32,
+    borderRadius: 32 * scale,
     padding: 0,
     shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
-    shadowOffset: { width: 0, height: 15 },
+    shadowOffset: { width: 0, height: 15 * scale },
     shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.25,
-    shadowRadius: 15.84,
+    shadowRadius: 15.84 * scale,
     elevation: 10,
   },
   logo: {
-    width: isIphoneSE() ? 110 : 125,
-    height: isIphoneSE() ? 110 : 125,
+    width: 125 * scale,
+    height: 125 * scale,
   },
   SignUpButton: {
-    borderRadius: 16,
-    padding: 16,
+    borderRadius: 16 * scale,
+    padding: 16 * scale,
     width: '100%',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
+    shadowOffset: { width: 0, height: 4 * scale },
     shadowOpacity: 0.3,
-    shadowRadius: 8,
+    shadowRadius: 8 * scale,
     elevation: 5,
   },
   SignUpButtonTouchable: {
     width: '100%',
-    maxWidth: 400,
+    maxWidth: 400 * scale,
   },
   SignUpText: {
     color: '#fff',
-    fontSize: 18,
+    fontSize: 18 * scale,
     fontWeight: '600',
-    letterSpacing: 0.3,
+    letterSpacing: 0.3 * scale,
   },
   SignInButton: {
-    marginTop: 20,
-    padding: 12,
+    marginTop: 20 * scale,
+    padding: 12 * scale,
   },
   SignInText: {
-    fontSize: 15,
+    fontSize: 15 * scale,
     color: colorScheme === 'dark' ? '#999' : '#666',
     textAlign: 'center',
   },
   description: {
-    fontSize: 18,
+    fontSize: 18 * scale,
     fontWeight: '500',
     color: colorScheme === 'dark' ? '#999' : '#666',
     textAlign: 'center',
-    marginBottom: 250,
-    letterSpacing: 0.2,
+    marginBottom: 250 * scale,
+    letterSpacing: 0.2 * scale,
   },
   buttonContent: {
     flexDirection: 'row',
@@ -306,6 +313,6 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     justifyContent: 'center',
   },
   arrowIcon: {
-    marginLeft: 8,
+    marginLeft: 8 * scale,
   },
 });

@@ -17,24 +17,6 @@ import AnimatedTextLoading from './AnimatedTextLoading';
 
 const { width, height } = Dimensions.get('window');
 
-const isIphoneSE = () => {
-  const smallIphoneDimensions = [
-    { width: 320, height: 568 },
-    { width: 375, height: 667 },
-    { width: 414, height: 736 },
-    { width: 360, height: 640 },
-    { width: 375, height: 812 },
-    { width: 360, height: 780 },
-  ];
-
-  return (
-    Platform.OS === 'ios' &&
-    smallIphoneDimensions.some(
-      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
-    )
-  );
-};
-
 export default function SignInScreen({ navigation }) {
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const [buttonScaleAnim] = useState(new Animated.Value(1));
@@ -126,96 +108,101 @@ export default function SignInScreen({ navigation }) {
   );
 }
 
-const getDynamicStyles = (colorScheme) => StyleSheet.create({
-  View: {
-    flex: 1,
-    backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
-  },
-  contentContainer: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingVertical: Platform.OS === 'ios' ? 60 : 40,
-  },
-  textContainer: {
-    alignItems: 'center',
-    paddingHorizontal: 20,
-  },
-  buttonContainer: {
-    width: '100%',
-    paddingHorizontal: 24,
-    alignItems: 'center',
-  },
-  title: {
-    fontSize: isIphoneSE() ? 25 : 35,
-    fontWeight: '800',
-    color: colorScheme === 'dark' ? '#fff' : '#000',
-    textAlign: 'center',
-    marginBottom: 16,
-    letterSpacing: -0.5,
-    padding: 4,
-  },
-  logoContainer: {
-    alignItems: 'center',
-    marginTop: Platform.OS === 'ios' ? 100 : 0,
-  },
-  logoBackground: {
-    backgroundColor: '#FFF',
-    borderRadius: 32,
-    padding: 0,
-    shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
-    shadowOffset: { width: 0, height: 15 },
-    shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.25,
-    shadowRadius: 15.84,
-    elevation: 10,
-  },
-  logo: {
-    width: isIphoneSE() ? 110 : 125,
-    height: isIphoneSE() ? 110 : 125,
-  },
-  SignUpButton: {
-    borderRadius: 16,
-    padding: 16,
-    width: '100%',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 8,
-    elevation: 5,
-  },
-  SignUpButtonTouchable: {
-    width: '100%',
-    maxWidth: 400,
-  },
-  SignUpText: {
-    color: '#fff',
-    fontSize: 18,
-    fontWeight: '600',
-    letterSpacing: 0.3,
-  },
-  SignInButton: {
-    marginTop: 20,
-    padding: 12,
-  },
-  SignInText: {
-    fontSize: 15,
-    color: colorScheme === 'dark' ? '#999' : '#666',
-    textAlign: 'center',
-  },
-  description: {
-    fontSize: 18,
-    fontWeight: '500',
-    color: colorScheme === 'dark' ? '#999' : '#666',
-    textAlign: 'center',
-    marginBottom: 250,
-    letterSpacing: 0.2,
-  },
-  buttonContent: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  arrowIcon: {
-    marginLeft: 8,
-  },
-});
+const getDynamicStyles = (colorScheme) => {
+  const isSmallScreen = height < 700; // Adjust breakpoint as needed
+  const isLargeScreen = height > 800;
+  
+  return StyleSheet.create({
+    View: {
+      flex: 1,
+      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+    },
+    contentContainer: {
+      flex: 1,
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingVertical: Platform.OS === 'ios' ? 60 : 40,
+    },
+    textContainer: {
+      alignItems: 'center',
+      paddingHorizontal: 20,
+    },
+    buttonContainer: {
+      width: '100%',
+      paddingHorizontal: 24,
+      alignItems: 'center',
+    },
+    title: {
+      fontSize: width * 0.07, // 7% of screen width
+      fontWeight: '800',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
+      textAlign: 'center',
+      marginBottom: height * 0.02, // 2% of screen height
+      letterSpacing: -0.5,
+      padding: 4,
+    },
+    logoContainer: {
+      alignItems: 'center',
+      marginTop: height * 0.1, // 10% of screen height
+    },
+    logoBackground: {
+      backgroundColor: '#FFF',
+      borderRadius: 32,
+      padding: 0,
+      shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
+      shadowOffset: { width: 0, height: height * 0.02 }, // 2% of height
+      shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.25,
+      shadowRadius: height * 0.02, // 2% of height
+      elevation: 10,
+    },
+    logo: {
+      width: width * 0.3, // 30% of screen width
+      height: width * 0.3,
+    },
+    SignUpButton: {
+      borderRadius: 16,
+      padding: height * 0.02, // 2% of height
+      width: '100%',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: height * 0.005 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 5,
+    },
+    SignUpButtonTouchable: {
+      width: '100%',
+      maxWidth: 400,
+    },
+    SignUpText: {
+      color: '#fff',
+      fontSize: width * 0.045, // 4.5% of width
+      fontWeight: '600',
+      letterSpacing: 0.3,
+    },
+    SignInButton: {
+      marginTop: 20,
+      padding: 12,
+    },
+    SignInText: {
+      fontSize: width * 0.035, // 3.5% of width
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      textAlign: 'center',
+    },
+    description: {
+      fontSize: height < 830 ? width * 0.044 : width * 0.045, // 3.4% or 4.5% of width
+      fontWeight: '500',
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      textAlign: 'center',
+      marginBottom: height * 0.2, // 20% of height
+      letterSpacing: 0.2,
+    },
+    buttonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    arrowIcon: {
+      marginLeft: 8,
+    },
+  });
+};

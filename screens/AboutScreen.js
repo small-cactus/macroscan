@@ -28,11 +28,11 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const CHANGELOG = [
   {
-    title: 'Scan Screen UI Update',
+    title: 'UI Updates',
     details: 'Redesigned scan screen with easy toggles between fast and accurate modes. Free users now get 1 accurate scan per day.',
   },
   {
-    title: 'History Screen Enhancements',
+    title: 'History Screen Enhancements', 
     details: 'Added smooth animations, filters, and a search bar to help you find past scans more easily.',
   },
   {
@@ -43,6 +43,22 @@ const CHANGELOG = [
     title: 'UI Polish',
     details: 'Enhanced icons and improved look and feel across all screens for a more polished user experience.',
   },
+  {
+    title: 'Macro Goals Calculator',
+    details: 'Added personalized macro goals calculator based on your height, weight, age, activity level and fitness goals.',
+  },
+  {
+    title: 'Onboarding Experience',
+    details: 'New user-friendly onboarding flow to help you get started with personalized nutrition tracking.',
+  },
+  {
+    title: 'MoreDark Mode Support',
+    details: 'Added full dark mode support across the app for comfortable viewing in low-light conditions.',
+  },
+  {
+    title: 'Persistent Storage',
+    details: 'Your personal data and scan history are now securely saved between sessions on device and never shared.',
+  }
 ];
 
 const isIphoneSE = () => {

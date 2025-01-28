@@ -235,7 +235,7 @@ const FeaturesScreen = () => {
                   isUnlockedStatus = true;
                 }
               } else {
-                console.error('Receipt validation failed:', data.message);
+                console.log('Receipt validation failed:', data.message);
               }
             } else {
               const responseText = await response.text();

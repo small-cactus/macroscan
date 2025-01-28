@@ -1,6 +1,6 @@
 // OnboardingScreen.js
 
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import {
   StyleSheet,
   View,
@@ -293,6 +293,595 @@ const ONBOARDING_STEPS = [
   }
 ];
 
+// Calculate scale factor based on screen size
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
+
+// Update styles to use scale factor
+const getBaseStyles = (isDark) => StyleSheet.create({
+  safeArea: {
+    flex: 1,
+    backgroundColor: isDark ? '#000' : '#FFF',
+  },
+  slide: {
+    flex: 1,
+    width,
+    alignItems: 'center',
+    paddingHorizontal: 20 * scale,
+    paddingTop: isSmallDevice ? '5%' : '5%',
+  },
+  headerContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 24 * scale,
+    paddingHorizontal: 20 * scale,
+    width: '100%',
+    gap: 20 * scale,
+  },
+  headerTextContainer: {
+    flex: 1,
+  },
+  iconHeaderContainer: {
+    width: 80 * scale,
+    height: 80 * scale,
+    borderRadius: 30 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24 * scale,
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  title: {
+    fontSize: (isSmallDevice ? 24 : 28) * scale,
+    fontWeight: '700',
+    color: isDark ? '#FFF' : '#000',
+    textAlign: 'center',
+    marginBottom: 12 * scale,
+  },
+  description: {
+    fontSize: (isSmallDevice ? 16 : 18) * scale,
+    color: isDark ? '#CCC' : '#666',
+    textAlign: 'center',
+    marginBottom: 24 * scale,
+    lineHeight: (isSmallDevice ? 22 : 24) * scale,
+  },
+  bottomDescription: {
+    fontSize: (isSmallDevice ? 16 : 18) * scale,
+    color: isDark ? '#CCC' : '#666',
+    textAlign: 'center',
+    marginTop: 16 * scale,
+    lineHeight: (isSmallDevice ? 22 : 24) * scale,
+  },
+  bottomContainer: {
+    padding: 10 * scale,
+    paddingBottom: Platform.OS === 'ios' ? 20 * scale : 40 * scale,
+  },
+  progressContainer: {
+    marginHorizontal: 20 * scale,
+    marginBottom: 16 * scale,
+  },
+  progressBarContainer: {
+    height: 18 * scale,
+    backgroundColor: isDark ? '#333' : '#E0E0E0',
+    borderRadius: 100 * scale,
+    overflow: 'hidden',
+  },
+  progressBar: {
+    height: '100%',
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderRadius: 100 * scale,
+  },
+  buttonContainer: {
+    flexDirection: 'row',
+    gap: 12 * scale,
+  },
+  actionButton: {
+    flex: 1,
+    height: 56 * scale,
+    borderRadius: 16 * scale,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  primaryButton: {
+    backgroundColor: isDark ? '#FFF' : '#000',
+  },
+  secondaryButton: {
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+  },
+  actionButtonText: {
+    fontSize: 16 * scale,
+    fontWeight: '600',
+    color: isDark ? '#000' : '#FFF',
+  },
+  secondaryButtonText: {
+    color: isDark ? '#FFF' : '#000',
+  },
+  disabledButton: {
+    opacity: 0.5,
+  },
+  featuresContainer: {
+    width: '100%',
+    marginTop: 8 * scale,
+    marginBottom: 16 * scale,
+    flex: 1,
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    paddingBottom: 20 * scale,
+    flexGrow: 1,
+  },
+  featureItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F8F8F8',
+    padding: 16 * scale,
+    borderRadius: 25 * scale,
+    shadowColor: isDark ? '#000' : '#666',
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2 * scale,
+    elevation: 0,
+  },
+  featureIconContainer: {
+    width: 50 * scale,
+    height: 50 * scale,
+    borderRadius: 15 * scale,
+    backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 12 * scale,
+  },
+  featureIcon: {
+    fontSize: 25 * scale,
+  },
+  featureTextContainer: {
+    flex: 1,
+  },
+  featureTitle: {
+    fontSize: (isSmallDevice ? 16 : 17) * scale,
+    fontWeight: '600',
+    color: isDark ? '#FFF' : '#000',
+    marginBottom: 4 * scale,
+  },
+  featureDescription: {
+    fontSize: (isSmallDevice ? 13 : 14) * scale,
+    color: isDark ? '#CCC' : '#666',
+    lineHeight: (isSmallDevice ? 18 : 20) * scale,
+  },
+  unitToggleContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12 * scale,
+    marginBottom: 24 * scale,
+    width: '100%',
+  },
+  unitToggle: {
+    paddingVertical: 12 * scale,
+    paddingHorizontal: 20 * scale,
+    borderRadius: 16 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  unitToggleSelected: {
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderColor: isDark ? '#FFF' : '#000',
+  },
+  unitToggleText: {
+    fontSize: 16 * scale,
+    fontWeight: '600',
+    color: isDark ? '#FFF' : '#000',
+  },
+  unitToggleTextSelected: {
+    color: isDark ? '#000' : '#FFF',
+  },
+  inputRow: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 12 * scale,
+    width: '100%',
+  },
+  input: {
+    width: '80%',
+    height: 56 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderRadius: 16 * scale,
+    paddingHorizontal: 20 * scale,
+    fontSize: 18 * scale,
+    color: isDark ? '#FFF' : '#000',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  inputSmall: {
+    width: '38%',
+    height: 56 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderRadius: 16 * scale,
+    paddingHorizontal: 20 * scale,
+    fontSize: 18 * scale,
+    color: isDark ? '#FFF' : '#000',
+    textAlign: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  optionsContainer: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 12 * scale,
+    marginTop: 12 * scale,
+  },
+  option: {
+    width: '80%',
+    paddingVertical: 16 * scale,
+    paddingHorizontal: 24 * scale,
+    borderRadius: 16 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+    alignItems: 'center',
+  },
+  optionSelected: {
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderColor: isDark ? '#FFF' : '#000',
+  },
+  optionText: {
+    fontSize: 18 * scale,
+    fontWeight: '600',
+    color: isDark ? '#FFF' : '#000',
+  },
+  optionTextSelected: {
+    color: isDark ? '#000' : '#FFF',
+  },
+  activityOptionsContainer: {
+    width: '100%',
+    alignItems: 'center',
+    gap: 12 * scale,
+    marginTop: 12 * scale,
+  },
+  activityOptionLarge: {
+    width: '90%',
+    padding: 20 * scale,
+    borderRadius: 16 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  activityOptionLargeSelected: {
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderColor: isDark ? '#FFF' : '#000',
+  },
+  activityOptionText: {
+    fontSize: 18 * scale,
+    fontWeight: '600',
+    color: isDark ? '#FFF' : '#000',
+    marginBottom: 4 * scale,
+    textAlign: 'center',
+  },
+  activityOptionTextSelected: {
+    color: isDark ? '#000' : '#FFF',
+  },
+  activityOptionDescription: {
+    fontSize: 14 * scale,
+    color: isDark ? '#CCC' : '#666',
+    textAlign: 'center',
+  },
+  activityOptionDescriptionSelected: {
+    color: isDark ? '#666' : '#CCC',
+  },
+  goalsContainer: {
+    width: '100%',
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 12 * scale,
+    justifyContent: 'center',
+    marginTop: 24 * scale,
+  },
+  goalCard: {
+    width: '45%',
+    aspectRatio: 1,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderRadius: 20 * scale,
+    padding: 16 * scale,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  goalCardIcon: {
+    width: 48 * scale,
+    height: 48 * scale,
+    borderRadius: 30 * scale,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 12 * scale,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 3 * scale,
+    elevation: 2,
+  },
+  goalValue: {
+    fontSize: 24 * scale,
+    fontWeight: '700',
+    color: isDark ? '#FFF' : '#000',
+    marginBottom: 8 * scale,
+  },
+  goalLabel: {
+    fontSize: 16 * scale,
+    color: isDark ? '#CCC' : '#666',
+  },
+  datePickerButton: {
+    width: '80%',
+    height: 56 * scale,
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderRadius: 16 * scale,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  datePickerButtonText: {
+    fontSize: 18 * scale,
+    color: isDark ? '#FFF' : '#000',
+    textAlign: 'center',
+    width: '100%',
+    height: '100%',
+    paddingVertical: 15 * scale,
+  },
+  validationContainer: {
+    position: 'absolute',
+    alignItems: 'center',
+    bottom: 140 * scale,
+    left: 0,
+    right: 0,
+    height: 25 * scale,
+  },
+  validationMessage: {
+    fontSize: 18 * scale,
+    fontWeight: '400',
+    color: isDark ? '#ccc' : '#ccc',
+    textAlign: 'center',
+  },
+  savedDataToast: {
+    position: 'absolute',
+    bottom: 20 * scale,
+    alignSelf: 'center',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
+    borderRadius: 25 * scale,
+    paddingVertical: 12 * scale,
+    paddingHorizontal: 20 * scale,
+    flexDirection: 'row',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84 * scale,
+    elevation: 5,
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+    transform: [{translateY: 0}],
+  },
+  savedDataToastButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8 * scale,
+  },
+  savedDataToastText: {
+    fontSize: 16 * scale,
+    fontWeight: '500',
+    color: isDark ? '#FFF' : '#000',
+  },
+  optionHeader: {
+    position: 'relative',
+    width: '100%',
+    alignItems: 'center',
+    marginBottom: 8 * scale,
+    flexDirection: 'row',
+    justifyContent: 'center',
+  },
+  timeEstimate: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4 * scale,
+    backgroundColor: isDark ? '#2C2C2E' : '#EAEAEA',
+    paddingHorizontal: 8 * scale,
+    paddingVertical: 4 * scale,
+    borderRadius: 12 * scale,
+    position: 'absolute',
+    right: 0,
+    top: 0,
+  },
+  timeEstimateSelected: {
+    backgroundColor: '#1C1C1E',
+  },
+  timeEstimateText: {
+    fontSize: 12 * scale,
+    fontWeight: '600',
+    color: isDark ? '#CCC' : '#666',
+  },
+  timeEstimateTextSelected: {
+    color: '#FFF',
+  },
+  weightChangeText: {
+    fontSize: 16 * scale,
+    color: isDark ? '#CCC' : '#666',
+    marginTop: 16 * scale,
+    textAlign: 'center',
+  },
+  disclaimerText: {
+    fontSize: 14 * scale,
+    color: isDark ? '#FF6961' : '#D32F2F',
+    textAlign: 'center',
+    marginVertical: 0,
+    paddingHorizontal: 20 * scale,
+  },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    position: 'absolute',
+    top: 80 * scale,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24 * scale,
+  },
+  loadingText: {
+    fontSize: 20 * scale,
+    color: isDark ? '#FFF' : '#000',
+    marginTop: 40 * scale,
+    textAlign: 'center',
+    fontWeight: '600',
+    letterSpacing: -0.5 * scale,
+    opacity: 0.9,
+  },
+  loadingIconContainer: {
+    width: 100 * scale,
+    height: 100 * scale,
+    borderRadius: 30 * scale,
+    backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24 * scale,
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  loadingProgressContainer: {
+    width: '100%',
+    maxWidth: 300 * scale,
+    marginTop: 32 * scale,
+  },
+  loadingProgressBackground: {
+    height: 15 * scale,
+    backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+    borderRadius: 100 * scale,
+    overflow: 'hidden',
+  },
+  loadingProgressBar: {
+    height: '100%',
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderRadius: 100 * scale,
+  },
+  loadingStepCount: {
+    fontSize: 14 * scale,
+    color: isDark ? '#999' : '#666',
+    marginTop: 16 * scale,
+    textAlign: 'center',
+    fontWeight: '500',
+  },
+  goalsContent: {
+    width: '100%',
+  },
+  affirmationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: isDark ? '#4ECDC420' : '#2ecc7120',
+    borderRadius: 12 * scale,
+    padding: 12 * scale,
+    marginTop: 24 * scale,
+    marginHorizontal: 20 * scale,
+    gap: 8 * scale,
+  },
+  affirmationText: {
+    fontSize: 16 * scale,
+    color: isDark ? '#4ECDC4' : '#27ae60',
+    textAlign: 'center',
+    marginVertical: 0,
+    paddingHorizontal: 20 * scale,
+  },
+  privacyFooter: {
+    fontSize: 13 * scale,
+    color: isDark ? '#999' : '#666',
+    textAlign: 'center',
+    marginTop: 20 * scale,
+    paddingHorizontal: 40 * scale,
+    fontStyle: 'italic',
+  },
+});
+
+// Memoized feature item component
+const FeatureItem = React.memo(({ item, showAnimation, animValue, styles }) => {
+  const animatedStyle = showAnimation && animValue
+    ? {
+        opacity: animValue,
+        transform: [
+          {
+            translateY: animValue.interpolate({
+              inputRange: [0, 1],
+              outputRange: [50, 0],
+            }),
+          },
+          {
+            scale: animValue.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.8, 1],
+            }),
+          },
+        ],
+      }
+    : {};
+
+  return (
+    <Animated.View style={[styles.featureItem, animatedStyle]}>
+      <View style={styles.featureIconContainer}>
+        <Text style={styles.featureIcon}>{item.icon}</Text>
+      </View>
+      <View style={styles.featureTextContainer}>
+        <Text style={styles.featureTitle}>{item.title}</Text>
+        <Text style={styles.featureDescription}>{item.description}</Text>
+      </View>
+    </Animated.View>
+  );
+});
+
+// Memoized goal card component
+const GoalCard = React.memo(({ goal, animation, styles }) => (
+  <Animated.View 
+    style={[
+      styles.goalCard,
+      {
+        transform: [
+          { scale: animation },
+          {
+            translateY: animation.interpolate({
+              inputRange: [0, 1],
+              outputRange: [50, 0]
+            })
+          }
+        ],
+        opacity: animation
+      }
+    ]}
+  >
+    <View style={[styles.goalCardIcon, { backgroundColor: goal.color + '15' }]}>
+      <MaterialCommunityIcons 
+        name={goal.icon} 
+        size={26} 
+        color={goal.color} 
+      />
+    </View>
+    <Text style={styles.goalValue}>
+      {goal.value}{goal.unit}
+    </Text>
+    <Text style={styles.goalLabel}>{goal.label}</Text>
+  </Animated.View>
+));
+
 const OnboardingScreen = () => {
   const navigation = useNavigation();
   const [currentIndex, setCurrentIndex] = useState(0);
@@ -300,7 +889,17 @@ const OnboardingScreen = () => {
   const flatListRef = useRef(null);
   const colorScheme = Appearance.getColorScheme();
   const isDark = colorScheme === 'dark';
-  const styles = getDynamicStyles(isDark);
+  
+  // Memoize styles
+  const styles = useMemo(() => getBaseStyles(isDark), [isDark]);
+  
+  // Optimize FlatList
+  const getItemLayout = useCallback((data, index) => ({
+    length: width,
+    offset: width * index,
+    index,
+  }), []);
+
   const [visitedSteps, setVisitedSteps] = useState({});
   const [showSavedDataToast, setShowSavedDataToast] = useState(false);
   const savedDataToastOpacity = useRef(new Animated.Value(0)).current;
@@ -769,39 +1368,15 @@ const OnboardingScreen = () => {
     };
   }, [currentIndex, step3Loaded, blurOpacity, replayButtonOpacity, loadingOpacity]);
 
-  const renderFeature = ({ item, index }, showAnimation = false, animValue) => {
-    const animatedStyle = showAnimation && animValue
-      ? {
-          opacity: animValue,
-          transform: [
-            {
-              translateY: animValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: [50, 0],
-              }),
-            },
-            {
-              scale: animValue.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.8, 1],
-              }),
-            },
-          ],
-        }
-      : {};
-
-    return (
-      <Animated.View style={[styles.featureItem, animatedStyle]} key={item.id}>
-        <View style={styles.featureIconContainer}>
-          <Text style={styles.featureIcon}>{item.icon}</Text>
-        </View>
-        <View style={styles.featureTextContainer}>
-          <Text style={styles.featureTitle}>{item.title}</Text>
-          <Text style={styles.featureDescription}>{item.description}</Text>
-        </View>
-      </Animated.View>
-    );
-  };
+  const renderFeature = useCallback(({ item, index }, showAnimation = false, animValue) => (
+    <FeatureItem 
+      key={item.id}
+      item={item}
+      showAnimation={showAnimation}
+      animValue={animValue}
+      styles={styles}
+    />
+  ), [styles]);
 
   // handleReplayAnimation Function
   const handleReplayAnimation = () => {
@@ -1958,6 +2533,8 @@ const calculateGoals = (data) => {
             </View>
           )}
 
+          <PrivacyFooter />
+
           {(showSavedDataToast || savedDataToastOpacity._value > 0) && (
             <Animated.View style={[
               styles.savedDataToast,
@@ -2071,36 +2648,12 @@ const calculateGoals = (data) => {
           <Animated.View style={[styles.goalsContent, { opacity: contentOpacity }]}>
             <View style={styles.goalsContainer}>
               {goalData.map((goal, index) => (
-                <Animated.View 
+                <GoalCard 
                   key={goal.label}
-                  style={[
-                    styles.goalCard,
-                    {
-                      transform: [
-                        { scale: goalCardAnimations[index] },
-                        {
-                          translateY: goalCardAnimations[index].interpolate({
-                            inputRange: [0, 1],
-                            outputRange: [50, 0]
-                          })
-                        }
-                      ],
-                      opacity: goalCardAnimations[index]
-                    }
-                  ]}
-                >
-                  <View style={[styles.goalCardIcon, { backgroundColor: goal.color + '15' }]}>
-                    <MaterialCommunityIcons 
-                      name={goal.icon} 
-                      size={26} 
-                      color={goal.color} 
-                    />
-                  </View>
-                  <Text style={styles.goalValue}>
-                    {goal.value}{goal.unit}
-                  </Text>
-                  <Text style={styles.goalLabel}>{goal.label}</Text>
-                </Animated.View>
+                  goal={goal}
+                  animation={goalCardAnimations[index]}
+                  styles={styles}
+                />
               ))}
             </View>
             
@@ -2272,6 +2825,13 @@ const calculateGoals = (data) => {
     return `You want to ${direction} ${diff.toFixed(1)} ${unit === 'imperial' ? 'lbs' : 'kg'}`;
   };
 
+  // Add privacy footer component
+  const PrivacyFooter = () => (
+    <Text style={styles.privacyFooter}>
+      Your data and choices are stored securely on your device only. We never collect or transmit your personal information.
+    </Text>
+  );
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <FlatList
@@ -2283,6 +2843,10 @@ const calculateGoals = (data) => {
         scrollEnabled={!isCalculatingGoals}
         showsHorizontalScrollIndicator={false}
         keyExtractor={(item) => item.id}
+        getItemLayout={getItemLayout}
+        windowSize={3}
+        maxToRenderPerBatch={1}
+        initialNumToRender={1}
         onMomentumScrollEnd={(event) => {
           const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
           // If trying to scroll forward and validation fails, scroll back
@@ -2328,6 +2892,7 @@ const calculateGoals = (data) => {
             />
           </Animated.View>
         )}
+
         <View style={styles.progressContainer}>
           <View style={styles.progressBarContainer}>
             <Animated.View 
@@ -2370,517 +2935,6 @@ const calculateGoals = (data) => {
       </Animated.View>
     </SafeAreaView>
   );
-};
-
-const getDynamicStyles = (isDark) => {
-  const dotSize = 8;
-  const dotSpacing = 16;
-  const activeDotWidth = 24;
-
-  return StyleSheet.create({
-    safeArea: {
-      flex: 1,
-      backgroundColor: isDark ? '#000' : '#FFF',
-    },
-    slide: {
-      flex: 1,
-      width,
-      alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingTop: isSmallDevice ? '5%' : '8%',
-    },
-    headerContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 24,
-      paddingHorizontal: 20,
-      width: '100%',
-      gap: 20,
-    },
-    headerTextContainer: {
-      flex: 1,
-    },
-    iconHeaderContainer: {
-      width: 80,
-      height: 80,
-      borderRadius: 30,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 24,
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    title: {
-      fontSize: isSmallDevice ? 24 : 28,
-      fontWeight: '700',
-      color: isDark ? '#FFF' : '#000',
-      textAlign: 'center',
-      marginBottom: 12,
-    },
-    description: {
-      fontSize: isSmallDevice ? 16 : 18,
-      color: isDark ? '#CCC' : '#666',
-      textAlign: 'center',
-      marginBottom: 24,
-      lineHeight: isSmallDevice ? 22 : 24,
-    },
-    bottomDescription: {
-      fontSize: isSmallDevice ? 16 : 18,
-      color: isDark ? '#CCC' : '#666',
-      textAlign: 'center',
-      marginTop: 16,
-      lineHeight: isSmallDevice ? 22 : 24,
-    },
-    bottomContainer: {
-      padding: 10,
-      paddingBottom: Platform.OS === 'ios' ? 20 : 40,
-    },
-    progressContainer: {
-      marginHorizontal: 20,
-      marginBottom: 16,
-    },
-    progressBarContainer: {
-      height: 18,
-      backgroundColor: isDark ? '#333' : '#E0E0E0',
-      borderRadius: 100,
-      overflow: 'hidden',
-    },
-    progressBar: {
-      height: '100%',
-      backgroundColor: isDark ? '#FFF' : '#000',
-      borderRadius: 100,
-    },
-    buttonContainer: {
-      flexDirection: 'row',
-      gap: 12,
-    },
-    actionButton: {
-      flex: 1,
-      height: 56,
-      borderRadius: 16,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    primaryButton: {
-      backgroundColor: isDark ? '#FFF' : '#000',
-    },
-    secondaryButton: {
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-    },
-    actionButtonText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDark ? '#000' : '#FFF',
-    },
-    secondaryButtonText: {
-      color: isDark ? '#FFF' : '#000',
-    },
-    disabledButton: {
-      opacity: 0.5,
-    },
-    featuresContainer: {
-      width: '100%',
-      marginTop: 8,
-      marginBottom: 16,
-      flex: 1,
-    },
-    scrollView: {
-      flex: 1,
-    },
-    scrollViewContent: {
-      paddingBottom: 20,
-      flexGrow: 1,
-    },
-    featureItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 16,
-      backgroundColor: isDark ? '#1C1C1E' : '#F8F8F8',
-      padding: 16,
-      borderRadius: 25,
-      shadowColor: isDark ? '#000' : '#666',
-      shadowOffset: { width: 0, height: 0 },
-      shadowOpacity: 0.2,
-      shadowRadius: 2,
-      elevation: 0,
-    },
-    featureIconContainer: {
-      width: 50,
-      height: 50,
-      borderRadius: 15,
-      backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginRight: 12,
-    },
-    featureIcon: {
-      fontSize: 25,
-    },
-    featureTextContainer: {
-      flex: 1,
-    },
-    featureTitle: {
-      fontSize: isSmallDevice ? 16 : 17,
-      fontWeight: '600',
-      color: isDark ? '#FFF' : '#000',
-      marginBottom: 4,
-    },
-    featureDescription: {
-      fontSize: isSmallDevice ? 13 : 14,
-      color: isDark ? '#CCC' : '#666',
-      lineHeight: isSmallDevice ? 18 : 20,
-    },
-    unitToggleContainer: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 12,
-      marginBottom: 24,
-      width: '100%',
-    },
-    unitToggle: {
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      borderRadius: 16,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    unitToggleSelected: {
-      backgroundColor: isDark ? '#FFF' : '#000',
-      borderColor: isDark ? '#FFF' : '#000',
-    },
-    unitToggleText: {
-      fontSize: 16,
-      fontWeight: '600',
-      color: isDark ? '#FFF' : '#000',
-    },
-    unitToggleTextSelected: {
-      color: isDark ? '#000' : '#FFF',
-    },
-    inputRow: {
-      flexDirection: 'row',
-      justifyContent: 'center',
-      gap: 12,
-      width: '100%',
-    },
-    input: {
-      width: '80%',
-      height: 56,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 16,
-      paddingHorizontal: 20,
-      fontSize: 18,
-      color: isDark ? '#FFF' : '#000',
-      textAlign: 'center',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    inputSmall: {
-      width: '38%',
-      height: 56,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 16,
-      paddingHorizontal: 20,
-      fontSize: 18,
-      color: isDark ? '#FFF' : '#000',
-      textAlign: 'center',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    optionsContainer: {
-      width: '100%',
-      alignItems: 'center',
-      gap: 12,
-      marginTop: 12,
-    },
-    option: {
-      width: '80%',
-      paddingVertical: 16,
-      paddingHorizontal: 24,
-      borderRadius: 16,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-      alignItems: 'center',
-    },
-    optionSelected: {
-      backgroundColor: isDark ? '#FFF' : '#000',
-      borderColor: isDark ? '#FFF' : '#000',
-    },
-    optionText: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: isDark ? '#FFF' : '#000',
-    },
-    optionTextSelected: {
-      color: isDark ? '#000' : '#FFF',
-    },
-    activityOptionsContainer: {
-      width: '100%',
-      alignItems: 'center',
-      gap: 12,
-      marginTop: 12,
-    },
-    activityOptionLarge: {
-      width: '90%',
-      padding: 20,
-      borderRadius: 16,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    activityOptionLargeSelected: {
-      backgroundColor: isDark ? '#FFF' : '#000',
-      borderColor: isDark ? '#FFF' : '#000',
-    },
-    activityOptionText: {
-      fontSize: 18,
-      fontWeight: '600',
-      color: isDark ? '#FFF' : '#000',
-      marginBottom: 4,
-      textAlign: 'center',
-    },
-    activityOptionTextSelected: {
-      color: isDark ? '#000' : '#FFF',
-    },
-    activityOptionDescription: {
-      fontSize: 14,
-      color: isDark ? '#CCC' : '#666',
-      textAlign: 'center',
-    },
-    activityOptionDescriptionSelected: {
-      color: isDark ? '#666' : '#CCC',
-    },
-    goalsContainer: {
-      width: '100%',
-      flexDirection: 'row',
-      flexWrap: 'wrap',
-      gap: 12,
-      justifyContent: 'center',
-      marginTop: 24,
-    },
-    goalCard: {
-      width: '45%',
-      aspectRatio: 1,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 20,
-      padding: 16,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    goalCardIcon: {
-      width: 48,
-      height: 48,
-      borderRadius: 30,
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 12,
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.1,
-      shadowRadius: 3,
-      elevation: 2,
-    },
-    goalValue: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: isDark ? '#FFF' : '#000',
-      marginBottom: 8,
-    },
-    goalLabel: {
-      fontSize: 16,
-      color: isDark ? '#CCC' : '#666',
-    },
-    datePickerButton: {
-      width: '80%',
-      height: 56,
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 16,
-      justifyContent: 'center',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    datePickerButtonText: {
-      fontSize: 18,
-      color: isDark ? '#FFF' : '#000',
-      textAlign: 'center',
-      width: '100%',
-      height: '100%',
-      paddingVertical: 15,
-    },
-    validationContainer: {
-      position: 'absolute',
-      alignItems: 'center',
-      bottom: 140,
-      left: 0,
-      right: 0,
-      height: 25,
-    },
-    validationMessage: {
-      fontSize: 18,
-      fontWeight: '400',
-      color: isDark ? '#ccc' : '#ccc',
-      textAlign: 'center',
-    },
-    savedDataToast: {
-      position: 'absolute',
-      bottom: 20,
-      alignSelf: 'center',
-      backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 25,
-      paddingVertical: 12,
-      paddingHorizontal: 20,
-      flexDirection: 'row',
-      alignItems: 'center',
-      shadowColor: '#000',
-      shadowOffset: {
-        width: 0,
-        height: 2,
-      },
-      shadowOpacity: 0.25,
-      shadowRadius: 3.84,
-      elevation: 5,
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-      transform: [{translateY: 0}],
-    },
-    savedDataToastButton: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: 8,
-    },
-    savedDataToastText: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: isDark ? '#FFF' : '#000',
-    },
-    optionHeader: {
-      position: 'relative',
-      width: '100%',
-      alignItems: 'center',
-      marginBottom: 8,
-      flexDirection: 'row',
-      justifyContent: 'center',
-    },
-    timeEstimate: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-      gap: 4,
-      backgroundColor: isDark ? '#2C2C2E' : '#EAEAEA',
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 12,
-      position: 'absolute',
-      right: 0,
-      top: 0,
-    },
-    timeEstimateSelected: {
-      backgroundColor: '#1C1C1E',
-    },
-    timeEstimateText: {
-      fontSize: 12,
-      fontWeight: '600',
-      color: isDark ? '#CCC' : '#666',
-    },
-    timeEstimateTextSelected: {
-      color: '#FFF',
-    },
-    weightChangeText: {
-      fontSize: 16,
-      color: isDark ? '#CCC' : '#666',
-      marginTop: 16,
-      textAlign: 'center',
-    },
-    disclaimerText: {
-      fontSize: 14,
-      color: isDark ? '#FF6961' : '#D32F2F',
-      textAlign: 'center',
-      marginVertical: 0,
-      paddingHorizontal: 20,
-    },
-    loadingContainer: {
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-      position: 'absolute',
-      top: 80,
-      left: 0,
-      right: 0,
-      bottom: 0,
-      paddingHorizontal: 24,
-    },
-    loadingText: {
-      fontSize: 20,
-      color: isDark ? '#FFF' : '#000',
-      marginTop: 40,
-      textAlign: 'center',
-      fontWeight: '600',
-      letterSpacing: -0.5,
-      opacity: 0.9,
-    },
-    loadingIconContainer: {
-      width: 100,
-      height: 100,
-      borderRadius: 30,
-      backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
-      justifyContent: 'center',
-      alignItems: 'center',
-      marginBottom: 24,
-      borderWidth: 1,
-      borderColor: isDark ? '#333' : '#E0E0E0',
-    },
-    loadingProgressContainer: {
-      width: '100%',
-      maxWidth: 300,
-      marginTop: 32,
-    },
-    loadingProgressBackground: {
-      height: 15,
-      backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
-      borderRadius: 100,
-      overflow: 'hidden',
-    },
-    loadingProgressBar: {
-      height: '100%',
-      backgroundColor: isDark ? '#FFF' : '#000',
-      borderRadius: 100,
-    },
-    loadingStepCount: {
-      fontSize: 14,
-      color: isDark ? '#999' : '#666',
-      marginTop: 16,
-      textAlign: 'center',
-      fontWeight: '500',
-    },
-    goalsContent: {
-      width: '100%',
-    },
-    affirmationContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      backgroundColor: isDark ? '#4ECDC420' : '#2ecc7120',
-      borderRadius: 12,
-      padding: 12,
-      marginTop: 24,
-      marginHorizontal: 20,
-      gap: 8,
-    },
-    affirmationText: {
-      fontSize: 16,
-      color: isDark ? '#4ECDC4' : '#27ae60',
-      textAlign: 'center',
-      marginVertical: 0,
-      paddingHorizontal: 20,
-    },
-  });
 };
 
 export default OnboardingScreen;

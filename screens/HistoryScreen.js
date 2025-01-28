@@ -139,11 +139,14 @@ const HistoryScreen = () => {
 
   // Animated rotation value for filter icon
   const filterRotation = useRef(new Animated.Value(0)).current;
+  const filterTranslation = useRef(new Animated.Value(0)).current;
+  const filterOpacity = useRef(new Animated.Value(1)).current;
 
   // Add new state for temporary date selection
   const [tempSelectedDate, setTempSelectedDate] = useState(null);
 
   const [animatedOpacities, setAnimatedOpacities] = useState({});
+  const [isFilterButtonsDisabled, setIsFilterButtonsDisabled] = useState(false);
 
   // Fun food items array for random placeholders
   const funFoodItems = [
@@ -995,13 +998,20 @@ const HistoryScreen = () => {
     if (!showFilters) return null;
 
     return (
-      <ScrollView 
+      <Animated.ScrollView 
         horizontal 
         showsHorizontalScrollIndicator={false}
-        style={styles.filterChipsContainer}
+        style={[
+          styles.filterChipsContainer,
+          {
+            transform: [{ translateY: filterTranslation }],
+            opacity: filterOpacity
+          }
+        ]}
         contentContainerStyle={styles.filterChipsContent}
       >
         <TouchableOpacity
+          disabled={isFilterButtonsDisabled}
           style={[styles.filterChip, filters.barcode && styles.filterChipActive]}
           onPress={() => {
             Haptics.selectionAsync();
@@ -1021,6 +1031,7 @@ const HistoryScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
+          disabled={isFilterButtonsDisabled}
           style={[styles.filterChip, filters.accurate && styles.filterChipActive]}
           onPress={() => {
             Haptics.selectionAsync();
@@ -1040,6 +1051,7 @@ const HistoryScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
+          disabled={isFilterButtonsDisabled}
           style={[styles.filterChip, filters.fast && styles.filterChipActive]}
           onPress={() => {
             Haptics.selectionAsync();
@@ -1059,6 +1071,7 @@ const HistoryScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
+          disabled={isFilterButtonsDisabled}
           style={[styles.filterChip, filters.startDate && styles.filterChipActive]}
           onPress={() => {
             Haptics.selectionAsync();
@@ -1079,6 +1092,7 @@ const HistoryScreen = () => {
         </TouchableOpacity>
 
         <TouchableOpacity
+          disabled={isFilterButtonsDisabled}
           style={[styles.filterChip, filters.endDate && styles.filterChipActive]}
           onPress={() => {
             Haptics.selectionAsync();
@@ -1100,6 +1114,7 @@ const HistoryScreen = () => {
 
         {(filters.barcode || filters.accurate || filters.fast || filters.startDate || filters.endDate) && (
           <TouchableOpacity
+            disabled={isFilterButtonsDisabled}
             style={[styles.filterChip, styles.clearFilterChip]}
             onPress={() => {
               Haptics.selectionAsync();
@@ -1116,14 +1131,35 @@ const HistoryScreen = () => {
             <Text style={styles.filterChipText}>Clear All</Text>
           </TouchableOpacity>
         )}
-      </ScrollView>
+
+        <TouchableOpacity
+          disabled={isFilterButtonsDisabled}
+          style={[styles.filterChip, { backgroundColor: colorScheme === 'dark' ? '#FF453A' : '#FF3B30' }]}
+          onPress={() => {
+            Haptics.selectionAsync();
+            clearHistory();
+          }}
+        >
+          <SymbolView
+            name="trash.slash.fill"
+            size={16}
+            tintColor="#fff"
+            type="hierarchical"
+            style={styles.filterChipIcon}
+          />
+          <Text style={[styles.filterChipText, { color: '#fff' }]}>Clear History</Text>
+        </TouchableOpacity>
+      </Animated.ScrollView>
     );
   };
 
   const toggleFilterSection = () => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     const newShow = !showFilters;
-    setShowFilters(newShow);
+    
+    // Immediately disable buttons when hiding
+    if (!newShow) {
+      setIsFilterButtonsDisabled(true);
+    }
     
     // Save the new state to AsyncStorage
     try {
@@ -1131,12 +1167,62 @@ const HistoryScreen = () => {
     } catch (error) {
       console.error('Error saving filter section state:', error);
     }
-    
-    Animated.timing(filterRotation, {
-      toValue: newShow ? 1 : 0,
+
+    // Reset values if showing
+    if (newShow) {
+      filterTranslation.setValue(-50);
+      filterOpacity.setValue(0);
+      setIsFilterButtonsDisabled(false);
+    }
+
+    // Configure animations
+    const animations = [
+      Animated.timing(filterRotation, {
+        toValue: newShow ? 1 : 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.spring(filterTranslation, {
+        toValue: newShow ? 0 : -50,
+        useNativeDriver: true,
+        friction: 8,
+        tension: 40,
+      }),
+      Animated.timing(filterOpacity, {
+        toValue: newShow ? 1 : 0,
+        duration: 200,
+        useNativeDriver: true,
+      })
+    ];
+
+    // Configure layout animation
+    const customLayoutAnimation = {
       duration: 300,
-      useNativeDriver: true,
-    }).start();
+      create: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+      update: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+      },
+      delete: {
+        type: LayoutAnimation.Types.easeInEaseOut,
+        property: LayoutAnimation.Properties.opacity,
+      },
+    };
+
+    // Start animations
+    if (newShow) {
+      setShowFilters(true);
+      LayoutAnimation.configureNext(customLayoutAnimation);
+      Animated.parallel(animations).start();
+    } else {
+      // For hiding, we want to coordinate the layout animation with the parallel animation
+      LayoutAnimation.configureNext(customLayoutAnimation);
+      Animated.parallel(animations).start(() => {
+        setShowFilters(false);
+      });
+    }
   };
 
   const renderHistoryCard = (item) => {
@@ -1177,22 +1263,12 @@ const HistoryScreen = () => {
 
   return (
     <View style={styles.container}>
-      <Text style={styles.historyTitle}>History</Text>
-      
-      <TouchableOpacity style={styles.iconButton} onPress={clearHistory}>
-        <SymbolView
-          name="trash.slash.fill"
-          size={26}
-          tintColor="#fff"
-          type="hierarchical"
-          style={styles.symbol}
-        />
-      </TouchableOpacity>
-
       <ScrollView
         style={styles.scrollContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
+        <Text style={styles.historyTitle}>History</Text>
+      
         <View style={styles.searchContainer}>
           <View style={styles.searchInputContainer}>
             <SymbolView
@@ -1578,7 +1654,7 @@ const getDynamicStyles = (colorScheme) =>
     iconButton: {
       position: 'absolute',
       right: '6%',
-      top: isIphoneSE() ? '5%' : '8%',
+      top: isIphoneSE() ? '1.5%' : '3%',
       padding: 10,
       zIndex: 1,
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
