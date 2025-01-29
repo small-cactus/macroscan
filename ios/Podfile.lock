@@ -1682,7 +1682,8 @@ PODS:
   - "sqlite3 (3.45.3+1)":
     - "sqlite3/common (= 3.45.3+1)"
   - "sqlite3/common (3.45.3+1)"
-  - superwall-react-native (1.2.2):
+  - Superscript (0.1.16)
+  - superwall-react-native (1.4.5):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1702,9 +1703,10 @@ PODS:
     - React-utils
     - ReactCommon/turbomodule/bridging
     - ReactCommon/turbomodule/core
-    - SuperwallKit (= 3.6.6)
+    - SuperwallKit (= 3.12.1)
     - Yoga
-  - SuperwallKit (3.6.6)
+  - SuperwallKit (3.12.1):
+    - Superscript (= 0.1.16)
   - VisionCamera (4.5.3):
     - VisionCamera/Core (= 4.5.3)
     - VisionCamera/React (= 4.5.3)
@@ -1842,6 +1844,7 @@ SPEC REPOS:
     - SDWebImageWebPCoder
     - SocketRocket
     - sqlite3
+    - Superscript
     - SuperwallKit
     - ZXingObjC
 
@@ -2188,8 +2191,9 @@ SPEC CHECKSUMS:
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380
   SocketRocket: abac6f5de4d4d62d24e11868d7a2f427e0ef940d
   sqlite3: 02d1f07eaaa01f80a1c16b4b31dfcbb3345ee01a
-  superwall-react-native: 6bfc2fe106be407fe1db67706288a6c6c781a723
-  SuperwallKit: e6db6c60f6dc95c3dc841525f84dc8504cfffb5a
+  Superscript: 17e2597de5e1ddfa132e217b33d1eb8eddf13e0f
+  superwall-react-native: 0d2c2705b73e16cb9148e79910300fc2dcdda4ef
+  SuperwallKit: cbe59c2c745dfe966f810ab3fcadb92a20fde419
   VisionCamera: cb84d0d8485b3e67c91b62931d3aa88f49747c92
   Yoga: ae3c32c514802d30f687a04a6a35b348506d411f
   ZXingObjC: 8898711ab495761b2dbbdec76d90164a6d7e14c5

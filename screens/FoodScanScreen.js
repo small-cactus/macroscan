@@ -2536,6 +2536,14 @@ It doesn't matter if the product name is missing, this data is always from the i
     return true; // Indicate success
   };
 
+  // UNCOMMENT THIS FOR PRODUCTION USE
+  useFocusEffect(
+    useCallback(() => {
+      // Trigger the onboardingv2 campaign when the screen is focused
+      Superwall.registerEvent("onboardingv2");
+    }, [])
+  );
+
   return (
     <View style={styles.container}>
       <AnimatedTextFoodScan

@@ -570,7 +570,7 @@ export default function AccountScreen() {
                   </LinearGradient>
                 </View>
                 <Text style={styles.trialText}>
-                  4 week free trial • cancel anytime • no commitment
+                  1 week free trial • cancel anytime • no commitment
                 </Text>
               </View>
               <TouchableOpacity

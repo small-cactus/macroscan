@@ -25,7 +25,7 @@ import { UserProvider } from './userContext';
 import { SymbolView, SymbolViewProps, SFSymbol } from 'expo-symbols';
 import { GestureHandlerRootView } from 'react-native-gesture-handler'; // **Import GestureHandlerRootView**
 // UNCOMMENT THIS FOR PRODUCTION USE
-// import Superwall from "@superwall/react-native-superwall"
+import Superwall from "@superwall/react-native-superwall"
 
 // Screens
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -143,11 +143,11 @@ function App() {
   };
 
   // UNCOMMENT THIS FOR PRODUCTION USE
-  // React.useEffect(() => {
-  //   const apiKey = Platform.OS === "ios" ? "pk_bda2670c19f0b35a69ea4d829c74af62e480386339850ce8" : "MY_ANDROID_API_KEY"
+  React.useEffect(() => {
+    const apiKey = Platform.OS === "ios" ? "pk_bda2670c19f0b35a69ea4d829c74af62e480386339850ce8" : "MY_ANDROID_API_KEY"
 
-  //   Superwall.configure(apiKey)
-  // }, [])
+    Superwall.configure(apiKey)
+  }, [])
 
   useEffect(() => {
     const verifyChecksum = (name, storedChecksum) => {
