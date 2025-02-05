@@ -19,6 +19,7 @@ import {
   Picker,
   Modal,
   FlatList,
+  Switch,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -28,6 +29,9 @@ import * as RNIap from 'react-native-iap';
 import { useIAP } from '../IAPContext'; 
 import { BlurView } from 'expo-blur';
 import AnimatedCenteredText from './AnimatedCenteredText';
+import { MODELS, getModel } from './providers/models';
+import Superwall from '@superwall/react-native-superwall';
+import { useUser } from '../userContext';
 
 if (
   Platform.OS === 'android' &&
@@ -64,20 +68,25 @@ const FeaturesScreen = () => {
   const colorScheme = Appearance.getColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const { isIAPEnabled } = useIAP();
+  const { user } = useUser();
 
   // Models: 'Complex Processing' is paywalled in the UI,
   // but we'll force it behind the scenes when user picks Accurate Mode.
-  const models = {
-    'claude-3-5-sonnet-20240620': 'Complex Processing',
-    'claude-3-haiku-20240307': 'Default Processing',
+  const MODEL_TYPES = {
+    DEFAULT: 'Default Processing',
+    COMPLEX: 'Complex Processing'
   };
 
   // Basic state
-  const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
+  const [selectedProvider, setSelectedProvider] = useState('anthropic');
   const [selectedMode, setSelectedMode] = useState('fast');
+  const [selectedProcessing, setSelectedProcessing] = useState('default');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [debugUnlocked] = useState(DEBUG_MOCK_UNLIMITED);
   const [showAndroidPicker, setShowAndroidPicker] = useState(false);
+  const [foodSelectionEnabled, setFoodSelectionEnabled] = useState(false);
+  const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
+  const initialCheckDoneRef = useRef(false);
 
   // For animating the mode buttons
   const scaleValues = {
@@ -153,12 +162,136 @@ const FeaturesScreen = () => {
   ];
 
   useEffect(() => {
-    checkUnlockStatus();
-    loadSettings();
+    const initializeFeatures = async () => {
+      try {
+        // First check first day unlimited status
+        const today = new Date().toISOString().slice(0, 10);
+        const firstUseDate = await AsyncStorage.getItem('firstUseDate');
+        
+        let isFirstDay = false;
+        if (!firstUseDate) {
+          await AsyncStorage.setItem('firstUseDate', today);
+          isFirstDay = true;
+        } else {
+          isFirstDay = firstUseDate === today;
+        }
+        setIsFirstDayUnlimited(isFirstDay);
+
+        // Load saved mode
+        const savedMode = await AsyncStorage.getItem('selectedMode') || 'fast';
+        setSelectedMode(savedMode);
+
+        // Load saved model and set display text
+        const savedModel = await AsyncStorage.getItem('selectedModel') || MODELS[selectedProvider].regular;
+        setSelectedProcessing(savedModel === MODELS[selectedProvider].complex ? MODEL_TYPES.COMPLEX : MODEL_TYPES.DEFAULT);
+
+        // Load food selection setting
+        const foodSelection = await AsyncStorage.getItem('foodSelectionEnabled');
+        setFoodSelectionEnabled(foodSelection === 'true');
+
+      } catch (error) {
+        console.error('Error initializing features:', error);
+      }
+    };
+
+    initializeFeatures();
   }, [isIAPEnabled]);
 
+  // Add subscription checking effect
   useEffect(() => {
-    // Animate selected mode on mount
+    const checkSubscription = async () => {
+      try {
+        let isSubscribedUnlimited = false;
+    
+        if (isIAPEnabled) {
+          if (Platform.OS === 'ios') {
+            // Ensure initConnection is called before using getReceiptIOS
+            await RNIap.initConnection();
+            // Retrieve the receipt data
+            const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
+    
+            if (!receipt) {
+              console.error('No receipt available');
+            } else {
+              // Send the receipt data to the cloud function
+              const response = await fetch(
+                'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ receiptData: receipt }),
+                }
+              );
+    
+              // Check if the response is OK
+              if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.isSubscribed) {
+                  const productId = data.productId;
+                  if (
+                    ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(productId)
+                  ) {
+                    isSubscribedUnlimited = true;
+                  }
+                } else {
+                  console.log('Receipt validation failed:', data.message);
+                }
+              } else {
+                const responseText = await response.text();
+                console.error('Server Error:', response.status, responseText);
+              }
+            }
+          } else {
+            // Handle Android platform if necessary
+            isSubscribedUnlimited = false;
+          }
+        } else {
+          // If IAP is not enabled, rely on user context
+          if (
+            user?.subscriptionStatus === 'macroscan_unlimited' ||
+            user?.subscriptionStatus === 'macroscan_plusplus'
+          ) {
+            isSubscribedUnlimited = true;
+          }
+        }
+    
+        setIsUnlocked(isSubscribedUnlimited);
+      } catch (error) {
+        console.error('Failed to check subscription status:', error);
+        setIsUnlocked(false);
+      }
+    };
+
+    let isMounted = true;
+    let checkInterval;
+
+    // Only do initial check if we haven't done it yet
+    if (!initialCheckDoneRef.current) {
+      checkSubscription();
+      initialCheckDoneRef.current = true;
+    }
+
+    // Set up interval for periodic checks (every 5 minutes)
+    checkInterval = setInterval(() => {
+      if (isMounted) {
+        checkSubscription();
+      }
+    }, 300000); // 5 minutes
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
+    };
+  }, [isIAPEnabled, user]); // Only depend on isIAPEnabled and user changes
+
+  // Remove the separate effects for checking status and loading settings
+  useEffect(() => {
+    // Only animate mode buttons when they change
     Object.keys(buttonBackgroundColors).forEach((mode) => {
       animateButtonSelection(mode, mode === selectedMode);
     });
@@ -205,73 +338,55 @@ const FeaturesScreen = () => {
     });
   };
 
-  // Check subscription status (iOS example)
-  const checkUnlockStatus = async () => {
+  // Add function to reset everything to default state
+  const resetToDefaultState = async () => {
     try {
-      let isUnlockedStatus = false;
+      console.log('Resetting features to default state...');
+      
+      // Reset mode to fast
+      setSelectedMode('fast');
+      await AsyncStorage.setItem('selectedMode', 'fast');
 
-      if (isIAPEnabled) {
-        if (Platform.OS === 'ios') {
-          await RNIap.initConnection();
-          const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
-          if (!receipt) {
-            console.error('No receipt available');
-          } else {
-            const response = await fetch(
-              'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
-              {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({ receiptData: receipt }),
-              }
-            );
-            if (response.ok) {
-              const data = await response.json();
-              if (data.success && data.isSubscribed) {
-                const productId = data.productId;
-                if (SUBSCRIPTION_IDS.includes(productId)) {
-                  isUnlockedStatus = true;
-                }
-              } else {
-                console.log('Receipt validation failed:', data.message);
-              }
-            } else {
-              const responseText = await response.text();
-              console.error('Server Error:', response.status, responseText);
-            }
-          }
-        } else {
-          // Android subscription check can go here
-          isUnlockedStatus = false;
-        }
-      } else {
-        // Fallback if not using IAP
-        // Example: user object says user.subscriptionStatus
-        if (
-          user?.subscriptionStatus === 'macroscan_unlimited' ||
-          user?.subscriptionStatus === 'macroscan_plusplus'
-        ) {
-          isUnlockedStatus = true;
-        }
-      }
-      setIsUnlocked(debugUnlocked || isUnlockedStatus);
+      // Disable food selection
+      setFoodSelectionEnabled(false);
+      await AsyncStorage.setItem('foodSelectionEnabled', 'false');
+
+      // Trigger animations for mode buttons
+      Object.keys(buttonBackgroundColors).forEach((mode) => {
+        animateButtonSelection(mode, mode === 'fast');
+      });
+
+      console.log('Features reset complete');
     } catch (error) {
-      console.error('Failed to check subscriptions:', error);
-      setIsUnlocked(debugUnlocked || false);
+      console.error('Error resetting to default state:', error);
     }
   };
 
-  // Load any saved settings (model/mode) from AsyncStorage
-  const loadSettings = async () => {
+  // Add this new function to handle the toggle
+  const handleFoodSelectionToggle = async (value) => {
     try {
-      const model = await AsyncStorage.getItem('selectedModel');
-      const mode = await AsyncStorage.getItem('selectedMode');
-      if (model) setSelectedModel(model);
-      if (mode) setSelectedMode(mode);
+      if (!isUnlocked && !isFirstDayUnlimited && value) {
+        // Show upgrade alert with paywall
+        Alert.alert(
+          'Unlock Required',
+          'Circle to Scan is only available with MacroScan Unlimited.',
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Upgrade',
+              onPress: () => {
+                navigation.navigate('FoodScan', { showPaywall: true });
+              },
+            },
+          ]
+        );
+        return;
+      }
+      await AsyncStorage.setItem('foodSelectionEnabled', value.toString());
+      setFoodSelectionEnabled(value);
+      Haptics.selectionAsync();
     } catch (error) {
-      console.error('Error loading settings:', error);
+      console.error('Error saving food selection setting:', error);
     }
   };
 
@@ -284,37 +399,7 @@ const FeaturesScreen = () => {
     }).start();
   };
 
-  // Force set the Complex model (claude-3-5-sonnet-20240620) in AsyncStorage
-  const forceComplexModel = async () => {
-    try {
-      await AsyncStorage.setItem('selectedModel', 'claude-3-5-sonnet-20240620');
-      setSelectedModel('claude-3-5-sonnet-20240620');
-    } catch (error) {
-      console.error('Error setting complex model:', error);
-    }
-  };
-
-  // Handle changing the model
-  const handleModelChange = async (model) => {
-    // If user tries to pick Complex from the model selector manually
-    // but isn't unlocked => show alert
-    if (!isUnlocked && model !== 'claude-3-haiku-20240307') {
-      Alert.alert(
-        'Unlock Required',
-        'Upgrade to MacroScan Unlimited to access Complex Processing.'
-      );
-      return;
-    }
-    try {
-      await AsyncStorage.setItem('selectedModel', model);
-      setSelectedModel(model);
-      Haptics.selectionAsync();
-    } catch (error) {
-      console.error('Error saving selectedModel:', error);
-    }
-  };
-
-  // Main logic for changing the scanning mode
+  // Handle changing the scanning mode
   const handleModeChange = async (mode) => {
     try {
       if (mode === 'accurate') {
@@ -322,9 +407,42 @@ const FeaturesScreen = () => {
           // Subscribers get unlimited accurate scans
           await AsyncStorage.setItem('selectedMode', mode);
           setSelectedMode(mode);
-          // Force complex model too
-          await forceComplexModel();
+          // Force complex model for accurate mode
+          await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].complex);
           Haptics.selectionAsync();
+        } else if (isFirstDayUnlimited) {
+          // First day users get a special message
+          Alert.alert(
+            'First Day Unlimited Access',
+            "Today you have unlimited accurate scans! Starting tomorrow, you'll only get one accurate scan per day unless you upgrade.",
+            [
+              { 
+                text: 'Cancel', 
+                style: 'cancel',
+                onPress: async () => {
+                  // Revert to fast mode
+                  await AsyncStorage.setItem('selectedMode', 'fast');
+                  setSelectedMode('fast');
+                  await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
+                  // Trigger animations
+                  Object.keys(buttonBackgroundColors).forEach((m) => {
+                    animateButtonSelection(m, m === 'fast');
+                  });
+                  Haptics.selectionAsync();
+                }
+              },
+              {
+                text: 'Continue',
+                onPress: async () => {
+                  await AsyncStorage.setItem('selectedMode', mode);
+                  setSelectedMode(mode);
+                  await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].complex);
+                  Haptics.selectionAsync();
+                },
+              },
+            ],
+            { cancelable: false }
+          );
         } else {
           // Free user => check if used up the 1 daily scan
           const freeAccurateScansUsed = await AsyncStorage.getItem(
@@ -337,21 +455,43 @@ const FeaturesScreen = () => {
               'Daily Limit Reached',
               'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
             );
+            // Revert to fast mode since they can't use accurate
+            await AsyncStorage.setItem('selectedMode', 'fast');
+            setSelectedMode('fast');
+            await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
+            // Trigger animations
+            Object.keys(buttonBackgroundColors).forEach((m) => {
+              animateButtonSelection(m, m === 'fast');
+            });
+            Haptics.selectionAsync();
           } else {
             // Not used yet => show the "make it count" alert
             Alert.alert(
               'Heads Up!',
               'You only get one accurate scan a day on the free plan, so make it count!',
               [
-                { text: 'Cancel', style: 'cancel' },
+                { 
+                  text: 'Cancel', 
+                  style: 'cancel',
+                  onPress: async () => {
+                    // Revert to fast mode
+                    await AsyncStorage.setItem('selectedMode', 'fast');
+                    setSelectedMode('fast');
+                    await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
+                    // Trigger animations
+                    Object.keys(buttonBackgroundColors).forEach((m) => {
+                      animateButtonSelection(m, m === 'fast');
+                    });
+                    Haptics.selectionAsync();
+                  }
+                },
                 {
                   text: 'OK',
                   onPress: async () => {
                     // Switch to accurate
                     await AsyncStorage.setItem('selectedMode', mode);
                     setSelectedMode(mode);
-                    // Force complex model even on free plan
-                    await forceComplexModel();
+                    await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].complex);
                     Haptics.selectionAsync();
                   },
                 },
@@ -364,17 +504,8 @@ const FeaturesScreen = () => {
         // Fast mode is always allowed
         await AsyncStorage.setItem('selectedMode', mode);
         setSelectedMode(mode);
+        await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
         Haptics.selectionAsync();
-
-        // If user toggles back to fast mode, force them back to default model.
-        if (selectedModel !== 'claude-3-haiku-20240307') {
-          try {
-            await AsyncStorage.setItem('selectedModel', 'claude-3-haiku-20240307');
-            setSelectedModel('claude-3-haiku-20240307');
-          } catch (error) {
-            console.error('Error setting default model:', error);
-          }
-        }
       }
     } catch (error) {
       console.error('Error handling mode change:', error);
@@ -476,21 +607,41 @@ const FeaturesScreen = () => {
     );
   };
 
-  // iOS ActionSheet for picking the model OR Android picker modal
+  // Update modelSelectorValue text
+  const getModelDisplayName = (model) => {
+    // Compare with actual model values from MODELS
+    if (model === MODELS[selectedProvider].complex) {
+      return MODEL_TYPES.COMPLEX;
+    }
+    return MODEL_TYPES.DEFAULT;
+  };
+
+  // Get the actual model value from display name
+  const getModelValueFromDisplayName = (displayName) => {
+    return displayName === MODEL_TYPES.COMPLEX ? 
+      MODELS[selectedProvider].complex : 
+      MODELS[selectedProvider].regular;
+  };
+
+  // Handle model selector press
   const handleModelSelectorPress = () => {
     if (selectedMode === 'accurate') {
       Alert.alert(
         'Sorry!',
-        'Accurate mode is a beta feature and currently only acheives 90% accuracy using the Complex Processing model.'
+        'Accurate mode is a beta feature and currently only achieves 90% accuracy using the Complex Processing model.'
       );
       return;
     }
     if (Platform.OS === 'ios') {
-      const options = Object.entries(models).map(([key, value]) => ({
-        key,
-        title: value,
-        locked: !isUnlocked && key !== 'claude-3-haiku-20240307',
-      }));
+      const options = [
+        { key: MODELS[selectedProvider].regular, title: MODEL_TYPES.DEFAULT, locked: false },
+        { 
+          key: MODELS[selectedProvider].complex, 
+          title: MODEL_TYPES.COMPLEX, 
+          locked: !isUnlocked && !isFirstDayUnlimited 
+        }
+      ];
+      
       ActionSheetIOS.showActionSheetWithOptions(
         {
           options: [
@@ -503,7 +654,7 @@ const FeaturesScreen = () => {
           title: 'Select Processing Model',
           message: 'Choose the processing model that best fits your needs',
         },
-        (buttonIndex) => {
+        async (buttonIndex) => {
           if (buttonIndex === 0) return;
           const selectedOption = options[buttonIndex - 1];
           if (selectedOption.locked) {
@@ -513,7 +664,10 @@ const FeaturesScreen = () => {
             );
             return;
           }
-          handleModelChange(selectedOption.key);
+          // Store the selected model
+          await AsyncStorage.setItem('selectedModel', selectedOption.key);
+          setSelectedProcessing(selectedOption.key === MODELS[selectedProvider].complex ? MODEL_TYPES.COMPLEX : MODEL_TYPES.DEFAULT);
+          Haptics.selectionAsync();
         }
       );
     } else {
@@ -559,32 +713,36 @@ const FeaturesScreen = () => {
             </TouchableOpacity>
           </View>
           <Picker
-            selectedValue={selectedModel}
-            onValueChange={(itemValue) => {
-              if (!isUnlocked && itemValue !== 'claude-3-haiku-20240307') {
+            selectedValue={selectedMode === 'accurate' ? MODEL_TYPES.COMPLEX : selectedProcessing}
+            onValueChange={async (value) => {
+              if (!isUnlocked && !isFirstDayUnlimited && value === MODEL_TYPES.COMPLEX) {
                 Alert.alert(
                   'Unlock Required',
                   'Upgrade to MacroScan Unlimited to access Complex Processing.'
                 );
                 return;
               }
-              handleModelChange(itemValue);
+              const modelValue = value === MODEL_TYPES.COMPLEX ? MODELS[selectedProvider].complex : MODELS[selectedProvider].regular;
+              await AsyncStorage.setItem('selectedModel', modelValue);
+              setSelectedProcessing(value);
               setShowAndroidPicker(false);
+              Haptics.selectionAsync();
             }}
             style={{ color: colorScheme === 'dark' ? '#fff' : '#000' }}
           >
-            {Object.entries(models).map(([key, value]) => (
-              <Picker.Item
-                key={key}
-                label={`${value}${
-                  !isUnlocked && key !== 'claude-3-haiku-20240307'
-                    ? ' (Locked)'
-                    : ''
-                }`}
-                value={key}
-                enabled={isUnlocked || key === 'claude-3-haiku-20240307'}
-              />
-            ))}
+            <Picker.Item
+              key={MODEL_TYPES.DEFAULT}
+              label={MODEL_TYPES.DEFAULT}
+              value={MODEL_TYPES.DEFAULT}
+            />
+            <Picker.Item
+              key={MODEL_TYPES.COMPLEX}
+              label={`${MODEL_TYPES.COMPLEX}${
+                !isUnlocked && !isFirstDayUnlimited ? ' (Locked)' : ''
+              }`}
+              value={MODEL_TYPES.COMPLEX}
+              enabled={isUnlocked || isFirstDayUnlimited}
+            />
           </Picker>
         </View>
       </View>
@@ -753,8 +911,7 @@ const FeaturesScreen = () => {
               <Text style={styles.modelSelectorLabel}>
                 Processing Model
               </Text>
-              {(selectedMode === 'accurate' &&
-                selectedModel === 'claude-3-5-sonnet-20240620') && (
+              {(selectedMode === 'accurate') && (
                 <Ionicons
                   name="lock-closed"
                   size={16}
@@ -765,7 +922,7 @@ const FeaturesScreen = () => {
             </View>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <Text style={styles.modelSelectorValue}>
-                {models[selectedModel]}
+                {selectedMode === 'accurate' ? MODEL_TYPES.COMPLEX : selectedProcessing}
               </Text>
               <Ionicons
                 name="chevron-down"
@@ -776,10 +933,83 @@ const FeaturesScreen = () => {
           </View>
         </TouchableOpacity>
 
+        <View style={styles.separator} />
+        
+        {/* Add the Food Selection Toggle */}
+        {(!isUnlocked && !isFirstDayUnlimited) ? (
+          <TouchableOpacity
+            onPress={async () => {
+              await Superwall.shared.register('no-scans');
+            }}
+          >
+            <View style={[styles.toggleContainer, styles.toggleContainerLocked]}>
+              <View style={styles.toggleIconContainer}>
+                <Ionicons
+                  name="scan-circle-outline"
+                  size={25}
+                  color={colorScheme === 'dark' ? '#FFF' : '#000'}
+                />
+              </View>
+              <View style={styles.toggleTextContainer}>
+                <View style={styles.toggleHeaderContainer}>
+                  <Text style={styles.toggleLabel}>Circle to Scan</Text>
+                  <View style={[styles.betaContainer, styles.betaContainerInline]}>
+                    <Text style={styles.betaTag}>BETA</Text>
+                  </View>
+                  <Ionicons
+                    name="lock-closed"
+                    size={16}
+                    color={colorScheme === 'dark' ? '#666' : '#999'}
+                    style={{ marginLeft: 5 }}
+                  />
+                </View>
+                <Text style={styles.toggleDescription}>
+                  Circle any food and only that selection will be scanned for nutrients
+                </Text>
+              </View>
+              <Switch
+                value={false}
+                disabled={true}
+                trackColor={{ false: '#767577', true: '#34C759' }}
+                thumbColor={'#f4f3f4'}
+                ios_backgroundColor="#3e3e3e"
+              />
+            </View>
+          </TouchableOpacity>
+        ) : (
+          <View style={styles.toggleContainer}>
+            <View style={styles.toggleIconContainer}>
+              <Ionicons
+                name="scan-circle-outline"
+                size={25}
+                color={colorScheme === 'dark' ? '#FFF' : '#000'}
+              />
+            </View>
+            <View style={styles.toggleTextContainer}>
+              <View style={styles.toggleHeaderContainer}>
+                <Text style={styles.toggleLabel}>Circle to Scan</Text>
+                <View style={[styles.betaContainer, styles.betaContainerInline]}>
+                  <Text style={styles.betaTag}>BETA</Text>
+                </View>
+              </View>
+              <Text style={styles.toggleDescription}>
+                Circle any food and only that selection will be scanned for nutrients
+              </Text>
+            </View>
+            <Switch
+              value={foodSelectionEnabled}
+              onValueChange={handleFoodSelectionToggle}
+              trackColor={{ false: '#767577', true: '#34C759' }}
+              thumbColor={foodSelectionEnabled ? '#FFFFFF' : '#f4f3f4'}
+              ios_backgroundColor="#3e3e3e"
+            />
+          </View>
+        )}
+
         <Text style={styles.bottomNote}>
           💡 Tip: Fast Mode is great for quick checks. Use Accurate Mode for 
           complex meals. Free users get only 1 accurate scan per day. 
-          (Accurate Mode automatically uses Complex Processing in the background.)
+          Circle to Scan helps analyze specific portions in your photos.
         </Text>
       </ScrollView>
 
@@ -1025,19 +1255,65 @@ const getDynamicStyles = (colorScheme) => {
       borderRadius: 8,
       overflow: 'hidden',
       borderWidth: 1,
-      marginBottom: 12,
       borderColor: colorScheme === 'dark' ? '#555' : '#CCC',
       backgroundColor:
         colorScheme === 'dark'
           ? 'rgba(255, 255, 255, 0.1)'
           : 'rgba(0, 0, 0, 0.1)',
     },
+    betaContainerInline: {
+      marginBottom: 0,
+      marginLeft: 8,
+      borderWidth: 1,
+      borderColor: '#007AFF',
+      backgroundColor: 'transparent',
+    },
     betaTag: {
-      fontSize: 14,
+      fontSize: 12,
       color: '#007AFF',
       fontWeight: '600',
-      paddingHorizontal: 12,
-      paddingVertical: 4,
+      paddingHorizontal: 8,
+      paddingVertical: 2,
+    },
+    toggleContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
+      padding: 15,
+      borderRadius: 16,
+      marginBottom: 20,
+      borderWidth: 2,
+      borderColor: 'transparent',
+    },
+    toggleContainerLocked: {
+      opacity: 0.7,
+      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+    },
+    toggleIconContainer: {
+      backgroundColor: colorScheme === 'dark' ? '#3c3c3e' : '#e0e0e0',
+      padding: 12,
+      borderRadius: 12,
+      marginRight: 15,
+    },
+    toggleTextContainer: {
+      flex: 1,
+      marginRight: 10,
+    },
+    toggleHeaderContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    toggleLabel: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFF' : '#000',
+    },
+    toggleDescription: {
+      fontSize: 13,
+      color: colorScheme === 'dark' ? '#bbb' : '#666',
+      lineHeight: 18,
     },
   });
   return baseStyles;

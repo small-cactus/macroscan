@@ -23,12 +23,18 @@ import { useUser } from '../userContext';
 import { useNavigation } from '@react-navigation/native';
 import { Pressable } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import AnimatedTextFoodScan from './AnimatedTextFoodScan'; // Adjust the path accordingly
-import AnimatedTextFoodScanFast from './AnimatedTextFoodScanFast'; // Adjust the path accordingly
+import AnimatedTextFoodScan from './AnimatedTextFoodScan';
+import AnimatedTextFoodScanFast from './AnimatedTextFoodScanFast';
 import TutorialOverlay from './Tutorial';
-import { MaterialCommunityIcons } from '@expo/vector-icons'; // Add this import
-import { BlurView } from 'expo-blur'; // Add this import at the top
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import * as StoreReview from 'react-native-store-review';
+import Superwall from '@superwall/react-native-superwall';
+import FoodSelectionModal from './FoodSelectionModal.js';
+import WhatsNew from './WhatsNew';
+import { handleAnthropicScan, handleOpenAIScan, handleGeminiScan } from './providers';
+import { getModel } from './providers/models';
+import { updateAverageProcessingTime, loadAverageProcessingTimes } from './providers/processingTimes';  // Add loadAverageProcessingTimes
 
 const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
 
@@ -88,6 +94,9 @@ const MODE_LABELS = {
 };
 
 const FoodScanScreen = () => {
+  // Add debug flag at the top of the component
+  const DEBUG_MODE = false; // Set to false for production
+
   // Move useState inside the component
   const [showModeChip, setShowModeChip] = useState(true);
   const [image, setImage] = useState(null);
@@ -132,8 +141,9 @@ const FoodScanScreen = () => {
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
 
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('claude-3-haiku-20240307');
-  const [selectedMode, setSelectedMode] = useState('fast'); // Default to 'fast'
+  const [selectedProvider, setSelectedProvider] = useState('anthropic');
+  const [selectedModel, setSelectedModel] = useState(getModel('anthropic', { selectedMode: 'fast' }));
+  const [selectedMode, setSelectedMode] = useState('fast');
   const [apiSuccess, setApiSuccess] = useState(false);
   const loadingTextQueueRef = useRef([]);
   const loadingIntervalRef = useRef(null);
@@ -190,24 +200,23 @@ const FoodScanScreen = () => {
     loadRatingState();
   }, []);
 
+  // Add this with other refs at the top of the component
+  const lastProcessedImageRef = useRef(null);
+
   useEffect(() => {
     const processImageFromCamera = async () => {
-      console.log(
-        'Received imageUri:',
-        route.params?.imageUri,
-        'barcodeData:',
-        route.params?.barcodeData
-      );
-  
-      // If an imageUri is present, handle it
-      if (route.params?.imageUri) {
+      // If an imageUri is present and we haven't processed it yet, handle it
+      if (route.params?.imageUri && route.params.imageUri !== lastProcessedImageRef.current) {
         const imageUri = route.params.imageUri;
-        const barcodeData = route.params.barcodeData;  // <--- Grab barcode data
+        lastProcessedImageRef.current = imageUri;
+        const barcodeData = route.params.barcodeData;
         setProcessingImage(imageUri);
-        setModalImageUri(imageUri);
+        // Resize the camera image to obtain a base64 string
+        const resizedImage = await resizeImage(imageUri);
+        setModalImageUri(resizedImage);
   
-        // Now pass both the imageUri and barcode data to your AI function
-        await sendImageToApi(imageUri, barcodeData);
+        // Pass the already resized image to the API
+        await sendImageToApi(resizedImage, barcodeData, false, true);
   
         // Clear them so they aren't re-processed if user revisits the screen
         navigation.setParams({ imageUri: null, barcodeData: null });
@@ -215,7 +224,6 @@ const FoodScanScreen = () => {
     };
   
     processImageFromCamera();
-    // Include barcodeData in the dependency array if you want to trigger re-check on it
   }, [route.params?.imageUri, route.params?.barcodeData]);
 
   const getLoadingTextsByMode = (mode) => {
@@ -226,52 +234,29 @@ const FoodScanScreen = () => {
     setLoadingTextQueue((prevQueue) => [...prevQueue, text]);
   };
 
-  const [averageProcessingTimes, setAverageProcessingTimes] = useState({
-    fast: 4000, // in milliseconds
-    accurate: 20000,
-  });
+  const [averageProcessingTimes, setAverageProcessingTimes] = useState(null);
 
-  // Function to load average times from storage
-  const loadAverageProcessingTimes = async () => {
-    try {
-      const storedTimes = await AsyncStorage.getItem('@average_processing_times');
-      if (storedTimes) {
-        setAverageProcessingTimes(JSON.parse(storedTimes));
-      }
-    } catch (error) {
-      console.error("Error loading average processing times:", error);
-    }
-  };
-
-  // Function to save average times to storage
-  const saveAverageProcessingTimes = async (updatedTimes) => {
-    try {
-      await AsyncStorage.setItem('@average_processing_times', JSON.stringify(updatedTimes));
-    } catch (error) {
-      console.error("Error saving average processing times:", error);
-    }
-  };
-
-  // Function to update the average processing time using Exponential Moving Average
-  const updateAverageProcessingTime = (mode, newTime) => {
-    const alpha = 0.2; // Smoothing factor (adjust as needed)
-    setAverageProcessingTimes(prevTimes => {
-      const updatedTime = alpha * newTime + (1 - alpha) * prevTimes[mode];
-      const updatedTimes = { ...prevTimes, [mode]: updatedTime };
-      saveAverageProcessingTimes(updatedTimes);
-      return updatedTimes;
-    });
-  };
-
-  // Call loadAverageProcessingTimes in useEffect
+  // Add this useEffect to load processing times
   useEffect(() => {
-    loadAverageProcessingTimes();
+    const loadTimes = async () => {
+      const times = await loadAverageProcessingTimes();
+      setAverageProcessingTimes(times);
+    };
+    loadTimes();
   }, []);
 
-  // Function to enqueue loading texts based on average processing time
+  // Update scheduleLoadingTexts to use the loaded times
   const scheduleLoadingTexts = () => {
     const mode = selectedMode;
-    const averageTime = averageProcessingTimes[mode] || 6000; // Default average time if not set
+    let averageTime = 6000; // Default fallback time
+
+    // Try to get the actual average time for current provider/model
+    if (averageProcessingTimes && averageProcessingTimes[selectedProvider]) {
+      const modelTimes = averageProcessingTimes[selectedProvider][selectedModel];
+      if (modelTimes && typeof modelTimes[mode] === 'number') {
+        averageTime = modelTimes[mode];
+      }
+    }
 
     const loadingTexts = getLoadingTextsByMode(mode);
     const totalTexts = loadingTexts.length;
@@ -287,7 +272,6 @@ const FoodScanScreen = () => {
     });
 
     // Optionally, handle texts that might need to appear if processing takes longer
-    // For example, schedule a "Still working..." text after averageTime
     setTimeout(() => {
       setLoadingTextQueue((prevQueue) => [...prevQueue, "Still working on it..."]);
     }, averageTime + 2000); // 2 seconds after average time
@@ -334,7 +318,7 @@ const FoodScanScreen = () => {
   
     // Schedule "Taking longer than usual..." with fade in
     setTimeout(() => {
-      console.log(`Scheduling "Taking longer than usual..." at ${averageTime + 2000} ms`);
+      // console.log(`Scheduling "Taking longer than usual..." at ${averageTime + 2000} ms`);
       loadingTextQueueRef.current = ["Taking longer than usual..."];
       isHoldingRef.current = true;
   
@@ -431,16 +415,48 @@ const stopLoadingAnimation = () => {
     useCallback(() => {
       const loadSettings = async () => {
         try {
-          const model = await AsyncStorage.getItem('selectedModel');
-          if (model) setSelectedModel(model);
-          const mode = await AsyncStorage.getItem('selectedMode'); // Ensure this key matches FeaturesScreen
-          if (mode) setSelectedMode(mode);
+          // Get route params if they exist
+          const params = route.params || {};
+          
+          // First set the provider
+          const provider = params.provider || await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+          setSelectedProvider(provider);
+          
+          // Then set the mode
+          let mode;
+          if (params.selectedMode) {
+            mode = params.selectedMode;
+            setSelectedMode(mode);
+            await AsyncStorage.setItem('selectedMode', mode);
+          } else {
+            mode = await AsyncStorage.getItem('selectedMode') || 'fast';
+            setSelectedMode(mode);
+          }
+
+          // Get the current model using the getModel helper
+          const currentModel = getModel(provider, {
+            selectedMode: mode,
+            selectedModel: params.selectedModel || await AsyncStorage.getItem('selectedModel'),
+            hasDrawing: false
+          });
+          
+          setSelectedModel(currentModel);
+          await AsyncStorage.setItem('selectedModel', currentModel);
+
+          // Load food selection setting
+          await loadFoodSelectionSetting();
+
+          // If we have an imageUri in the params, process it
+          if (params.imageUri) {
+            const resizedImage = await resizeImage(params.imageUri);
+            await sendImageToApi(resizedImage, params.barcodeData);
+          }
         } catch (error) {
           console.error("Error loading settings:", error);
         }
       };
       loadSettings();
-    }, [])
+    }, [route.params])
   );
 
   useEffect(() => {
@@ -456,7 +472,8 @@ const stopLoadingAnimation = () => {
   
         // 1) Check the existing "dateLastUsed"
         const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
-        console.log('[INIT] dateLastUsed:', dateLastUsed, ' vs. today:', today);
+        // Remove the log printing dateLastUsed
+        // console.log('[INIT] dateLastUsed:', dateLastUsed, ' vs. today:', today);
   
         // 2) Check "firstUseDate"
         const firstUseDate = await AsyncStorage.getItem('firstUseDate');
@@ -471,7 +488,8 @@ const stopLoadingAnimation = () => {
   
         // 3) If the date changed since last use, reset daily counters
         if (dateLastUsed !== today) {
-          console.log('[INIT] Resetting daily counters because date changed.');
+          // Removed the reset-counter log:
+          // console.log('[INIT] Resetting daily counters because date changed.');
           await AsyncStorage.setItem('dailyScanCount', '0');
           await AsyncStorage.setItem('dateLastUsed', today);
           await AsyncStorage.setItem('freeAccurateScansUsed', '0');
@@ -485,7 +503,8 @@ const stopLoadingAnimation = () => {
           // Also load how many accurate scans used
           const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
           setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
-          console.log('[INIT] freeAccurateScansUsed =', accurateScansUsed);
+          // Removed log:
+          // console.log('[INIT] freeAccurateScansUsed =', accurateScansUsed);
         }
   
         // 4) Load the user's chosen model & mode
@@ -510,6 +529,8 @@ const stopLoadingAnimation = () => {
       // Re-initialize or perform actions when the screen is focused
     }, [])
   );
+
+  const initialCheckDoneRef = useRef(false);
 
   useEffect(() => {
     const checkSubscription = async () => {
@@ -592,10 +613,31 @@ const stopLoadingAnimation = () => {
         setIsSubscribedPlus(false);
       }
     };
-  
-    checkSubscription();
-  }, [isIAPEnabled, user]);
 
+    let isMounted = true;
+    let checkInterval;
+
+    // Only do initial check if we haven't done it yet
+    if (!initialCheckDoneRef.current) {
+      checkSubscription();
+      initialCheckDoneRef.current = true;
+    }
+
+    // Set up interval for periodic checks (every 5 minutes)
+    checkInterval = setInterval(() => {
+      if (isMounted) {
+        checkSubscription();
+      }
+    }, 300000); // 5 minutes
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
+    };
+  }, [isIAPEnabled, user]); // Only depend on isIAPEnabled and user changes
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -656,11 +698,19 @@ const stopLoadingAnimation = () => {
   }, [apiSuccess, modalImageUri, foodData, noFoodFound, ErrorOccured]);
 
   useEffect(() => {
-    if (!modalVisible && apiSuccess && modalImageUri) {
-      setImage(modalImageUri);
-      setApiSuccess(false);
+    if (!modalVisible && modalImageUri) {
+      let previewUri = modalImageUri;
+      // If the string is not a file URI or already a data URI, add the prefix
+      if (
+        typeof previewUri === 'string' &&
+        !previewUri.startsWith('file://') &&
+        !previewUri.startsWith('data:image/jpeg;base64,')
+      ) {
+        previewUri = 'data:image/jpeg;base64,' + previewUri;
+      }
+      setImage(previewUri);
     }
-  }, [modalVisible, apiSuccess, modalImageUri]);
+  }, [modalVisible, modalImageUri]);
 
   const getTimeUntilMidnight = () => {
     const now = new Date();
@@ -680,10 +730,25 @@ const stopLoadingAnimation = () => {
   }, [isFirstDayUnlimited, isSubscribed, scanCount]);
 
   const resizeImage = async (uri) => {
-    const result = await manipulateAsync(
-      uri,
-      { compress: 1, format: SaveFormat.JPEG, base64: true }
-    );
+    let compressQuality = 1;
+    const actions = [{ resize: { width: 1024 } }]; // Resize the image to 1024px width while preserving aspect ratio.
+    let result;
+    while (true) {
+      result = await manipulateAsync(uri, actions, { compress: compressQuality, format: SaveFormat.JPEG, base64: true });
+
+      // Calculate the approximate size in bytes.
+      const base64Str = result.base64;
+      const sizeBytes = Math.ceil(base64Str.length * 3 / 4);
+      console.log("Compression quality:", compressQuality, "Size bytes:", sizeBytes);
+
+      // If image size is within limit (<= 5MB) or quality is too low, then break.
+      if (sizeBytes <= 5000000 || compressQuality <= 0.1) {
+        break;
+      }
+
+      // Lower the compression quality for next iteration.
+      compressQuality = compressQuality - 0.1;
+    }
     return result.base64;
   };
 
@@ -745,11 +810,13 @@ const stopLoadingAnimation = () => {
           scanMode: selectedMode,
           usedBarcode: productDetails.hadBarcode,  // Use the passed value instead of state
           processingTime: ((Date.now() - startTimeRef.current) / 1000).toFixed(1),
-          modelUsed: selectedModel
+          modelUsed: productDetails.modelUsed || selectedModel,
+          usedCircleScan: productDetails.hasDrawing === true // Only true if drawing occurred
         }
       };
-      console.log('Storing product details:', JSON.stringify(productDetailsWithDate, null, 2));
-
+      // Removed logging of product details to avoid logging sensitive base64 data:
+      // console.log('Storing product details:', JSON.stringify(productDetailsWithDate, null, 2));
+      
       existingHistory.push(productDetailsWithDate);
       const newHistoryJson = JSON.stringify(existingHistory);
       await AsyncStorage.setItem('@product_history', newHistoryJson);
@@ -779,24 +846,33 @@ const handleAccurateScanUsed = async () => {
 
 // Modified pickImage to reflect daily accurate-scan usage
 const pickImage = async () => {
-  if (isFirstDayUnlimited || isSubscribed) {
-    // User has unlimited scans
-    let result = await ImagePicker.launchImageLibraryAsync({
+  try {
+    const result = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ImagePicker.MediaTypeOptions.Images,
       allowsEditing: false,
-      aspect: [9, 16],
-      quality: 1,
+      quality: 0.8,
     });
-    if (!result.canceled && result.assets) {
-      const manipulatedImage = await manipulateAsync(
-        result.assets[0].uri,
-        [],
-        { format: SaveFormat.JPEG, compress: 0.8 }
-      );
-      setProcessingImage(manipulatedImage.uri);
-      setModalImageUri(manipulatedImage.uri);
-      await sendImageToApi(manipulatedImage.uri);
+
+    if (!result.canceled) {
+      const selectedUri = result.assets[0].uri;
+      
+      if (foodSelectionEnabled) {
+        setSelectedImage(selectedUri);
+        setShowFoodSelectionModal(true);
+      } else {
+        const resizedImage = await resizeImage(selectedUri);
+        await sendImageToApi(resizedImage);
+      }
     }
+  } catch (error) {
+    console.error('Error picking image:', error);
+    Alert.alert('Error', 'Failed to pick image from gallery');
+  }
+};
+
+const takePhoto = async () => {
+  if (isFirstDayUnlimited || isSubscribed) {
+    navigation.navigate('CameraScreen');
   } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
     // Check if accurate scan limit is reached for free users
     if (
@@ -816,62 +892,21 @@ const pickImage = async () => {
       return;
     }
 
-    // Proceed with image picking and processing
-    let result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      aspect: [9, 16],
-      quality: 1,
-    });
-    if (!result.canceled && result.assets) {
-      const manipulatedImage = await manipulateAsync(
-        result.assets[0].uri,
-        [],
-        { format: SaveFormat.JPEG, compress: 0.8 }
-      );
-      setProcessingImage(manipulatedImage.uri);
-      setModalImageUri(manipulatedImage.uri);
-      await sendImageToApi(manipulatedImage.uri);
-    }
-  } else {
-    const timeLeft = getTimeUntilMidnight();
-    Alert.alert(
-      "No More Scans Left",
-      `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
-    );
-  }
-};
-
-const takePhoto = async () => {
-  if (isFirstDayUnlimited || isSubscribed) {
     navigation.navigate('CameraScreen');
-  } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
-    // Check if accurate scan limit is reached for free users
-    if (
-      !isSubscribed &&
-      !isFirstDayUnlimited &&
-      selectedMode === 'accurate' &&
-      freeAccurateScansUsed >= 1
-    ) {
+  } else {
+    // Show paywall when no scans left
+    try {
+      await Superwall.shared.register('no-scans');
+      console.log('Paywall shown for no scans left');
+    } catch (error) {
+      console.error('Error showing paywall:', error);
+      // Fallback to alert if paywall fails
+      const timeLeft = getTimeUntilMidnight();
       Alert.alert(
-        'No Accurate Scans Left',
-        'You have used your 1 accurate scan for today. Fast mode has automatically been selected. Upgrade for unlimited accurate scans.'
+        "No More Scans Left",
+        `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
       );
-      setSelectedMode('fast');
-      await AsyncStorage.setItem('selectedMode', 'fast');
-      console.log('Selected Mode:', 'fast');
-      // navigate to CameraScreen with fast mode
-      // navigation.navigate('CameraScreen');
-      return;
     }
-
-    navigation.navigate('CameraScreen');
-  } else {
-    const timeLeft = getTimeUntilMidnight();
-    Alert.alert(
-      "No More Scans Left",
-      `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
-    );
   }
 };
 
@@ -926,850 +961,137 @@ const takePhoto = async () => {
     }
   };
 
-  const sendImageToApi = async (imageUri, barcodeData) => {
-    // Set hadBarcode state based on whether barcodeData exists
-    setHadBarcode(!!barcodeData);
+  // Remove the useOpenAI constant at the top and replace with:
+  const [currentProvider, setCurrentProvider] = useState('anthropic');
 
-    const mode = selectedMode;
-
-    if (mode === 'dynamic') {
-      Alert.alert(
-        "Feature Not Implemented",
-        "Dynamic processing is an alpha feature and is not implemented yet."
-      );
-      setIsLoading(false);
-      stopLoadingAnimation();
-      setProcessingImage(null);
+  const sendImageToApi = async (imageUri, barcodeData = null, hasDrawing = false) => {
+    if (isProcessingRef.current) {
+      console.log('Already processing an image, ignoring new request');
       return;
     }
-  
-    setIsLoading(true);
-    startLoadingAnimation();
-    console.log(currentLoadingText);
-    setProcessingImage(imageUri);
-  
-    scheduleLoadingTexts(); // Schedule loading texts based on average time
-    startTimeRef.current = Date.now(); // Update this line
-  
-    console.log("Starting API call with mode:", mode);
-    console.log(currentLoadingText);
-  
-    let foodFound = false; // Local variable to track if food was found
-  
+
     try {
-      const base64Image = await imageToBase64(imageUri);
-  
-      // Define your system prompts here (unchanged)
-      let systemPromptFast = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
-
-When presented with an image and potential barcode data, follow these steps:
-1. EXTREMELY IMPORTANT: Only use barcode data if it is explicitly provided to you. NEVER make up or infer barcode data that wasn't provided.
-2. If barcode data is provided:
-   - Use it as your primary source of truth for any nutritional values and product information it contains
-   - Verify the image matches the barcode data
-   - Only use the barcode data that was explicitly provided, never infer additional barcode data
-3. If no barcode data is provided:
-   - Rely solely on visual analysis
-   - Do not make assumptions about barcode information
-   - Be transparent about estimations in the details.summary
-4. If the image does not contain food, respond only with "{No Food Found.}"
-
-IMPORTANT STEPS:
-5. Pay meticulous attention to serving size measurements:
-   - Carefully measure serving size shown in image
-   - Provide nutrient information based precisely on the visible serving size, not anything else
-
-6. Clearly document in the details.summary:
-If barcode data is provided:
-   - Which specific values came from barcode data
-   - Any values calculated/extended from barcode data
-   - How the barcode product matches the image
-   - Any adjustments made to barcode values based on serving size
-   - Which values were estimated visually
-   - Format example: "Nutrition data sourced from barcode scan (calories, protein, carbs). Fat content estimated from visual analysis. Serving size adjusted to match 1.5x portion shown in image."
-If no barcode data is provided:
-  - Clearly state that all values are based on visual analysis
-  - Explain anything that you saw in the image that was not included in the calculations for macronutrients
-  - Format example: "All nutrition data sourced from visual analysis. Serving size adjusted to match 1.5x portion shown in image."`;
-
-  // Add barcode data if available
-  if (barcodeData) {
-    const barcodeDataString = JSON.stringify(barcodeData, null, 2);
-    systemPromptFast += `
-
-BARCODE INFO FOR THE IMAGE PROVIDED (EXTREMELY IMPORTANT):
-The user scanned a barcode with nutrient data, this data is from the image provided. some data may be missing:
-${barcodeDataString}
-
-It doesn't matter if the product name is missing, this data is always from the image provided.
-
-1. The barcode data supersedes visual estimates for any nutritional values it contains
-2. Document in details.summary exactly what values came from the barcode data
-3. Adjust all barcode values proportionally if serving size differs
-4. Only fall back to visual estimation for values not provided in barcode data
-5. Infer from the image any and all values that are not provided in the barcode data`;
-  }
-
-  // Add the JSON format specification
-  systemPromptFast += `
-
-6. For food images, analyze and provide the following information in JSON format:
-{
-  "food": {
-    "name": "String",
-    "class": "String",
-    "type": "String",
-    "calories": {
-      "amount": "Number",
-      "marginOfErrorPercent": "Number"
-    },
-    "proteins": {
-      "amount": "Number",
-      "marginOfErrorPercent": "Number"
-    },
-    "carbohydrates": {
-      "amount": "Number",
-      "marginOfErrorPercent": "Number"
-    },
-    "fats": {
-      "amount": "Number",
-      "marginOfErrorPercent": "Number"
-    },
-    "fiber": {
-      "amount": "Number",
-      "marginOfErrorPercent": "Number"
-    },
-    "sodium": {
-      "amount": "Number",
-      "marginOfErrorPercent": "Number"
-    },
-    "ingredients": [
-      {
-        "name": "String",
-        "wikipediaLink": "String",
-        "description": "String"
-      }
-    ],
-    "details": {
-      "summary": "String",
-      "prepTime": "String",
-      "servingSize": "String",
-      "wikipediaLink": "String"
-    }
-  }
-}
-
-Include anything you saw like drinks, condiments, or other items that were NOT included in the calculations for macronutrients inside the 'details' section of the JSON output. These things might include condiments, also include things you are unsure about in the details screen. Be specific and concise.`;
-  
-      let systemPromptAccurate = `You are an AI assistant specialized in analyzing food images and providing detailed nutritional information. Your primary goal is to determine the nutrient content of the food provided in the image with the highest possible accuracy, while maintaining transparency about potential uncertainties.
-  
-  You will be provided with an image to analyze:
-  
-  Carefully examine the image to identify all food items or components of the meal, including those that may be partially visible or in small quantities. If the image does not contain any food at all, respond only with "{No Food Found.}" and stop your analysis there.
-  
-  For food images, analyze using the following process:
-  
-  1. Use <brainstorm> tags to create a tree of thought about the nutrient content of the image. Generate at least 3 different thought paths, considering various possibilities for food identification and portion sizes.
-  
-  2. Use <thinking> tags to reason on each of your brainstorm paths. Verify your findings as best as you can using the food database provided. Consider factors such as preparation methods, hidden ingredients, and regional variations that might affect nutritional content.
-  
-  3. Use <reasoning> tags to refine and rethink your original analysis for each path, verifying it once more. Cross-examine your assumptions and check for any inconsistencies or overlooked details.
-  
-  4. After completing each thought path (you should conduct at least three in this reply), use <score> tags to rate the quality and confidence of that path on a scale from -100 to 100. Consider factors such as completeness, accuracy, and confidence in your assessment. Provide a detailed justification for your score before stating the numerical value.
-  
-  5. Select the thought path with the highest score and summarize it using <best_path> tags. Include your final nutritional analysis, detailing macronutrients (proteins, carbohydrates, fats) and estimated calorie content. If possible, include information on key micronutrients as well.
-  
-  Throughout your analysis, maintain transparency about uncertainties and avoid overconfidence in your estimations. Clearly state when you are making assumptions or when certain aspects of the nutritional content are difficult to determine from the image alone.
-  
-  Your final output should be structured as follows:
-  
-  <analysis>
-  [Your detailed analysis, including brainstorming, thinking, reasoning, and scoring for each path]
-  
-  <best_path>
-  [Summary of the highest-scored thought path, including final nutritional analysis]
-  </best_path>
-  
-  <uncertainties>
-  [List of any uncertainties or assumptions made during the analysis]
-  </uncertainties>
-  
-  <recommendations>
-  [Any recommendations for the user, such as seeking professional nutritional advice for more accurate information]
-  </recommendations>
-  </analysis>
-  
-  Remember, your analysis should help users make informed dietary decisions while acknowledging the limitations of visual assessment. Always prioritize accuracy and transparency over providing a complete but potentially inaccurate analysis.`;
-  
-      // Add barcode data if available
-      if (barcodeData) {
-        const barcodeDataString = JSON.stringify(barcodeData, null, 2);
-        systemPromptAccurate += `
-
-BARCODE INFO FOR THE IMAGE PROVIDED (EXTREMELY IMPORTANT):
-The user scanned a barcode with nutrient data, this data is from the image provided. some data may be missing:
-${barcodeDataString}
-
-It doesn't matter if the product name is missing, this data is always from the image provided.
-
-1. The barcode data supersedes visual estimates for any nutritional values it contains
-2. Document in details.summary exactly what values came from the barcode data
-3. Adjust all barcode values proportionally if serving size differs
-4. Only fall back to visual estimation for values not provided in barcode data
-5. Infer from the image any and all values that are not provided in the barcode data`;
-      }
-  
-      systemPromptAccurateJson = `Based on your previous analysis, particularly focusing on the highest-scored thought path you identified, provide the following information in JSON format:
-  
-  {
-    "food": {
-      "name": "String",
-      "class": "String",
-      "type": "String",
-      "calories": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "proteins": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "carbohydrates": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "fats": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "fiber": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "sodium": {
-        "amount": "Number",
-        "marginOfErrorPercent": "Number"
-      },
-      "ingredients": [
-        {
-          "name": "String",
-          "wikipediaLink": "String",
-          "description": "String"
-        }
-      ],
-      "details": {
-        "summary": "String",
-        "prepTime": "String",
-        "servingSize": "String",
-        "wikipediaLink": "String"
-      }
-    }
-  }
-  
-  Ensure that your JSON response is based on the highest-scored thought path from your thorough analysis.
-  
-  Pay meticulous attention to serving size measurements. Provide nutrient information based precisely on the serving size shown in the image. For example, if the image depicts a whole jar of peanut butter, report nutrients for the entire jar. If it shows 2/3 of a cookie, provide nutrients for 2/3 of a cookie. Aim for maximum accuracy in all calculations. Ensure the serving size value correctly represents the entire food content visible in the image. For instance, if the image shows a plate of food, the serving size should be "1 plate." If it displays 2/3 of a cookie, the serving size should be "2/3 cookie."
-  Clearly state any assumptions or adjustments made specific to the image within the details value. For example, if you only analyzed 2/3 of a cookie because that's what was shown in the image, explicitly mention this. Your explanation might read: "Nutrient information is provided for 2/3 of a cookie, as that was the portion visible in the image." This transparency ensures the user understands the basis of your nutrient calculations.
-  
-  Include anything you saw like, drinks, condiments, or other items that were NOT included in the calculations for macronutrients inside the 'details' section of the JSON output. These things might include condiments, also include things you are unsure about in the details screen. Be specific and concise.
-  `;
-  
-      // Check the toggle variable
-      if (useOpenAI) {
-        console.log("Using OpenAI API");
+      isProcessingRef.current = true;
+      const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+      setSelectedProvider(provider);
       
-        const apiKey = await AsyncStorage.getItem('@openai_api_key');
-        if (!apiKey) {
-          console.error("OpenAI API key not found");
-          Alert.alert('Error', 'OpenAI API key not found');
-          setIsLoading(false);
-          stopLoadingAnimation();
-          setProcessingImage(null);
-          return;
-        }
+      const currentModel = getModel(provider, { 
+        selectedMode: selectedMode,
+        selectedModel: selectedModel,
+        hasDrawing: hasDrawing 
+      });
+      setSelectedModel(currentModel);
+
+      setIsLoading(true);
+      setNoFoodFound(false);
       
-        if (mode === 'accurate') {
-          // Accurate mode with OpenAI API
-          console.log("Using accurate mode with OpenAI API");
-      
-          const firstPayload = {
-            model: "gpt-4o",
-            temperature: 0.7,
-            messages: [
-              {
-                role: "system",
-                content: systemPromptAccurate
-              },
-              {
-                role: "user",
-                content: [
-                  { 
-                    type: "text", 
-                    text: "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'" 
-                  },
-                  { 
-                    type: "image_url", 
-                    image_url: { 
-                      url: `data:image/jpeg;base64,${base64Image}` 
-                    } 
-                  }
-                ]
-              }
-            ],
-            max_tokens: 4096,
-            temperature: 0.7,
-          };
-      
-          const firstResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(firstPayload),
-          });
-      
-          const firstResponseJson = await firstResponse.json();
-      
-          if (firstResponseJson.error) {
-            console.error("OpenAI API error:", firstResponseJson.error);
-            Alert.alert('Error', 'OpenAI API error');
-            setIsLoading(false);
-            stopLoadingAnimation();
-            setProcessingImage(null);
-            return;
-          }
-      
-          const firstAssistantReply = firstResponseJson.choices[0].message.content;
-      
-          if (firstAssistantReply.includes("No Food Found.}")) {
-            setNoFoodFound(true);
-            setFoodData(null);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setActiveTab('');
-            foodFound = false;
-          } else {
-            // Second API call with JSON schema
-            const secondPayload = {
-              model: "gpt-4o",
-              temperature: 0.7,
-              messages: [
-                {
-                  role: "system",
-                  content: "You analyze food images and provide structured nutritional data."
-                },
-                {
-                  role: "user",
-                  content: [
-                    { 
-                      type: "text", 
-                      text: firstAssistantReply 
-                    },
-                    { 
-                      type: "image_url", 
-                      image_url: { 
-                        url: `data:image/jpeg;base64,${base64Image}` 
-                      } 
-                    }
-                  ]
-                }
-              ],
-              response_format: {
-                type: "json_schema",
-                json_schema: {
-                  name: "food_analysis_schema",
-                  schema: {
-                    type: "object",
-                    properties: {
-                      food: {
-                        type: "object",
-                        properties: {
-                          name: { type: "string" },
-                          class: { type: "string" },
-                          type: { type: "string" },
-                          calories: {
-                            type: "object",
-                            properties: {
-                              amount: { type: "number" },
-                              marginOfErrorPercent: { type: "number" }
-                            }
-                          },
-                          proteins: {
-                            type: "object",
-                            properties: {
-                              amount: { type: "number" },
-                              marginOfErrorPercent: { type: "number" }
-                            }
-                          },
-                          carbohydrates: {
-                            type: "object",
-                            properties: {
-                              amount: { type: "number" },
-                              marginOfErrorPercent: { type: "number" }
-                            }
-                          },
-                          fats: {
-                            type: "object",
-                            properties: {
-                              amount: { type: "number" },
-                              marginOfErrorPercent: { type: "number" }
-                            }
-                          },
-                          fiber: {
-                            type: "object",
-                            properties: {
-                              amount: { type: "number" },
-                              marginOfErrorPercent: { type: "number" }
-                            }
-                          },
-                          sodium: {
-                            type: "object",
-                            properties: {
-                              amount: { type: "number" },
-                              marginOfErrorPercent: { type: "number" }
-                            }
-                          },
-                          ingredients: {
-                            type: "array",
-                            items: {
-                              type: "object",
-                              properties: {
-                                name: { type: "string" },
-                                wikipediaLink: { type: "string" },
-                                description: { type: "string" }
-                              }
-                            }
-                          },
-                          details: {
-                            type: "object",
-                            properties: {
-                              summary: { type: "string" },
-                              prepTime: { type: "string" },
-                              servingSize: { type: "string" },
-                              wikipediaLink: { type: "string" }
-                            }
-                          }
-                        },
-                        required: ["name", "calories", "proteins", "carbohydrates", "fats", "details"]
-                      }
-                    },
-                    required: ["food"]
-                  }
-                }
-              }
-            };
-      
-            const secondResponse = await fetch('https://api.openai.com/v1/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json',
-              },
-              body: JSON.stringify(secondPayload),
-            });
-      
-            const secondResponseJson = await secondResponse.json();
-      
-            if (secondResponseJson.error) {
-              console.error("OpenAI API error:", secondResponseJson.error);
-              Alert.alert('Error', 'OpenAI API error');
-              setIsLoading(false);
-              stopLoadingAnimation();
-              setProcessingImage(null);
-              return;
-            }
-      
-            try {
-              const parsedData = JSON.parse(secondResponseJson.choices[0].message.content);
-              if (parsedData && parsedData.food) {
-                foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
-              } else {
-                throw new Error("Parsed data is missing required properties.");
-              }
-            } catch (parseError) {
-              console.error("Error parsing JSON response:", parseError);
-              setFoodData(null);
-              setErrorOccured(true);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              setActiveTab('');
-              foodFound = false;
-            }
-          }
+      let base64Image;
+      if (typeof imageUri === 'string') {
+        if (imageUri.startsWith('data:image/jpeg;base64,')) {
+          base64Image = imageUri.replace('data:image/jpeg;base64,', '');
+        } else if (!imageUri.startsWith('file://')) {
+          base64Image = imageUri;
         } else {
-          // Fast mode with OpenAI API
-          const payload = {
-            model: "gpt-4o",
-            temperature: 0.7,
-            messages: [
-              {
-                role: "system",
-                content: systemPromptFast
-              },
-              {
-                role: "user",
-                content: [
-                  { 
-                    type: "text", 
-                    text: "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'" 
-                  },
-                  { 
-                    type: "image_url", 
-                    image_url: { 
-                      url: `data:image/jpeg;base64,${base64Image}` 
-                    } 
-                  }
-                ]
-              }
-            ],
-            response_format: {
-              type: "json_schema",
-              json_schema: {
-                name: "food_analysis_schema",
-                schema: {
-                  type: "object",
-                  properties: {
-                    food: {
-                      type: "object",
-                      properties: {
-                        name: { type: "string" },
-                        class: { type: "string" },
-                        type: { type: "string" },
-                        calories: {
-                          type: "object",
-                          properties: {
-                            amount: { type: "number" },
-                            marginOfErrorPercent: { type: "number" }
-                          }
-                        },
-                        proteins: {
-                          type: "object",
-                          properties: {
-                            amount: { type: "number" },
-                            marginOfErrorPercent: { type: "number" }
-                          }
-                        },
-                        carbohydrates: {
-                          type: "object",
-                          properties: {
-                            amount: { type: "number" },
-                            marginOfErrorPercent: { type: "number" }
-                          }
-                        },
-                        fats: {
-                          type: "object",
-                          properties: {
-                            amount: { type: "number" },
-                            marginOfErrorPercent: { type: "number" }
-                          }
-                        },
-                        fiber: {
-                          type: "object",
-                          properties: {
-                            amount: { type: "number" },
-                            marginOfErrorPercent: { type: "number" }
-                          }
-                        },
-                        sodium: {
-                          type: "object",
-                          properties: {
-                            amount: { type: "number" },
-                            marginOfErrorPercent: { type: "number" }
-                          }
-                        },
-                        ingredients: {
-                          type: "array",
-                          items: {
-                            type: "object",
-                            properties: {
-                              name: { type: "string" },
-                              wikipediaLink: { type: "string" },
-                              description: { type: "string" }
-                            }
-                          }
-                        },
-                        details: {
-                          type: "object",
-                          properties: {
-                            summary: { type: "string" },
-                            prepTime: { type: "string" },
-                            servingSize: { type: "string" },
-                            wikipediaLink: { type: "string" }
-                          }
-                        }
-                      },
-                      required: ["name", "calories", "proteins", "carbohydrates", "fats", "details"]
-                    }
-                  },
-                  required: ["food"]
-                }
-              }
-            }
-          };
-      
-          const response = await fetch('https://api.openai.com/v1/chat/completions', {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(payload),
-          });
-      
-          const responseJson = await response.json();
-      
-          if (responseJson.error) {
-            console.error("OpenAI API error:", responseJson.error);
-            Alert.alert('Error', 'OpenAI API error');
-            setIsLoading(false);
-            stopLoadingAnimation();
-            setProcessingImage(null);
-            return;
-          }
-      
-          try {
-            const parsedData = JSON.parse(responseJson.choices[0].message.content);
-            if (parsedData && parsedData.food) {
-              foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
-            } else {
-              throw new Error("Parsed data is missing required properties.");
-            }
-          } catch (parseError) {
-            console.error("Error parsing JSON response:", parseError);
-            setFoodData(null);
-            setErrorOccured(true);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-            setActiveTab('');
-            foodFound = false;
-          }
+          base64Image = await imageToBase64(imageUri);
         }
       } else {
-        // Existing Anthropic API code
-        console.log("Using Anthropic API");
-  
-        const apiKey = await AsyncStorage.getItem('@apikey');
-        if (!apiKey) {
-          console.error("API key not found");
-          Alert.alert('Error', 'API key not found');
-          setIsLoading(false);
-          // Do not update average processing time on error
-          return;
-        }
-  
-        const anthropic = new Anthropic({ apiKey });
-  
-        if (mode === 'fast') {
-          // Fast mode logic
-          console.log(
-            "Using fast mode. Sending request to Anthropic API with prompt:",
-            systemPromptFast
-          );
-          const response = await anthropic.messages.create({
-            model: selectedModel,
-            max_tokens: 4096,
-            temperature: 0.7,
-            system: systemPromptFast,
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text:
-                      "Analyze this image and provide nutritional information as specified, using barcode data if available, otherwise use visual analysis. If the image isn't food, just say '{No Food Found.}'. Your response should be in perfect JSON format.",
-                  },
-                  {
-                    type: "image",
-                    source: {
-                      type: "base64",
-                      media_type: "image/jpeg",
-                      data: base64Image,
-                    },
-                  },
-                ],
-              },
-              {
-                role: "assistant",
-                content: "{",
-              },
-            ],
-          });
-          console.log("Received response from Anthropic API (fast mode):", response);
-  
-          const responseText = response.content[0].text;
-          if (responseText.includes("No Food Found.}")) {
-            setNoFoodFound(true); // Set noFoodFound to true when "No Food Found.}" is in the response
-            setFoodData(null);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setActiveTab('');
-            foodFound = false; // Food was not found
-          } else {
-            const jsonString = `{${responseText}`;
-            try {
-              const parsedData = JSON.parse(jsonString);
-              if (parsedData && parsedData.food) {
-                foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
-              } else {
-                throw new Error("Parsed data is missing required properties.");
-              }
-            } catch (parseError) {
-              console.error(
-                "Error parsing JSON response (fast mode):",
-                parseError
-              );
-              setFoodData(null);
-              setErrorOccured(true);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-              setActiveTab('');
-              foodFound = false; // Food was not found
-            }
-          }
-        } else {
-          // Accurate mode logic
-          console.log(
-            "Using accurate mode. Sending first request to Anthropic API with prompt:",
-            systemPromptAccurate
-          );
-          const firstResponse = await anthropic.messages.create({
-            model: selectedModel,
-            max_tokens: 4096,
-            temperature: 0.7,
-            system: systemPromptAccurate,
-            messages: [
-              {
-                role: "user",
-                content: [
-                  {
-                    type: "text",
-                    text:
-                      "Analyze this image and provide nutritional information as specified. If the image doesn't contain any food AT ALL, just say '{No Food Found.}'. Your response should be in perfect JSON format.",
-                  },
-                  {
-                    type: "image",
-                    source: {
-                      type: "base64",
-                      media_type: "image/jpeg",
-                      data: base64Image,
-                    },
-                  },
-                ],
-              },
-              {
-                role: "assistant",
-                content: "",
-              },
-            ],
-          });
-  
-          console.log(
-            "Received first response from Anthropic API (accurate mode):",
-            firstResponse
-          );
-  
-          const firstResponseText = firstResponse.content[0].text;
-          if (firstResponseText.includes("No Food Found.}")) {
-            setNoFoodFound(true);
-            setFoodData(null);
-            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-            setActiveTab('');
-            foodFound = false;
-          } else {
-            // Proceed to second request
-            console.log(
-              "Sending second request to Anthropic API (accurate mode) with prompt:",
-              systemPromptAccurateJson
-            );
-            const secondResponse = await anthropic.messages.create({
-              model: selectedModel,
-              max_tokens: 4096,
-              temperature: 0.7,
-              system: systemPromptAccurateJson,
-              messages: [
-                {
-                  role: "user",
-                  content: [
-                    {
-                      type: "text",
-                      text:
-                        "Analyze this image and provide nutritional information as specified. If the image isn't food, just say '{No Food Found.}'",
-                    },
-                    {
-                      type: "image",
-                      source: {
-                        type: "base64",
-                        media_type: "image/jpeg",
-                        data: base64Image,
-                      },
-                    },
-                  ],
-                },
-                {
-                  role: "assistant",
-                  content: `{${firstResponse.content[0].text}`,
-                },
-                {
-                  role: "user",
-                  content:
-                    "Now, based on your analysis and focusing on the highest-scored thought path, provide the JSON data as specified. Continue from the opening curly brace.",
-                },
-                {
-                  role: "assistant",
-                  content: "{",
-                },
-              ],
-            });
-  
-            console.log(
-              "Received second response from Anthropic API (accurate mode):",
-              secondResponse
-            );
-  
-            const responseText = secondResponse.content[0].text;
-            const jsonString = `{${responseText}`;
-            try {
-              const parsedData = JSON.parse(jsonString);
-              if (parsedData && parsedData.food) {
-                foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData);
-              } else {
-                throw new Error("Parsed data is missing required properties.");
-              }
-            } catch (parseError) {
-              console.error(
-                "Error parsing JSON response (accurate mode):",
-                parseError
-              );
-              setFoodData(null);
-              setErrorOccured(true);
-              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-              setActiveTab('');
-              foodFound = false;
-            }
-          }
-        }
+        base64Image = await imageToBase64(imageUri);
       }
-  
-      if (foodFound) {
-        const endTime = Date.now(); // End time measurement
-        const processingDuration = endTime - startTimeRef.current;
-        handleAccurateScanUsed();
-        updateAverageProcessingTime(mode, processingDuration); // Update average
-  
-        if (!isFirstDayUnlimited && !isSubscribed) {
-          await incrementScanCount();
-        }
-      } else {
-        console.log("No food detected or error occurred, processing time not updated");
+
+      base64Image = base64Image.replace(/[\n\r]/g, '').trim();
+      
+      if (!base64Image || !/^[A-Za-z0-9+/=]+$/.test(base64Image)) {
+        throw new Error('Invalid base64 string format');
       }
-  
+
+      setHadBarcode(!!barcodeData);
+
+      const mode = selectedMode;
+
+      if (mode === 'dynamic') {
+        Alert.alert(
+          "Feature Not Implemented",
+          "Dynamic processing is an alpha feature and is not implemented yet."
+        );
+        setIsLoading(false);
+        stopLoadingAnimation();
+        setProcessingImage(null);
+        return;
+      }
+    
+      startLoadingAnimation();
+      console.log('Mode:', mode, 'Has drawing:', hasDrawing);
+      setProcessingImage(imageUri);
+    
+      scheduleLoadingTexts();
+      startTimeRef.current = Date.now();
+    
+      let foodFound = false;
+
+      // Get the appropriate API key based on provider
+      const apiKeyMap = {
+        anthropic: '@apikey',
+        openai: '@openai_api_key',
+        gemini: '@gemini_api_key'
+      };
+
+      const apiKey = await AsyncStorage.getItem(apiKeyMap[provider]);
+      if (!apiKey) {
+        console.error(`API key not found for provider: ${provider}`);
+        Alert.alert('Error', `API key not found for ${provider}`);
+        setIsLoading(false);
+        return;
+      }
+        
+      const providerParams = {
+        selectedModel: currentModel,
+        selectedMode: mode,
+        base64Image,
+        barcodeData,
+        hasDrawing,
+        apiKey,
+        handleSuccessfulScan,
+        handleError,
+        imageUri,
+        startTimeRef,
+        updateAverageProcessingTime,
+        handleAccurateScanUsed,
+        isFirstDayUnlimited,
+        isSubscribed,
+        setNoFoodFound,
+        setFoodData,
+        setActiveTab,
+      };
+
+      // Call the appropriate provider
+      switch (provider) {
+        case 'openai':
+          foodFound = await handleOpenAIScan(providerParams);
+          break;
+        case 'gemini':
+          foodFound = await handleGeminiScan(providerParams);
+          break;
+        case 'anthropic':
+        default:
+          foodFound = await handleAnthropicScan(providerParams);
+          break;
+      }
+
       setIsLoading(false);
       stopLoadingAnimation();
       setProcessingImage(null);
-  
+
+      // Only increment scan count if food was found
+      if (foodFound) {
+        await incrementScanCount();
+      }
+
       fadeOutTitle(() => {
         fadeInTitle();
       });
-  
+
       setShowPlaceholder(false);
-  
+
       Animated.timing(fadeAnimImage, {
         toValue: 0,
         duration: 150,
@@ -1783,32 +1105,10 @@ It doesn't matter if the product name is missing, this data is always from the i
         }).start();
       });
     } catch (error) {
-      console.error("Error during API call:", error);
-      Alert.alert('Error', 'Failed to analyze the image');
-      setIsLoading(false);
-      stopLoadingAnimation();
-      setProcessingImage(null);
-      // Do not update average processing time on error
+      handleError(error, imageUri, barcodeData);
+    } finally {
+      isProcessingRef.current = false;
     }
-  
-    fadeOutTitle(() => {
-      fadeInTitle();
-    });
-  
-    setShowPlaceholder(false);
-  
-    Animated.timing(fadeAnimImage, {
-      toValue: 0,
-      duration: 150,
-      useNativeDriver: true,
-    }).start(() => {
-      setImage(imageUri);
-      Animated.timing(fadeAnimImage, {
-        toValue: 1,
-        duration: 350,
-        useNativeDriver: true,
-      }).start();
-    });
   };
   
   const imageToBase64 = async (uri) => {
@@ -1907,23 +1207,20 @@ It doesn't matter if the product name is missing, this data is always from the i
     }};
   
   useEffect(() => {
-    console.log('currentLoadingText updated:', currentLoadingText);
+    // console.log('currentLoadingText updated:', currentLoadingText);
   }, [currentLoadingText]);
 
   const handleCorrectPress = () => {
-    console.log("User confirmed correctness");
     fadeOutFeedback();
   };
 
   const handleIncorrectPress = () => {
-    console.log("User marked the response as incorrect.");
     setInputModalVisible(true);
     fadeOutFeedback();
     removeLatestHistoryEntry();
   };
 
   const submitUserInput = async () => {
-    console.log("User entered food type:", userInput);
     setInputModalVisible(false);
     if (userInput.trim()) {
       await sendImageToApiWithHint(userInput.trim());
@@ -1974,6 +1271,7 @@ It doesn't matter if the product name is missing, this data is always from the i
   const nutrientFadeAnim = useRef(new Animated.Value(0)).current;
   const nutrientScaleAnim = useRef(new Animated.Value(0.9)).current;
   const nutrientProgressAnim = useRef(new Animated.Value(0)).current;
+  const hasAnimatedRef = useRef(false); // Add this to track if we've animated for current data
 
   // Add new animated values for each card
   const cardAnimations = useRef([
@@ -1985,34 +1283,60 @@ It doesn't matter if the product name is missing, this data is always from the i
     new Animated.Value(0)  // sodium
   ]).current;
 
+  // Function to trigger macro card animations
+  const triggerMacroAnimations = () => {
+    // Reset animations first
+    cardAnimations.forEach(anim => anim.setValue(0));
+    nutrientProgressAnim.setValue(0);
+
+    // Animate cards appearing with stagger
+    Animated.stagger(100, 
+      cardAnimations.map(anim =>
+        Animated.spring(anim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true
+        })
+      )
+    ).start();
+
+    // Animate progress bars
+    Animated.timing(nutrientProgressAnim, {
+      toValue: 1,
+      duration: 800,
+      delay: 200,
+      useNativeDriver: false,
+    }).start();
+
+    hasAnimatedRef.current = true;
+  };
+
   // Add effect to handle nutrient animations
   useEffect(() => {
-    if (foodData && activeTab === 'Nutrition') {
-      // Animate cards appearing with stagger
-      Animated.stagger(100, 
-        cardAnimations.map(anim =>
-          Animated.spring(anim, {
-            toValue: 1,
-            tension: 50,
-            friction: 7,
-            useNativeDriver: true
-          })
-        )
-      ).start();
-
-      // Animate progress bars
-      Animated.timing(nutrientProgressAnim, {
-        toValue: 1,
-        duration: 800,
-        delay: 200,
-        useNativeDriver: false,
-      }).start();
+    if (foodData) {
+      if (activeTab === 'Nutrition') {
+        triggerMacroAnimations();
+      } else {
+        // Reset animations when switching away from nutrition tab
+        cardAnimations.forEach(anim => anim.setValue(0));
+        nutrientProgressAnim.setValue(0);
+        hasAnimatedRef.current = false;
+      }
     } else {
-      // Reset animations when tab changes or data is cleared
+      // Reset animations when data is cleared
       cardAnimations.forEach(anim => anim.setValue(0));
       nutrientProgressAnim.setValue(0);
+      hasAnimatedRef.current = false;
     }
-  }, [foodData, activeTab]);
+  }, [foodData, activeTab]); // Depend on both foodData and activeTab changes
+
+  // Add effect to handle tab changes
+  useEffect(() => {
+    if (activeTab === 'Nutrition' && foodData && !hasAnimatedRef.current) {
+      triggerMacroAnimations();
+    }
+  }, [activeTab]);
 
   const macroColors = {
     Calories: '#FF4500',  // Orange-red
@@ -2037,6 +1361,33 @@ It doesn't matter if the product name is missing, this data is always from the i
   // Add state for pagination
   const [activePage, setActivePage] = useState(0);
   const scrollX = useRef(new Animated.Value(0)).current;
+  const lastKnownPage = useRef(0); // Add this to store the last known page position
+
+  // Add this ref near other ref declarations
+  const nutritionScrollViewRef = useRef(null);
+
+  // Update the useEffect handling tab changes
+  useEffect(() => {
+    if (activeTab === 'Nutrition' && foodData) {
+      if (!hasAnimatedRef.current) {
+        triggerMacroAnimations();
+      }
+      // Restore the last known page position
+      setActivePage(lastKnownPage.current);
+      // Scroll to stored position after render
+      setTimeout(() => {
+        if (nutritionScrollViewRef.current) {
+          nutritionScrollViewRef.current.scrollTo({
+            x: lastKnownPage.current * width,
+            animated: false
+          });
+        }
+      }, 0);
+    } else if (activeTab !== 'Nutrition' && foodData) {
+      // Store current page when leaving
+      lastKnownPage.current = activePage;
+    }
+  }, [activeTab, foodData]);
 
   const renderNutritionTab = () => {
     if (!foodData) return null;
@@ -2057,6 +1408,10 @@ It doesn't matter if the product name is missing, this data is always from the i
           if (!macroColors[label] || !macroIcons[label]) {
             return null;
           }
+
+          // Calculate a darker version of the color
+          const baseColor = macroColors[label];
+          const darkerColor = baseColor + '80'; // Adding 80 for 50% opacity creates a darker shade
 
           return (
             <Animated.View 
@@ -2084,7 +1439,13 @@ It doesn't matter if the product name is missing, this data is always from the i
             >
               <View style={styles.macroHeaderContainer}>
                 <View style={styles.iconLabelContainer}>
-                  <View style={[styles.iconContainer, { backgroundColor: macroColors[label] }]}>
+                  <View style={[styles.iconContainer]}>
+                    <LinearGradient
+                      colors={[baseColor, darkerColor]}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
                     <Icon name={macroIcons[label]} size={20} color="#FFF" />
                   </View>
                   <Text style={styles.macroLabel}>{label}</Text>
@@ -2155,6 +1516,7 @@ It doesn't matter if the product name is missing, this data is always from the i
             }).start();
           }}
           scrollEventThrottle={16}
+          ref={nutritionScrollViewRef}
         >
           {pages.map((items, index) => (
             <View key={index} style={styles.nutrientPage}>
@@ -2403,51 +1765,6 @@ It doesn't matter if the product name is missing, this data is always from the i
     const currentMode = selectedMode;
     const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
     
-    const switchToMode = async (newMode) => {
-      if (newMode === 'accurate') {
-        if (isSubscribed || isFirstDayUnlimited) {
-          await AsyncStorage.setItem('selectedMode', newMode);
-          crossfadeChipText(newMode);
-          await AsyncStorage.setItem('selectedModel', 'claude-3-5-sonnet-20240620');
-          setSelectedModel('claude-3-5-sonnet-20240620');
-          Haptics.selectionAsync();
-        } else {
-          const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
-          if (freeAccurateScansUsed === '1') {
-            Alert.alert(
-              'Daily Limit Reached',
-              'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
-            );
-            return;
-          }
-          Alert.alert(
-            'Heads Up!',
-            'You only get one accurate scan a day on the free plan, so make it count!',
-            [
-              { text: 'Cancel', style: 'cancel' },
-              {
-                text: 'OK',
-                onPress: async () => {
-                  await AsyncStorage.setItem('selectedMode', newMode);
-                  crossfadeChipText(newMode);
-                  await AsyncStorage.setItem('selectedModel', 'claude-3-5-sonnet-20240620');
-                  setSelectedModel('claude-3-5-sonnet-20240620');
-                  Haptics.selectionAsync();
-                },
-              },
-            ],
-            { cancelable: false }
-          );
-        }
-      } else {
-        await AsyncStorage.setItem('selectedMode', newMode);
-        crossfadeChipText(newMode);
-        await AsyncStorage.setItem('selectedModel', 'claude-3-haiku-20240307');
-        setSelectedModel('claude-3-haiku-20240307');
-        Haptics.selectionAsync();
-      }
-    };
-
     Alert.alert(
       'Scan Mode',
       `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
@@ -2458,7 +1775,44 @@ It doesn't matter if the product name is missing, this data is always from the i
         { text: 'Cancel', style: 'cancel' },
         { 
           text: `Switch to ${MODE_LABELS[oppositeMode]}`,
-          onPress: () => switchToMode(oppositeMode)
+          onPress: async () => {
+            if (oppositeMode === 'accurate') {
+              if (isSubscribed || isFirstDayUnlimited) {
+                await AsyncStorage.setItem('selectedMode', oppositeMode);
+                crossfadeChipText(oppositeMode);
+                Haptics.selectionAsync();
+              } else {
+                const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+                if (freeAccurateScansUsed === '1') {
+                  Alert.alert(
+                    'Daily Limit Reached',
+                    'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+                  );
+                  return;
+                }
+                Alert.alert(
+                  'Heads Up!',
+                  'You only get one accurate scan a day on the free plan, so make it count!',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        await AsyncStorage.setItem('selectedMode', oppositeMode);
+                        crossfadeChipText(oppositeMode);
+                        Haptics.selectionAsync();
+                      },
+                    },
+                  ],
+                  { cancelable: false }
+                );
+              }
+            } else {
+              await AsyncStorage.setItem('selectedMode', oppositeMode);
+              crossfadeChipText(oppositeMode);
+              Haptics.selectionAsync();
+            }
+          }
         }
       ]
     );
@@ -2505,47 +1859,396 @@ It doesn't matter if the product name is missing, this data is always from the i
     }, [hasScannedSinceOpen]) // Add hasScannedSinceOpen to dependencies
   );
 
-  const handleSuccessfulScan = async (parsedData, imageUri, barcodeData) => {
-    setFoodData(parsedData.food);
-    setNoFoodFound(false);
-    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    fadeOutTab('Nutrition');
+  // Add this with other state declarations
+  const [hasScannedEver, setHasScannedEver] = useState(false);
 
-    await storeProductDetails({
-      productName: parsedData.food.name,
-      imageUri: imageUri,
-      nutrients: parsedData.food,
-      date: new Date().toISOString(),
-      hadBarcode: !!barcodeData
-    });
+  // Update the useFocusEffect for paywall
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndShowPaywall = async () => {
+        try {
+          // Check if user has ever scanned
+          const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+          setHasScannedEver(hasEverScanned === 'true');
 
-    // If this was an accurate scan, update the count and store the scan time
-    if (selectedMode === 'accurate') {
-      const newCount = accurateScansBeforeReview + 1;
-      try {
-        await AsyncStorage.setItem('@accurate_scans_before_review', newCount.toString());
-        await AsyncStorage.setItem('@last_scan_time', Date.now().toString());
-        setAccurateScansBeforeReview(newCount);
-        // Set the flag indicating user has scanned since opening the app
-        setHasScannedSinceOpen(true);
-      } catch (error) {
-        console.error('Error updating scan data:', error);
+          // Only proceed with paywall check if user has scanned before
+          if (hasEverScanned === 'true') {
+            const lastShownTime = await AsyncStorage.getItem('@paywall_last_shown');
+            const currentTime = Date.now();
+            
+            // If never shown before or 20 minutes (1200000 ms) have passed
+            if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
+              await Superwall.shared.register('onboardingV2');
+              // Update the last shown time
+              await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+            }
+          }
+        } catch (error) {
+          console.error('Error handling paywall display:', error);
+        }
+      };
+
+      checkAndShowPaywall();
+    }, [])
+  );
+
+  // Update handleSuccessfulScan to mark that user has scanned
+  const handleSuccessfulScan = async (parsedData, imageUri, barcodeData, hasDrawing = false, actualModel = null) => {
+    try {
+      // First fade out existing content
+      await new Promise((resolve) => {
+        Animated.timing(tabFadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start(resolve);
+      });
+
+      // Then update the data
+      setFoodData(parsedData.food);
+      setNoFoodFound(false);
+      setActiveTab('Nutrition');  // or whatever default tab you want
+
+      // Finally fade in new content
+      Animated.timing(tabFadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+
+      // Check if this is the first scan ever
+      const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+      if (hasEverScanned !== 'true') {
+        // This is the first scan, show paywall and mark as scanned
+        await AsyncStorage.setItem('@has_ever_scanned', 'true');
+        setHasScannedEver(true);
+        await Superwall.shared.register('onboardingV2');
+        await AsyncStorage.setItem('@paywall_last_shown', Date.now().toString());
       }
-    }
 
-    return true; // Indicate success
+      // Rest of your success handling code...
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      triggerMacroAnimations();
+      setActivePage(0);
+      lastKnownPage.current = 0;
+
+      await storeProductDetails({
+        productName: parsedData.food.name,
+        imageUri: imageUri,
+        nutrients: parsedData.food,
+        date: new Date().toISOString(),
+        hadBarcode: !!barcodeData,
+        hasDrawing: hasDrawing,
+        modelUsed: actualModel || selectedModel
+      });
+
+      return true;
+    } catch (error) {
+      console.error('Error in handleSuccessfulScan:', error);
+      return false;
+    }
   };
 
   // UNCOMMENT THIS FOR PRODUCTION USE
   useFocusEffect(
     useCallback(() => {
-      // Trigger the onboardingv2 campaign when the screen is focused
-      Superwall.registerEvent("onboardingv2");
+      const checkAndShowPaywall = async () => {
+        try {
+          // Only check for paywall if user has scanned at least once
+          const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+          if (hasEverScanned === 'true') {
+            const lastShownTime = await AsyncStorage.getItem('@paywall_last_shown');
+            const currentTime = Date.now();
+            
+            // Show paywall if never shown before or 20 minutes (1200000 ms) have passed
+            if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
+              await Superwall.shared.register('onboardingV2');
+              // Update the last shown time
+              await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+            }
+          }
+        } catch (error) {
+          console.error('Error handling paywall display:', error);
+        }
+      };
+
+      checkAndShowPaywall();
     }, [])
   );
 
+  // Add new state variables at the top with other state declarations
+  const [isOverloadedError, setIsOverloadedError] = useState(false);
+  const [retryImageUri, setRetryImageUri] = useState(null);
+  const [retryBarcodeData, setRetryBarcodeData] = useState(null);
+  const [errorType, setErrorType] = useState(null);
+  const [errorFadeAnim] = useState(new Animated.Value(0));
+
+  // Add retry handler function
+  const handleRetry = async () => {
+    if (retryImageUri) {
+      Animated.timing(errorFadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(async () => {
+        setIsOverloadedError(false);
+        setProcessingImage(retryImageUri);
+        setIsLoading(true);
+        startLoadingAnimation();
+        await sendImageToApi(retryImageUri, retryBarcodeData);
+      });
+    }
+  };
+
+  // Add new function for error simulation
+  const showErrorSimulationAlert = () => {
+    Alert.alert(
+      'Simulate Error',
+      'Which error would you like to simulate?',
+      [
+        {
+          text: 'High Demand',
+          onPress: () => {
+            setIsOverloadedError(true);
+            setRetryImageUri(image || 'https://example.com/test-image.jpg');
+            setRetryBarcodeData(null);
+            setErrorType('overloaded');
+            Animated.timing(errorFadeAnim, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+        {
+          text: 'Unknown Error',
+          onPress: () => {
+            setIsOverloadedError(true);
+            setRetryImageUri(image || 'https://example.com/test-image.jpg');
+            setRetryBarcodeData(null);
+            setErrorType('unknown');
+            Animated.timing(errorFadeAnim, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };
+
+  // Add effect to handle tab changes and pagination
+  useEffect(() => {
+    if (activeTab === 'Nutrition' && foodData) {
+      if (!hasAnimatedRef.current) {
+        triggerMacroAnimations();
+      }
+      // Restore the last known page position when returning to Nutrition tab
+      setActivePage(lastKnownPage.current);
+    } else if (activeTab !== 'Nutrition' && foodData) {
+      // Store the current page position when leaving Nutrition tab
+      lastKnownPage.current = activePage;
+    }
+  }, [activeTab]);
+
+  // Update page tracking when activePage changes
+  useEffect(() => {
+    if (activeTab === 'Nutrition') {
+      lastKnownPage.current = activePage;
+    }
+  }, [activePage]);
+
+  // Add chipAppearance based on whether foodData is non-null
+  const chipAppearance = (colorScheme === 'dark' || foodData || noFoodFound || hasScannedSinceOpen) ? 'dark' : 'light';
+
+  // Add this helper function to safely extract the JSON object from a string response
+  const safeJsonParse = (content) => {
+    try {
+      let jsonContent = content;
+      // If the content doesn't start with '{', try extracting from first '{' to last '}'
+      if (!jsonContent.trim().startsWith("{")) {
+        const startIndex = jsonContent.indexOf("{");
+        const endIndex = jsonContent.lastIndexOf("}");
+        if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+          jsonContent = jsonContent.substring(startIndex, endIndex + 1);
+        }
+      }
+      return JSON.parse(jsonContent);
+    } catch (e) {
+      throw e;
+    }
+  };
+
+  // Add this to the useEffect that calls loadSettings
+  const loadFoodSelectionSetting = async () => {
+    try {
+      const enabled = await AsyncStorage.getItem('foodSelectionEnabled');
+      setFoodSelectionEnabled(enabled === 'true');
+    } catch (error) {
+      console.error('Error loading food selection setting:', error);
+    }
+  };
+
+  // Add handler for food selection modal submission
+  const handleFoodSelectionSubmit = async (base64Data, hasDrawing) => {
+    setShowFoodSelectionModal(false);
+    try {
+      // Remove the resizeImage call since we already have base64 data
+      await sendImageToApi(base64Data, null, hasDrawing);
+    } catch (error) {
+      console.error('Error processing selected food:', error);
+      Alert.alert('Error', 'Failed to process selected food');
+    }
+  };
+
+  const [foodSelectionEnabled, setFoodSelectionEnabled] = useState(false);
+  const [showFoodSelectionModal, setShowFoodSelectionModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+
+  // Add this effect to load and track model changes
+  useEffect(() => {
+    const loadModel = async () => {
+      try {
+        const model = await AsyncStorage.getItem('selectedModel');
+        if (model) {
+          setSelectedModel(model);
+        }
+      } catch (error) {
+        console.error('Error loading model:', error);
+      }
+    };
+    loadModel();
+  }, []);
+
+  // Add a model change listener
+  useEffect(() => {
+    const modelChangeListener = async () => {
+      try {
+        const model = await AsyncStorage.getItem('selectedModel');
+        if (model && model !== selectedModel) {
+          setSelectedModel(model);
+        }
+      } catch (error) {
+        console.error('Error in model change listener:', error);
+      }
+    };
+
+    // Set up listener
+    const interval = setInterval(modelChangeListener, 1000);
+    return () => clearInterval(interval);
+  }, [selectedModel]);
+
+  // Add this helper function after the component's state declarations but before other functions
+  const handleError = (error, imageUri = null, barcodeData = null) => {
+    console.error('Error:', error);
+    
+    setIsLoading(false);
+    stopLoadingAnimation();
+    setProcessingImage(null);
+    setShowPlaceholder(false);
+    setErrorOccured(true);
+    
+    // Determine error type based on error message
+    const isOverloaded = error.message?.toLowerCase().includes('rate') || 
+                        error.message?.toLowerCase().includes('capacity') ||
+                        error.message?.toLowerCase().includes('too many') ||
+                        error.message?.toLowerCase().includes('limit') ||
+                        error.message?.toLowerCase().includes('overloaded');
+    
+    setIsOverloadedError(true);
+    setRetryImageUri(imageUri);
+    setRetryBarcodeData(barcodeData);
+    setErrorType(isOverloaded ? 'overloaded' : 'unknown');
+    
+    // Fade out old results before showing error
+    Animated.sequence([
+      Animated.timing(tabFadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(errorFadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      // Only clear data after fade out
+      setFoodData(null);
+      setActiveTab('');
+    });
+    
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    
+    if (imageUri) {
+      setImage(imageUri);
+      Animated.timing(fadeAnimImage, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    fadeOutTitle(() => {
+      fadeInTitle();
+    });
+  };
+
+  // Add WhatsNew state
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  
+  // Add useEffect to check if WhatsNew should be shown
+  useEffect(() => {
+    const checkWhatsNewStatus = async () => {
+      try {
+        const hasSeenWhatsNew = await AsyncStorage.getItem('@has_seen_whats_new_1_6_0');
+        if (hasSeenWhatsNew !== 'true') {
+          setShowWhatsNew(true);
+        }
+      } catch (error) {
+        console.error('Error checking WhatsNew status:', error);
+      }
+    };
+    
+    checkWhatsNewStatus();
+  }, []);
+
+  const handleWhatsNewClose = async () => {
+    try {
+      await AsyncStorage.setItem('@has_seen_whats_new_1_6_0', 'true');
+      setShowWhatsNew(false);
+    } catch (error) {
+      console.error('Error saving WhatsNew status:', error);
+    }
+  };
+
+  // Add this with other refs
+  const isProcessingRef = useRef(false);
+
+  // Add this helper function near the top of the component
+  const getPredictedProcessingTime = () => {
+    const mode = selectedMode;
+    if (averageProcessingTimes && averageProcessingTimes[selectedProvider]) {
+      const modelTimes = averageProcessingTimes[selectedProvider][selectedModel];
+      if (modelTimes && typeof modelTimes[mode] === 'number') {
+        return Math.round(modelTimes[mode] / 1000);
+      }
+    }
+    // Default fallback times
+    return mode === 'accurate' ? 12 : 6;
+  };
+
+  // Add this near other state declarations
+  const [useComplexProcessing, setUseComplexProcessing] = useState(false);
+
   return (
     <View style={styles.container}>
+
       <AnimatedTextFoodScan
         text={
           foodData
@@ -2586,7 +2289,11 @@ It doesn't matter if the product name is missing, this data is always from the i
           ) : (
             <View style={styles.imageWrapper}>
               <Animated.Image
-                source={{ uri: image }}
+                source={{ 
+                  uri: typeof image === 'string' && !image.startsWith('data:image/jpeg;base64,')
+                    ? 'data:image/jpeg;base64,' + image
+                    : image 
+                }}
                 style={[styles.foodImage, { opacity: fadeAnimImage }]}
               />
               {hadBarcode && (
@@ -2607,9 +2314,36 @@ It doesn't matter if the product name is missing, this data is always from the i
                   />
                 </TouchableOpacity>
               )}
+              {DEBUG_MODE && (
+                <TouchableOpacity
+                  style={styles.debugChipContainer}
+                  onPress={showErrorSimulationAlert}
+                >
+                  <BlurView
+                    intensity={50}
+                    tint="dark"   // Always use dark tint for debug chip
+                    style={styles.debugChip}
+                  >
+                    <View style={styles.chipContent}>
+                      <Icon 
+                        name="bug-outline" 
+                        size={16} 
+                        color="#fff"  // Force white icon
+                      />
+                      <Text style={[
+                        styles.chipText,
+                        { color: '#fff' }  // Force white text
+                      ]}>
+                        Debug
+                      </Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+              )}
             </View>
           )}
           <View style={styles.controlsOverlay}>
+            {/* Updated Chips: Use dark styling when foodData exists, always light otherwise */}
             <TouchableOpacity
               style={styles.chipContainer}
               onPress={() => {
@@ -2638,23 +2372,38 @@ It doesn't matter if the product name is missing, this data is always from the i
             >
               <BlurView
                 intensity={50}
-                tint={colorScheme === 'dark' ? 'dark' : 'light'}
-                style={styles.chip}
+                tint={chipAppearance} // Updated here
+                style={[
+                  styles.chip,
+                  { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' } // New border color update
+                ]}
               >
                 <View style={styles.chipContent}>
-                  <Text style={[styles.chipLabel, { color: colorScheme === 'dark' ? '#fff' : '#000' }]}>Scans:</Text>
+                  <Text
+                    style={[
+                      styles.chipLabel,
+                      { color: chipAppearance === 'dark' ? '#fff' : '#444' } // Updated here
+                    ]}
+                  >
+                    Scans:
+                  </Text>
                   {isFirstDayUnlimited || isSubscribed ? (
                     <FontAwesomeIcon
                       icon={faInfinity}
                       size={18}
-                      color={colorScheme === 'dark' ? '#fff' : '#000'}
+                      color={chipAppearance === 'dark' ? '#fff' : '#444'} // Updated here
                     />
                   ) : (
-                    <Text style={[styles.chipText, { color: colorScheme === 'dark' ? '#fff' : '#000' }]}>
-                      {selectedMode === 'accurate' 
+                    <Text
+                      style={[
+                        styles.chipText,
+                        { color: chipAppearance === 'dark' ? '#fff' : '#444' } // Updated here
+                      ]}
+                    >
+                      {selectedMode === 'accurate'
                         ? Math.max(0, 1 - freeAccurateScansUsed)
-                        : isSubscribedPlus 
-                          ? (20 - scanCount) 
+                        : isSubscribedPlus
+                          ? (20 - scanCount)
                           : (5 - scanCount)}
                     </Text>
                   )}
@@ -2662,31 +2411,34 @@ It doesn't matter if the product name is missing, this data is always from the i
               </BlurView>
             </TouchableOpacity>
 
-            <TouchableOpacity 
-              style={styles.chipContainer} 
+            <TouchableOpacity
+              style={styles.chipContainer}
               onPress={handleModeChipPress}
             >
               <BlurView
-                intensity={selectedMode === 'accurate' ? 50 : 50}
-                tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                intensity={50}
+                tint={chipAppearance} // Updated here
                 style={[
                   styles.chip,
-                  selectedMode === 'accurate' && styles.chipAccurate
+                  selectedMode === 'accurate' && styles.chipAccurate,
+                  { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' } // New border color update
                 ]}
               >
                 <View style={styles.chipContent}>
-                  <Icon 
-                    name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
-                    size={16} 
-                    color={colorScheme === 'dark' ? '#fff' : '#000'} 
+                  <Icon
+                    name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'}
+                    size={16}
+                    color={chipAppearance === 'dark' ? '#fff' : '#444'} // Updated here
                   />
-                  <Animated.Text style={[
-                    styles.chipText, 
-                    { 
-                      opacity: chipTextOpacity,
-                      color: colorScheme === 'dark' ? '#fff' : '#000'
-                    }
-                  ]}>
+                  <Animated.Text
+                    style={[
+                      styles.chipText,
+                      {
+                        opacity: chipTextOpacity,
+                        color: chipAppearance === 'dark' ? '#fff' : '#444' // Updated here
+                      }
+                    ]}
+                  >
                     {selectedMode === 'fast' ? 'Fast' : 'Accurate'}
                   </Animated.Text>
                 </View>
@@ -2884,7 +2636,7 @@ It doesn't matter if the product name is missing, this data is always from the i
           <Text style={styles.infoCardText}>
             {showProcessingTime ? 
               `${processingTime}s` : 
-              `~${Math.round(averageProcessingTimes[selectedMode] / 1000)}s`
+              `~${getPredictedProcessingTime()}s`
             }
           </Text>
         </BlurView>
@@ -2903,7 +2655,14 @@ It doesn't matter if the product name is missing, this data is always from the i
           <View style={styles.modalView}>
             {modalImageUri && (
               <View style={styles.imageContainer}>
-                <Image source={{ uri: modalImageUri }} style={styles.imagePreview} />
+                <Image 
+                  source={{ 
+                    uri: (typeof modalImageUri === 'string' && !modalImageUri.startsWith('data:image/jpeg;base64,')) 
+                      ? 'data:image/jpeg;base64,' + modalImageUri 
+                      : modalImageUri 
+                  }} 
+                  style={styles.imagePreview} 
+                />
                 {isLoading && (
                   <View style={styles.loadingOverlay}>
                     <ActivityIndicator size="large" color={colorScheme === 'dark' ? '#FFF' : '#000'}
@@ -2946,15 +2705,137 @@ It doesn't matter if the product name is missing, this data is always from the i
           </View>
         </View>
       </Modal>
+
+      {isOverloadedError && (
+        <BlurView
+          intensity={30}
+          tint={colorScheme === 'dark' ? 'dark' : 'light'}
+          style={[
+            styles.overlayContainer,
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.errorCard,
+              { opacity: errorFadeAnim }
+            ]}
+          >
+            <BlurView
+              intensity={50}
+              tint={colorScheme === 'dark' ? 'dark' : 'light'}
+              style={styles.errorCardContent}
+            >
+              <MaterialCommunityIcons 
+                name={errorType === 'overloaded' ? 'server-network-off' : 'alert-circle-outline'}
+                size={40} 
+                color={colorScheme === 'dark' ? '#FF453A' : '#FF3B30'} 
+                style={styles.errorIcon}
+              />
+              <Text style={[
+                styles.errorTitle,
+                { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+              ]}>
+                {errorType === 'overloaded' ? 'High Demand' : 'Error Occurred'}
+              </Text>
+              <Text style={[
+                styles.errorMessage,
+                { color: colorScheme === 'dark' ? '#AAAAAA' : '#666666' }
+              ]}>
+                {errorType === 'overloaded'
+                  ? "Our servers are experiencing high demand right now. Please wait a moment and try again."
+                  : "Something went wrong while processing your image. Please try again."}
+              </Text>
+              <View style={styles.errorButtonsContainer}>
+                <TouchableOpacity 
+                  style={[styles.retryButton, styles.errorButton]}
+                  onPress={() => {
+                    Animated.timing(errorFadeAnim, {
+                      toValue: 0,
+                      duration: 300,
+                      useNativeDriver: true,
+                    }).start(() => {
+                      setIsOverloadedError(false);
+                      setErrorType(null);
+                    });
+                  }}
+                >
+                  <BlurView
+                    intensity={60}
+                    tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                    style={styles.retryButtonBlur}
+                  >
+                    <View style={styles.retryButtonContent}>
+                      <Icon 
+                        name="close" 
+                        size={20} 
+                        color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} 
+                      />
+                      <Text style={[
+                        styles.retryButtonText,
+                        { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                      ]}>
+                        Cancel
+                      </Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.retryButton, styles.errorButton]}
+                  onPress={handleRetry}
+                >
+                  <BlurView
+                    intensity={60}
+                    tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                    style={styles.retryButtonBlur}
+                  >
+                    <View style={styles.retryButtonContent}>
+                      <Icon 
+                        name="refresh" 
+                        size={20} 
+                        color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} 
+                      />
+                      <Text style={[
+                        styles.retryButtonText,
+                        { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                      ]}>
+                        Try Again
+                      </Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          </Animated.View>
+        </BlurView>
+      )}
+
+      <FoodSelectionModal
+        visible={showFoodSelectionModal}
+        imageUri={selectedImage}
+        onClose={() => setShowFoodSelectionModal(false)}
+        onSubmit={handleFoodSelectionSubmit}
+        colorScheme={colorScheme}
+        selectedMode={selectedMode}
+      />
+      
+      {showWhatsNew && <WhatsNew onClose={handleWhatsNewClose} />}
     </View>
   );
 };
+
+// Calculate scale factor based on screen size
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
 
   const getDynamicStyles = (colorScheme) => StyleSheet.create({
     container: {
       flex: 1,
       backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
-      paddingTop: isIphoneSE() ? 0 : 40,
+      paddingTop: isIphoneSE() ? 20 : 30 * scale,
     },
     mainContentContainer: {
       flex: 1,
@@ -2962,66 +2843,66 @@ It doesn't matter if the product name is missing, this data is always from the i
     buttonContainer: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      paddingHorizontal: 20,
-      paddingVertical: 10,
+      paddingHorizontal: 20 * scale,
+      paddingVertical: 10 * scale,
       marginTop: 'auto',
       backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
     },
     buttonContainerNoFood: {
-    marginBottom: -80, // Add bottom margin when no food is present
+      marginBottom: -80 * scale, // Add bottom margin when no food is present
     },
     scrollContainer: {
       flexGrow: 1,
-      paddingHorizontal: 16,
-    paddingBottom: 100, // Space for buttons
+      paddingHorizontal: 16 * scale,
+      paddingBottom: 100 * scale, // Space for buttons
       minHeight: '100%', // This ensures content fills the space
     },
     noContentContainer: {
       flex: 1,
       justifyContent: 'center', // Changed from 'space-between' to 'center'
       alignItems: 'center',
-      paddingHorizontal: 35,
-    gap: 160, // Add gap to create space between text and buttons
+      paddingHorizontal: 35 * scale,
+      gap: 160 * scale, // Add gap to create space between text and buttons
     },
     scanCounterContainer: {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      marginBottom: 16,
-      marginTop: 8,
+      marginBottom: 16 * scale,
+      marginTop: 8 * scale,
     },
     scanCounter: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-      borderRadius: 20,
-      paddingHorizontal: 16,
+      borderRadius: 20 * scale,
+      paddingHorizontal: 16 * scale,
       borderWidth: 1.5,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     scanCounterContent: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 5,
+      gap: 5 * scale,
     },
     scanCounterText: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
     },
     scanCounterLabel: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       color: colorScheme === 'dark' ? '#888' : '#666',
-      marginRight: 4,
+      marginRight: 4 * scale,
     },
     modeChip: {
       backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#f0f0f0',
-      paddingHorizontal: 12,
-      borderRadius: 15,
-      marginTop: 8,
+      paddingHorizontal: 12 * scale,
+      borderRadius: 15 * scale,
+      marginTop: 8 * scale,
       borderWidth: 1.5,
       borderColor: colorScheme === 'dark' ? '#3a3a3d' : '#e0e0e0',
-      width: 100,
+      width: 100 * scale,
     },
     modeChipAccurate: {
       backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
@@ -3029,11 +2910,11 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     modeChipText: {
       color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
-      fontSize: 12,
+      fontSize: 12 * scale,
       fontWeight: '500',
     },
     modeIcon: {
-      marginRight: 8,
+      marginRight: 8 * scale,
     },
     feedbackContainer: {
       flexDirection: 'column',
@@ -3045,9 +2926,9 @@ It doesn't matter if the product name is missing, this data is always from the i
       bottom: 80,
     },
     feedbackText: {
-      fontSize: 15.5,
+      fontSize: 15.5 * scale,
       color: colorScheme === 'dark' ? '#AAAAAA' : '#666666',
-      marginBottom: 10,
+      marginBottom: 10 * scale,
     },
     iconButtonContainer: {
       flexDirection: 'row',
@@ -3056,19 +2937,19 @@ It doesn't matter if the product name is missing, this data is always from the i
       width: '100%',
     },
     icon: {
-    marginRight: 10, // Space between icon and text
+    marginRight: 10 * scale, // Space between icon and text
     },
     iconButton: {
-      padding: 3,
-      marginHorizontal: 30,
+      padding: 3 * scale,
+      marginHorizontal: 30 * scale,
       backgroundColor: colorScheme === 'dark' ? '#e9e9e9' : '#DDD',
-      borderRadius: 100,
+      borderRadius: 100 * scale,
     },
     inputModalView: {
-      margin: 20,
+      margin: 20 * scale,
       backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFFFFF',
-      borderRadius: 40,
-      padding: 25,
+      borderRadius: 40 * scale,
+      padding: 25 * scale,
       alignItems: 'center',
       shadowColor: colorScheme === 'dark' ? '#000' : '#999',
       shadowOffset: {
@@ -3076,22 +2957,22 @@ It doesn't matter if the product name is missing, this data is always from the i
         height: 1,
       },
       shadowOpacity: 100,
-      shadowRadius: 90,
+      shadowRadius: 90 * scale,
       elevation: 100,
     },
     input: {
-      height: 40,
-      margin: 12,
+      height: 40 * scale,
+      margin: 12 * scale,
       borderWidth: 2,
-      padding: 10,
-      width: 300,
+      padding: 10 * scale,
+      width: 300 * scale,
       borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#CCCCCC',
       color: colorScheme === 'dark' ? '#c5c5c5' : '#333333',
-      borderRadius: 15,
+      borderRadius: 15 * scale,
     },
     inputModalButton: {
       backgroundColor: colorScheme === 'dark' ? '#2d2d2d' : '#F0F0F0',
-      borderRadius: 90,
+      borderRadius: 90 * scale,
       padding: '4%',
       paddingHorizontal: '15%',
       elevation: 2,
@@ -3099,7 +2980,7 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     inputModalButtonText: {
       color: colorScheme === 'dark' ? 'white' : 'black',
-      fontSize: 15,
+      fontSize: 15 * scale,
       fontWeight: '500',
       textAlign: 'center',
     },
@@ -3110,7 +2991,7 @@ It doesn't matter if the product name is missing, this data is always from the i
     inputModalText: {
       marginBottom: '2%',
       textAlign: 'center',
-      fontSize: 15,
+      fontSize: 15 * scale,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#e9e9e9' : '#333333',
     },
@@ -3119,73 +3000,73 @@ It doesn't matter if the product name is missing, this data is always from the i
       borderRadius: 25,
     },
     title: {
-      fontSize: 24,
+      fontSize: 24 * scale,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
       textAlign: 'center',
-      marginBottom: 4,
-      marginTop: 30,
-      marginHorizontal: 25,
+      marginBottom: 4 * scale,
+      marginTop: 30 * scale,
+      marginHorizontal: 25 * scale,
     },
     subtitle: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       color: colorScheme === 'dark' ? '#888888' : '#555555',
       textAlign: 'center',
-      marginBottom: 10,
-      marginHorizontal: 25,
+      marginBottom: 10 * scale,
+      marginHorizontal: 25 * scale,
     },
     scrollContainer: {
-      paddingBottom: 100,
+      paddingBottom: 100 * scale,
       flexGrow: 1,
-      paddingHorizontal: 16,
+      paddingHorizontal: 16 * scale,
     },
     floatingButtonWrapper: {
       width: '100%',
     },
     button: {
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-      borderRadius: 20,
-      borderWidth: 2,
+      borderRadius: 20 * scale,
+      borderWidth: 2 * scale,
       borderColor: colorScheme === 'dark' ? '#222' : '#bbb',
-      padding: 12,
-      paddingHorizontal: 20,
+      padding: 12 * scale,
+      paddingHorizontal: 20 * scale,
       shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.8,
-      shadowRadius: 15,
+      shadowOffset: { width: 0, height: 2 * scale },
+      shadowOpacity: 0.8 * scale,
+      shadowRadius: 15 * scale,
       elevation: 1,
     },
     buttonText: {
       color: colorScheme === 'dark' ? '#d8d8d8' : '#fff',
       textAlign: 'center',
-      fontSize: 16,
+      fontSize: 16 * scale,
     },
     foodImage: {
       width: '100%',
       height: '100%',
-      borderRadius: 24,
+      borderRadius: 24 * scale,
     },
     placeholderContainer: {
       width: '100%',
       justifyContent: 'center',
       alignItems: 'center',
       height: '100%',
-      borderRadius: 24,
+      borderRadius: 24 * scale,
       backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
     },
     placeholderText: {
       color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '400',
     },
     tabContainer: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      marginBottom: 16,
+      marginBottom: 16 * scale,
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
-      marginHorizontal: 15,
-      borderRadius: 20,
-      paddingVertical: 6,
+      marginHorizontal: 15 * scale,
+      borderRadius: 20 * scale,
+      paddingVertical: 6 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
       position: 'relative',
@@ -3196,11 +3077,11 @@ It doesn't matter if the product name is missing, this data is always from the i
       bottom: 4,
       height: 3,
       backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-      borderRadius: 90,
+      borderRadius: 90 * scale,
     },
     tabButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
+      paddingVertical: 8 * scale,
+      paddingHorizontal: 16 * scale,
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
@@ -3210,7 +3091,7 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     tabButtonText: {
       color: colorScheme === 'dark' ? '#666' : '#888',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '400',
     },
     activeTabButtonText: {
@@ -3219,85 +3100,85 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     tabContentContainer: {
       backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
-      borderRadius: 24,
+      borderRadius: 24 * scale,
       overflow: 'hidden',
-      marginBottom: 16,
+      marginBottom: 16 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     separator: {
-      height: 4,
+      height: 4 * scale,
       backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
-      marginVertical: 8,
-      marginBottom: 16,
-      borderRadius: 900,
-      marginHorizontal: 16,
+      marginVertical: 8 * scale,
+      marginBottom: 16 * scale,
+      borderRadius: 900 * scale,
+      marginHorizontal: 16 * scale,
     },
     nutrientRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: 2,
+      paddingVertical: 2 * scale,
     },
     nutrientLabel: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 17,
+      fontSize: 17 * scale,
       fontWeight: '400',
     },
     nutrientValue: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
     },
     ingredientItem: {
-      marginBottom: 5,
-      paddingHorizontal: 16,
+      marginBottom: 5 * scale,
+      paddingHorizontal: 16 * scale,
     },
     ingredientName: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: 'bold',
-      marginBottom: 4,
+      marginBottom: 4 * scale,
     },
     ingredientDescription: {
       color: '#888888',
-      fontSize: 14,
-      paddingBottom: 8,
+      fontSize: 14 * scale,
+      paddingBottom: 8 * scale,
 
     },
     detailText: {
       color: colorScheme === 'dark' ? '#ccc' : '#555',
-      fontSize: 16,
-      marginBottom: 20,
-      padding: 16,
+      fontSize: 16 * scale,
+      marginBottom: 20 * scale,
+      padding: 16 * scale,
     },
     detailPrepTime: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
-      marginBottom: 8,
-      paddingHorizontal: 16,
+      marginBottom: 8 * scale,
+      paddingHorizontal: 16 * scale,
     },
     detailServingSize: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
-      marginBottom: 8,
-      paddingHorizontal: 16,
+      marginBottom: 8 * scale,
+      paddingHorizontal: 16 * scale,
     },
     wikipediaLink: {
       color: '#3498DB',
-      fontSize: 16,
+      fontSize: 16 * scale,
       textDecorationLine: 'underline',
       marginTop: 0,
-      padding: 16,
+      padding: 16 * scale,
     },
     ingredientDescriptionNote: {
       color: '#888888',
-      fontSize: 14,
-      marginBottom: 10,
+      fontSize: 14 * scale,
+      marginBottom: 10 * scale,
       textAlign: 'center',
-      padding: 16,
+      padding: 16 * scale,
       paddingBottom: 0,
     },
     feedbackContainer: {
@@ -3306,12 +3187,12 @@ It doesn't matter if the product name is missing, this data is always from the i
       left: 0,
       right: 0,
       alignItems: 'center',
-      marginBottom: 24,
+      marginBottom: 24 * scale,
     },
     feedbackText: {
       color: '#888888',
-      fontSize: 14,
-      marginBottom: 8,
+      fontSize: 14 * scale,
+      marginBottom: 8 * scale,
     },
     feedbackButtons: {
       flexDirection: 'row',
@@ -3319,12 +3200,12 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     feedbackButton: {
       backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCC',
-      width: 40,
-      height: 40,
-      borderRadius: 20,
+      width: 40 * scale,
+      height: 40 * scale,
+      borderRadius: 20 * scale,
       justifyContent: 'center',
       alignItems: 'center',
-      marginHorizontal: 8,
+      marginHorizontal: 8 * scale,
     },
     modalBackground: {
       flex: 1,
@@ -3333,33 +3214,33 @@ It doesn't matter if the product name is missing, this data is always from the i
       backgroundColor: 'rgba(0, 0, 0, 0.2)', // Slightly transparent background
     },
     loadingTextContainer: {
-      height: 30,
+      height: 30 * scale,
       justifyContent: 'center',
       alignItems: 'center',
-      marginTop: 10,
+      marginTop: 10 * scale,
     },
     loadingText: {
       color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
       fontWeight: '500',
-      fontSize: 16,
+      fontSize: 16 * scale,
       textAlign: 'center',
     },
     scrollPlaceholderContainer: {
       flexGrow: 1,
-      marginBottom: 450,
-      marginHorizontal: 35,
+      marginBottom: 450 * scale,
+      marginHorizontal: 35 * scale,
       justifyContent: 'center',
       alignItems: 'center',
       textAlign: 'center',
-      paddingBottom: 100,
+      paddingBottom: 100 * scale,
     },
     imageContainer: {
       width: '90%',
-      height: 200,
-      borderRadius: 24,
-      marginBottom: 16,
+      height: 200 * scale,
+      borderRadius: 24 * scale,
+      marginBottom: 16 * scale,
       backgroundColor: colorScheme === 'dark' ? '#111' : '#EEE',
-      marginHorizontal: 20,
+      marginHorizontal: 20 * scale,
       position: 'relative', // Add this to position children absolutely
     },
     imageWrapper: {
@@ -3379,17 +3260,17 @@ It doesn't matter if the product name is missing, this data is always from the i
     tooltip: {
       position: 'absolute',
       backgroundColor: 'rgba(0, 0, 0, 0.8)',
-      borderRadius: 20,
-      padding: 10,
+      borderRadius: 20 * scale,
+      padding: 10 * scale,
       top: -80,
       left: '50%',
-      transform: [{ translateX: -75 }],
+      transform: [{ translateX: -75 * scale }],
       width: 180,
       alignItems: 'center',
     },
     tooltipText: {
       color: '#FFFFFF',
-      fontSize: 14,
+      fontSize: 14 * scale,
       textAlign: 'center',
     },
     barcodeIconContainer: {
@@ -3397,8 +3278,8 @@ It doesn't matter if the product name is missing, this data is always from the i
       bottom: 10,
       left: 10,
       backgroundColor: 'rgba(0, 0, 0, 0.7)',
-      borderRadius: 14,
-      padding: 7,
+      borderRadius: 14 * scale,
+      padding: 7 * scale,
       flexDirection: 'row',
       alignItems: 'center',
       shadowColor: '#000',
@@ -3407,7 +3288,7 @@ It doesn't matter if the product name is missing, this data is always from the i
         height: 2,
       },
       shadowOpacity: 0.25,
-      shadowRadius: 3.84,
+      shadowRadius: 3.84 * scale,
       elevation: 5,
       // Add these to show it's interactive
       opacity: 1,
@@ -3416,38 +3297,38 @@ It doesn't matter if the product name is missing, this data is always from the i
     processingTimeText: {
       color: colorScheme === 'dark' ? '#a9a9a9' : '#555',
       fontWeight: '400',
-      fontSize: 14,
+      fontSize: 14 * scale,
       textAlign: 'center',
-      marginTop: 8,
+      marginTop: 8 * scale,
     },
     chip: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 15,
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 6 * scale,
+      borderRadius: 15 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
       overflow: 'hidden',
     },
     chipContainer: {
-      borderRadius: 15,
+      borderRadius: 15 * scale,
       overflow: 'hidden',
     },
     chipAccurate: {
-      borderColor: 'rgba(66, 135, 245, 0.4)',
-      backgroundColor: 'rgba(66, 135, 245, 0.1)',
+      borderColor: 'rgba(66, 135, 245, 0.5)',
+      backgroundColor: 'rgba(66, 135, 245, 0.3)',
     },
     chipContent: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: 6,
+      gap: 6 * scale,
       justifyContent: 'center', // Add this to keep content centered during animation
     },
     chipLabel: {
-      fontSize: 14,
+      fontSize: 14 * scale,
       fontWeight: '400',
     },
     chipText: {
-      fontSize: 14,
+      fontSize: 14 * scale,
       fontWeight: '500',
     },
     scrollIndicatorOpacity: {
@@ -3458,9 +3339,9 @@ It doesn't matter if the product name is missing, this data is always from the i
       shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 1,
-      shadowRadius: 10,
-      borderRadius: 200,
-      padding: 3,
+      shadowRadius: 10 * scale,
+      borderRadius: 200 * scale,
+      padding: 3 * scale,
     },
     modalBackground: {
       flex: 1,
@@ -3471,36 +3352,32 @@ It doesn't matter if the product name is missing, this data is always from the i
       width: '90%',
       maxWidth: 400,
       alignItems: 'center',
-      paddingVertical: 30,
-    borderRadius: 25, // Match your existing rounded corners
-      overflow: 'hidden', // Ensure the blur effect respects the border radius
-      borderWidth: 1,
-      borderColor: 'rgba(255, 255, 255, 0.2)',
+      paddingVertical: 30 * scale,
     },
     loadingHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 24,
+      marginBottom: 24 * scale,
     },
     modeIndicator: {
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 12,
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 6 * scale,
+      borderRadius: 12 * scale,
     },
     modeText: {
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      marginLeft: 8,
+      marginLeft: 8 * scale,
       fontWeight: '500',
     },
     scanCounter: {
       backgroundColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.05)',
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 12,
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 6 * scale,
+      borderRadius: 12 * scale,
     },
     scanCounterText: {
       color: colorScheme === 'dark' ? '#fff' : '#fff',
@@ -3508,22 +3385,22 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     loadingContent: {
       alignItems: 'center',
-      marginBottom: 30,
+      marginBottom: 30 * scale,
     },
     loadingTextContainer: {
-      marginTop: 20,
+      marginTop: 20 * scale,
       alignItems: 'center',
-      paddingHorizontal: 20,
+      paddingHorizontal: 20 * scale,
     },
     estimatedTimeContainer: {
       borderTopWidth: 1,
       borderTopColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-      paddingTop: 16,
-      marginTop: 8,
+      paddingTop: 16 * scale,
+      marginTop: 8 * scale,
     },
     estimatedTimeText: {
       color: colorScheme === 'dark' ? '#999' : '#666',
-      fontSize: 14,
+      fontSize: 14 * scale,
       textAlign: 'center',
     },
     modalBackground: {
@@ -3536,19 +3413,19 @@ It doesn't matter if the product name is missing, this data is always from the i
       width: '90%',
       maxWidth: 400,
       alignItems: 'center',
-      paddingVertical: 30,
+      paddingVertical: 30 * scale,
     },
     modeBadgeContainer: {
       width: '100%',
       alignItems: 'center',
-      marginBottom: 30,
+      marginBottom: 30 * scale,
     },
     modeBadge: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 20,
-      paddingVertical: 12,
-      borderRadius: 20,
+      paddingHorizontal: 20 * scale,
+      paddingVertical: 12 * scale,
+      borderRadius: 20 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
       backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
@@ -3556,22 +3433,22 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     modeBadgeText: {
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 18,
+      fontSize: 18 * scale,
       fontWeight: '600',
-      marginLeft: 10,
+      marginLeft: 10 * scale,
     },
     loadingContent: {
       alignItems: 'center',
-      marginBottom: 30,
+      marginBottom: 30 * scale,
     },
     loadingTextContainer: {
-      marginTop: 20,
+      marginTop: 20 * scale,
       alignItems: 'center',
-      paddingHorizontal: 20,
+      paddingHorizontal: 20 * scale,
     },
     loadingText: {
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
       textAlign: 'center',
     },
@@ -3579,15 +3456,15 @@ It doesn't matter if the product name is missing, this data is always from the i
       flexDirection: 'row',
       justifyContent: 'center',
       flexWrap: 'wrap',
-      gap: 10,
-      paddingHorizontal: 20,
+      gap: 10 * scale,
+      paddingHorizontal: 20 * scale,
     },
     infoCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      paddingVertical: 12,
-      borderRadius: 16,
+      paddingHorizontal: 16 * scale,
+      paddingVertical: 12 * scale,
+      borderRadius: 16 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
       backgroundColor: colorScheme === 'dark' ? 'transparent' : 'rgba(0, 0, 0, 0.1)',
@@ -3595,31 +3472,31 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
     infoCardText: {
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 15,
+      fontSize: 15 * scale,
       fontWeight: '500',
-      marginLeft: 8,
+      marginLeft: 8 * scale,
     },
     logo: {
-      width: 60,
-      height: 60,
+      width: 60 * scale,
+      height: 60 * scale,
       position: 'absolute',
-      top: isIphoneSE() ? 10 : 50,
-      left: 20,
+      top: isIphoneSE() ? 10 * scale : 50 * scale,
+      left: 20 * scale,
     },
     macroGridContainer: {
       flexDirection: 'column',
       justifyContent: 'flex-start',
-      padding: 8,
-      gap: 5,
+      padding: 8 * scale,
+      gap: 5 * scale,
     },
 
     macroCard: {
       width: '100%',
       backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F5F5F5',
-      borderRadius: 18,
-      padding: 12,
-      height: 100,
-      marginBottom: 5,
+      borderRadius: 18 * scale,
+      padding: 12 * scale,
+      height: 100 * scale,
+      marginBottom: 5 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#E5E5E5',
       flexDirection: 'column',
@@ -3631,7 +3508,7 @@ It doesn't matter if the product name is missing, this data is always from the i
       alignItems: 'center',
       justifyContent: 'space-between',
       width: '100%',
-      marginBottom: 8,
+      marginBottom: 8 * scale,
     },
 
     iconLabelContainer: {
@@ -3640,17 +3517,18 @@ It doesn't matter if the product name is missing, this data is always from the i
     },
 
     iconContainer: {
-      width: 40,
-      height: 40,
-      borderRadius: 100,
+      width: 40 * scale,
+      height: 40 * scale,
+      borderRadius: 15 * scale,
       justifyContent: 'center',
       alignItems: 'center',
-      marginRight: 8,
-      marginLeft: 5,
+      marginRight: 8 * scale,
+      marginLeft: 5 * scale,
+      overflow: 'hidden',
     },
 
     macroLabel: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
     },
@@ -3658,20 +3536,20 @@ It doesn't matter if the product name is missing, this data is always from the i
     macroValueContainer: {
       flexDirection: 'row',
       alignItems: 'baseline',
-      marginRight: 10,
+      marginRight: 10 * scale,
     },
 
     macroValue: {
-      fontSize: 24,
+      fontSize: 24 * scale,
       fontWeight: '700',
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
     },
 
     macroUnit: {
-      fontSize: 14,
+      fontSize: 14 * scale,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#999999' : '#666666',
-      marginLeft: 4,
+      marginLeft: 4 * scale,
     },
 
     errorBarContainer: {
@@ -3682,14 +3560,14 @@ It doesn't matter if the product name is missing, this data is always from the i
       flexDirection: 'row',
       alignItems: 'center',
       width: '95%',
-      gap: 8,
-      marginTop: 8,
-      paddingBottom: 10,
+      gap: 8 * scale,
+      marginTop: 8 * scale,
+      paddingBottom: 10 * scale,
     },
 
     errorBar: {
-      height: 10,
-      borderRadius: 100,
+      height: 10 * scale,
+      borderRadius: 100 * scale,
       flex: 1,
       overflow: 'hidden',
     },
@@ -3699,20 +3577,20 @@ It doesn't matter if the product name is missing, this data is always from the i
       left: 0,
       top: 0,
       bottom: 0,
-      borderRadius: 100,
+      borderRadius: 100 * scale,
     },
 
     errorText: {
-      fontSize: 12,
+      fontSize: 12 * scale,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#999999' : '#666666',
-      minWidth: 45,
+      minWidth: 45 * scale,
       textAlign: 'right',
     },
 
     floatingButtonContainer: {
       position: 'absolute',
-      bottom: 20,
+      bottom: 20 * scale,
       left: 0,
       right: 0,
       zIndex: 1000,
@@ -3725,20 +3603,21 @@ It doesn't matter if the product name is missing, this data is always from the i
         height: 4,
       },
       shadowOpacity: 0.3,
-      shadowRadius: 4.65,
+      shadowRadius: 4.65 * scale,
       elevation: 8,
       zIndex: 1000,
     },
 
     buttonsWrapper: {
       width: '100%',
-      paddingHorizontal: 20,
-      marginBottom: 20,
+      paddingHorizontal: 0,
+      marginBottom: 20 * scale,
     },
 
     buttonContainer: {
       flexDirection: 'row',
-      justifyContent: 'space-around',
+      justifyContent: 'center',
+      gap: 30 * scale,
       width: '100%',
     },
 
@@ -3749,13 +3628,13 @@ It doesn't matter if the product name is missing, this data is always from the i
         height: 4,
       },
       shadowOpacity: 0.3,
-      shadowRadius: 4.65,
+      shadowRadius: 4.65 * scale,
       elevation: 8,
       zIndex: 1000,
     },
 
     nutrientPage: {
-    width: width - 34, // Account for container padding
+    width: (width - 34), // Account for container padding
       alignItems: 'center',
     },
 
@@ -3763,19 +3642,19 @@ It doesn't matter if the product name is missing, this data is always from the i
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      marginTop: -2,
-      marginBottom: 8,
-      gap: 8,
+      marginTop: -2 * scale,
+      marginBottom: 8 * scale,
+      gap: 8 * scale,
     },
 
     paginationDot: {
-      width: 8,
-      height: 8,
-      borderRadius: 4,
+      width: 8 * scale,
+      height: 8 * scale,
+      borderRadius: 4 * scale,
     },
     placeholderTextInScroll: {
       color: colorScheme === 'dark' ? '#4a4a4a' : '#888888',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '400',
       textAlign: 'center',
     },
@@ -3790,6 +3669,102 @@ It doesn't matter if the product name is missing, this data is always from the i
       shadowRadius: 10,
       borderRadius: 200,
       padding: 3,
+    },
+    overlayContainer: {
+      position: 'absolute',
+      top: 0,
+      bottom: 0,
+      left: 0,
+      right: 0,
+      justifyContent: 'center',
+      alignItems: 'center',
+      zIndex: 1000,
+    },
+    overlayText: {
+      fontSize: 18,
+      fontWeight: '500',
+      marginBottom: 20,
+      textAlign: 'center',
+      paddingHorizontal: 30,
+    },
+    retryButtonText: {
+      color: 'white',
+      fontSize: 16,
+      fontWeight: '600',
+    },
+    errorCard: {
+      width: '80%',
+      borderRadius: 30,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#444' : '#ccc',
+    },
+    errorCardContent: {
+      padding: 24,
+      alignItems: 'center',
+    },
+    errorIcon: {
+      marginBottom: 16,
+    },
+    errorTitle: {
+      fontSize: 22,
+      fontWeight: '600',
+      marginBottom: 8,
+      textAlign: 'center',
+    },
+    errorMessage: {
+      fontSize: 16,
+      fontWeight: '400',
+      textAlign: 'center',
+      marginBottom: 24,
+      lineHeight: 22,
+    },
+    retryButton: {
+      width: '100%',
+      overflow: 'hidden',
+      borderRadius: 15,
+      overflow: 'hidden',
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#444' : '#ccc',
+    },
+    retryButtonBlur: {
+      paddingVertical: 12,
+      paddingHorizontal: 24,
+    },
+    retryButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 8,
+    },
+    debugChipContainer: {
+      position: 'absolute',
+      bottom: 10,
+      right: 10,
+      borderRadius: 15 * scale,
+      overflow: 'hidden',
+      zIndex: 10,
+    },
+    debugChip: {
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 6 * scale,
+      borderRadius: 15 * scale,
+      borderWidth: 1,
+      borderColor: '#333',  // always dark-style
+      backgroundColor: 'rgba(0,0,0,0.5)',  // always dark-style
+      overflow: 'hidden',
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6 * scale,
+    },
+    errorButtonsContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      gap: 10,
+      width: '100%',
+    },
+    errorButton: {
+      flex: 1,
     },
   });
 

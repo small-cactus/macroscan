@@ -46,7 +46,7 @@ const AnimatedTextFoodScan = ({ text, colorScheme, style }) => {
   if (lines.length === 0) {
     return (
       <Text
-        style={[styles.text, { color: textColor }, style]}
+        style={[styles.text, { color: textColor, opacity: 0 }, style]}
         onTextLayout={handleTextLayout}
       >
         {text}

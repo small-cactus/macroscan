@@ -1,5 +1,5 @@
 // AboutScreen.js
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useRef } from 'react';
 import {
   StyleSheet,
   View,
@@ -14,9 +14,13 @@ import {
   Linking,
   LayoutAnimation,
   UIManager,
+  Animated,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import MaterialIcon from 'react-native-vector-icons/MaterialIcons';
+import { LinearGradient } from 'expo-linear-gradient';
 import AnimatedAnswer from './AnimatedAnswer'; // Ensure you have the correct path
 
 const { width, height } = Dimensions.get('window');
@@ -28,36 +32,63 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const CHANGELOG = [
   {
-    title: 'UI Updates',
-    details: 'Redesigned scan screen with easy toggles between fast and accurate modes. Free users now get 1 accurate scan per day.',
-  },
-  {
-    title: 'History Screen Enhancements', 
-    details: 'Added smooth animations, filters, and a search bar to help you find past scans more easily.',
+    title: 'Circle to Scan',
+    details:
+      'Draw a circle around specific foods in your photos to scan just that portion. This helps get more accurate results by focusing only on the food you want to analyze.',
+    icon: 'scan-circle-outline',
+    iconLibrary: 'Ionicons',
+    color: '#000',
+    isBeta: true,
+    isOffByDefault: true,
   },
   {
     title: 'Barcode Scanning',
     details: 'Added barcode scanning capability to photo mode for quick and accurate food identification.',
+    icon: 'barcode-outline',
+    iconLibrary: 'Ionicons',
+    color: '#30D158',
+    isBeta: false,
   },
   {
-    title: 'UI Polish',
-    details: 'Enhanced icons and improved look and feel across all screens for a more polished user experience.',
+    title: 'History Search & Filters', 
+    details: 'Added advanced search filters and search bar functionality to quickly find specific scans in your history.',
+    icon: 'search',
+    iconLibrary: 'Ionicons',
+    color: '#0A84FF',
+    isBeta: false,
   },
   {
-    title: 'Macro Goals Calculator',
-    details: 'Added personalized macro goals calculator based on your height, weight, age, activity level and fitness goals.',
+    title: 'Daily Limit Tracking UI',
+    details: 'New visual feedback when approaching or exceeding daily limits, with clear warnings and blocked actions when over limit.',
+    icon: 'stats-chart',
+    iconLibrary: 'Ionicons',
+    color: '#FFD60A',
+    isBeta: true,
   },
   {
-    title: 'Onboarding Experience',
-    details: 'New user-friendly onboarding flow to help you get started with personalized nutrition tracking.',
+    title: 'Free Accurate Scans',
+    details: 'Free users now get 1 high-accuracy scan per day, with clear counter and upgrade reminders.',
+    icon: 'star',
+    iconLibrary: 'Ionicons',
+    color: '#BF5AF2',
+    isBeta: false,
+    isOffByDefault: true,
   },
   {
-    title: 'MoreDark Mode Support',
-    details: 'Added full dark mode support across the app for comfortable viewing in low-light conditions.',
+    title: 'Home Screen Redesign',
+    details: 'Complete overhaul of scanning interface with mode toggles, quick settings, and visual guides for first-time users.',
+    icon: 'grid',
+    iconLibrary: 'Ionicons',
+    color: '#FF9F0A',
+    isBeta: false,
   },
   {
-    title: 'Persistent Storage',
-    details: 'Your personal data and scan history are now securely saved between sessions on device and never shared.',
+    title: 'Responsive UI Improvements',
+    details: 'Enhanced layout adapts perfectly to all screen sizes from small phones to large tablets.',
+    icon: 'devices',
+    iconLibrary: 'MaterialIcons',
+    color: '#64D2FF',
+    isBeta: false,
   }
 ];
 
@@ -88,6 +119,8 @@ const AboutScreen = () => {
 
   // Initialize an array to track open/closed state for each changelog item
   const [changelogOpen, setChangelogOpen] = useState(new Array(CHANGELOG.length).fill(false));
+  // Add rotation animation values for each chevron
+  const rotationAnimations = useRef(CHANGELOG.map(() => new Animated.Value(0))).current;
 
   const toggleChangelog = useCallback(
     index => {
@@ -97,8 +130,16 @@ const AboutScreen = () => {
         updatedState[index] = !updatedState[index];
         return updatedState;
       });
+
+      // Animate the chevron rotation
+      Animated.spring(rotationAnimations[index], {
+        toValue: changelogOpen[index] ? 0 : 1,
+        friction: 10,
+        tension: 40,
+        useNativeDriver: true
+      }).start();
     },
-    []
+    [changelogOpen]
   );
 
   const handleContactPress = () => {
@@ -111,6 +152,20 @@ const AboutScreen = () => {
   const handleTermsPress = () => {
     const policyUrl = 'https://www.apple.com/legal/internet-services/itunes/dev/stdeula/';
     Linking.openURL(policyUrl);
+  };
+
+  // Helper function to adjust color brightness
+  const adjustBrightness = (color, percent) => {
+    const num = parseInt(color.replace('#', ''), 16);
+    const amt = Math.round(2.55 * percent);
+    const R = (num >> 16) + amt;
+    const G = (num >> 8 & 0x00FF) + amt;
+    const B = (num & 0x0000FF) + amt;
+    return '#' + (0x1000000 +
+      (R < 255 ? (R < 1 ? 0 : R) : 255) * 0x10000 +
+      (G < 255 ? (G < 1 ? 0 : G) : 255) * 0x100 +
+      (B < 255 ? (B < 1 ? 0 : B) : 255)
+    ).toString(16).slice(1);
   };
 
   return (
@@ -131,7 +186,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.6.0 (84)</Text>
+            <Text style={styles.version}>Version 1.6.0 (104)</Text>
             <View style={styles.betaContainer}>
               {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>
@@ -149,9 +204,9 @@ const AboutScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.changelogHeader}>Changelog v1.6</Text>
+          <Text style={styles.changelogHeader}>Changelog v1.6.0</Text>
           <View style={styles.betaContainer}>
-              <Text style={styles.betaTag}>First Release</Text>
+              <Text style={styles.betaTag}>Big Update</Text>
             </View>
           {CHANGELOG.map((item, index) => (
             <View key={index} style={styles.changelogItemContainer}>
@@ -159,15 +214,83 @@ const AboutScreen = () => {
                 style={styles.changelogTitleContainer}
                 onPress={() => toggleChangelog(index)}
               >
-                <Ionicons
-                  name={changelogOpen[index] ? 'chevron-up' : 'chevron-down'}
-                  size={24}
-                  color={colorScheme === 'dark' ? '#FFF' : '#000'}
-                />
-                <Text style={styles.changelogTitle}>{item.title}</Text>
+                <LinearGradient
+                  colors={[
+                    item.color,
+                    adjustBrightness(item.color, colorScheme === 'dark' ? -20 : 20)
+                  ]}
+                  style={styles.iconContainer}
+                >
+                  {item.iconLibrary === 'Ionicons' && (
+                    <Ionicons
+                      name={item.icon}
+                      size={22}
+                      color="#FFFFFF"
+                    />
+                  )}
+                  {item.iconLibrary === 'MaterialCommunityIcons' && (
+                    <MaterialCommunityIcons
+                      name={item.icon}
+                      size={22}
+                      color="#FFFFFF"
+                    />
+                  )}
+                  {item.iconLibrary === 'MaterialIcons' && (
+                    <MaterialIcon
+                      name={item.icon}
+                      size={22}
+                      color="#FFFFFF"
+                    />
+                  )}
+                </LinearGradient>
+                <View style={styles.titleChipsContainer}>
+                  <Text style={styles.changelogTitle}>{item.title}</Text>
+                  <View style={styles.chipsContainer}>
+                    {item.isBeta && (
+                      <View style={styles.betaChipContainer}>
+                        <Text style={styles.betaChipTag}>BETA</Text>
+                      </View>
+                    )}
+                    {item.isOffByDefault && (
+                      <View style={styles.offByDefaultChipContainer}>
+                        <Text style={styles.offByDefaultChipTag}>OFF BY DEFAULT</Text>
+                      </View>
+                    )}
+                  </View>
+                </View>
+                <Animated.View style={[
+                  styles.chevron,
+                  {
+                    transform: [{
+                      rotate: rotationAnimations[index].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '90deg']
+                      })
+                    }]
+                  }
+                ]}>
+                  <Ionicons
+                    name="chevron-forward"
+                    size={24}
+                    color={colorScheme === 'dark' ? '#FFF' : '#000'}
+                  />
+                </Animated.View>
               </TouchableOpacity>
               {changelogOpen[index] && (
-                <AnimatedAnswer text={item.details} colorScheme={colorScheme} />
+                <View style={styles.expandedContent}>
+                  <AnimatedAnswer text={item.details} colorScheme={colorScheme} />
+                  {(item.title === 'Circle to Scan' || item.title === 'Free Accurate Scans') && (
+                    <TouchableOpacity
+                      style={[styles.featureButton, {
+                        backgroundColor: item.color
+                      }]}
+                      onPress={() => navigation.navigate('FeaturesScreen')}
+                    >
+                      <Text style={styles.featureButtonText}>Try it in Features</Text>
+                      <Ionicons name="arrow-forward" size={18} color="#FFFFFF" style={styles.featureButtonIcon} />
+                    </TouchableOpacity>
+                  )}
+                </View>
               )}
             </View>
           ))}
@@ -267,12 +390,51 @@ const getDynamicStyles = colorScheme =>
       flexDirection: 'row',
       alignItems: 'center',
     },
+    titleChipsContainer: {
+      flex: 1,
+      marginLeft: 12,
+    },
     changelogTitle: {
       fontSize: 16,
       fontWeight: '600',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
-      marginLeft: 8,
-      flexShrink: 1,
+      marginBottom: 4,
+    },
+    iconContainer: {
+      width: 40,
+      height: 40,
+      borderRadius: 12,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    chipsContainer: {
+      flexDirection: 'row',
+      gap: 8,
+    },
+    betaChipContainer: {
+      backgroundColor: colorScheme === 'dark' ? 'rgba(0, 122, 255, 0.15)' : 'rgba(0, 122, 255, 0.1)',
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    betaChipTag: {
+      color: '#007AFF',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    offByDefaultChipContainer: {
+      backgroundColor: colorScheme === 'dark' ? 'rgba(255, 69, 58, 0.15)' : 'rgba(255, 69, 58, 0.1)',
+      borderRadius: 4,
+      paddingHorizontal: 6,
+      paddingVertical: 2,
+    },
+    offByDefaultChipTag: {
+      color: '#FF453A',
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    chevron: {
+      marginLeft: 'auto',
     },
     buttonContainer: {
       width: '100%',
@@ -302,6 +464,26 @@ const getDynamicStyles = colorScheme =>
       // Removed marginRight
       borderWidth: 2,
       borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
+    },
+    expandedContent: {
+      marginTop: 12,
+    },
+    featureButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 12,
+      borderRadius: 12,
+      marginTop: 16,
+    },
+    featureButtonText: {
+      color: '#FFFFFF',
+      fontSize: 15,
+      fontWeight: '600',
+      marginRight: 8,
+    },
+    featureButtonIcon: {
+      marginLeft: 4,
     },
   });
 

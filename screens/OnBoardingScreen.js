@@ -1246,20 +1246,20 @@ const OnboardingScreen = () => {
 
   const handleNext = async () => {
     if (!isCurrentStepValid()) {
-      const currentStep = ONBOARDING_STEPS[currentIndex];
+      const currentStep = filteredSteps[currentIndex]; // <-- changed from ONBOARDING_STEPS
       let message = '';
       
-      if (currentStep.field === 'height') {
+      if (currentStep?.field === 'height') {
         message = 'Please enter a valid height';
-      } else if (currentStep.field === 'weight') {
+      } else if (currentStep?.field === 'weight') {
         message = 'Please enter a valid weight';
-      } else if (currentStep.field === 'age') {
+      } else if (currentStep?.field === 'age') {
         message = 'Please enter a valid age';
-      } else if (currentStep.field === 'gender') {
+      } else if (currentStep?.field === 'gender') {
         message = 'Please select your gender';
-      } else if (currentStep.field === 'activityLevel') {
+      } else if (currentStep?.field === 'activityLevel') {
         message = 'Please select your activity level';
-      } else if (currentStep.field === 'goal') {
+      } else if (currentStep?.field === 'goal') {
         message = 'Please select your goal';
       }
       
@@ -1269,20 +1269,34 @@ const OnboardingScreen = () => {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    if (currentIndex === 8) {
+    // If the current step has ID '8', save the goals
+    if (filteredSteps[currentIndex]?.id === '11') {
       try {
+        console.log('[OnBoardingScreen] Attempting to save goals to AsyncStorage...');
+        
+        if (!calculatedGoals) {
+          console.error('[OnBoardingScreen] Cannot save goals: calculatedGoals is null');
+          throw new Error('Goals not calculated yet');
+        }
+        
+        console.log('[OnBoardingScreen] Goals to save:', calculatedGoals);
         await AsyncStorage.setItem('@user_goals', JSON.stringify(calculatedGoals));
+        console.log('[OnBoardingScreen] Successfully saved goals to AsyncStorage');
       } catch (error) {
-        console.error('Error saving goals:', error);
+        console.error('[OnBoardingScreen] Error saving goals:', error);
+        // Show an error message to the user
+        Alert.alert(
+          'Error',
+          'There was a problem saving your goals. Please try again.',
+          [{ text: 'OK' }]
+        );
+        return; // Don't proceed if we couldn't save the goals
       }
     }
 
-    if (currentIndex < ONBOARDING_STEPS.length - 1) {
-      flatListRef.current?.scrollToIndex({
-        index: currentIndex + 1,
-        animated: true,
-      });
+    if (currentIndex < filteredSteps.length - 1) {
       setCurrentIndex(currentIndex + 1);
+      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
     } else {
       showPaywall();
     }
@@ -1291,27 +1305,17 @@ const OnboardingScreen = () => {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      // Find the previous valid step
-      let prevIndex = currentIndex - 1;
-      // If the previous step is a weight change step and we're maintaining weight,
-      // skip it and go to the step before
-      const prevStep = ONBOARDING_STEPS[prevIndex];
-      if (prevStep?.showWeightChangeOptions && userData.goal === 'Maintain Weight') {
-        prevIndex--;
-      }
-      setCurrentIndex(prevIndex);
-      flatListRef.current?.scrollToIndex({
-        index: prevIndex,
-        animated: true,
-      });
+      setCurrentIndex(currentIndex - 1);
+      flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true });
     }
   };
 
   const timers = useRef([]);
 
-  // Adjusted useEffect for currentIndex === 2
+  // Instead, check the step ID to decide if it's step "3"
   useEffect(() => {
-    if (currentIndex === 2 && !step3Loaded) {
+    const currentStep = filteredSteps[currentIndex];
+    if (currentStep?.id === '3' && !step3Loaded) {
       setLoadingStep3(true);
       loadingOpacity.setValue(0);
       Animated.timing(loadingOpacity, {
@@ -1366,7 +1370,7 @@ const OnboardingScreen = () => {
         timers.current = [];
       }
     };
-  }, [currentIndex, step3Loaded, blurOpacity, replayButtonOpacity, loadingOpacity]);
+  }, [currentIndex, step3Loaded, filteredSteps]);
 
   const renderFeature = useCallback(({ item, index }, showAnimation = false, animValue) => (
     <FeatureItem 
@@ -1451,8 +1455,26 @@ const OnboardingScreen = () => {
         userData.age && 
         userData.gender && 
         userData.activityLevel) {
+      
+      console.log('[OnBoardingScreen] Triggering goal calculation with userData:', userData);
+      
       const goals = calculateGoals(userData);
-      setCalculatedGoals(goals);
+      if (goals) {
+        console.log('[OnBoardingScreen] Setting new calculated goals:', goals);
+        setCalculatedGoals(goals);
+      } else {
+        console.error('[OnBoardingScreen] Goal calculation returned null. Current userData:', userData);
+      }
+    } else {
+      console.log('[OnBoardingScreen] Skipping goal calculation - missing required data:', {
+        hasWeight: !!userData.weight,
+        hasHeight: userData.unit === 'imperial' ? 
+          !!(userData.heightFeet && userData.heightInches) : 
+          !!userData.height,
+        hasAge: !!userData.age,
+        hasGender: !!userData.gender,
+        hasActivityLevel: !!userData.activityLevel
+      });
     }
   }, [userData]); // Run whenever userData changes
 
@@ -1500,8 +1522,7 @@ const deleteSavedInputs = async () => {
 };
 
 const calculateGoals = (data) => {
-  // For debug:
-  console.log('DEBUG => calculateGoals called with:', data);
+  console.log('[OnBoardingScreen] Starting goals calculation with data:', data);
 
   let weightKg, heightCm;
 
@@ -1517,7 +1538,7 @@ const calculateGoals = (data) => {
       isNaN(parsedFeet)   || parsedFeet < 0 ||
       isNaN(parsedInches) || parsedInches < 0
     ) {
-      console.warn('calculateGoals => Invalid imperial weight/height data:', {
+      console.warn('[OnBoardingScreen] Invalid imperial weight/height data:', {
         weight: data.weight, heightFeet: data.heightFeet, heightInches: data.heightInches
       });
       return null;
@@ -1534,7 +1555,7 @@ const calculateGoals = (data) => {
       isNaN(parsedWeight) || parsedWeight <= 0 ||
       isNaN(parsedHeight) || parsedHeight <= 0
     ) {
-      console.warn('calculateGoals => Invalid metric weight/height data:', {
+      console.warn('[OnBoardingScreen] Invalid metric weight/height data:', {
         weight: data.weight, height: data.height
       });
       return null;
@@ -1544,15 +1565,17 @@ const calculateGoals = (data) => {
     heightCm = parsedHeight;
   }
 
+  console.log('[OnBoardingScreen] Converted measurements - Weight (kg):', weightKg, 'Height (cm):', heightCm);
+
   // Age & Gender checks
   const age = parseInt(data.age, 10);
   if (isNaN(age) || age <= 0 || age >= 120) {
-    console.warn('calculateGoals => Invalid age:', data.age);
+    console.warn('[OnBoardingScreen] Invalid age:', data.age);
     return null;
   }
   const gender = data.gender;
   if (!gender) {
-    console.warn('calculateGoals => No gender set');
+    console.warn('[OnBoardingScreen] No gender set');
     return null;
   }
 
@@ -1563,6 +1586,8 @@ const calculateGoals = (data) => {
   } else {
     BMR = (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161;
   }
+
+  console.log('[OnBoardingScreen] Calculated BMR:', BMR);
 
   // Activity factor
   let activityFactor;
@@ -1582,12 +1607,20 @@ const calculateGoals = (data) => {
 
   let TDEE = BMR * activityFactor;
 
+  console.log('[OnBoardingScreen] Initial TDEE:', TDEE, 'with activity factor:', activityFactor);
+
   // If user wants to lose/gain weight at a certain weekly rate
-  // (and that rate is > 0)
   if (data.goal !== 'Maintain Weight' && data.weightChangeRate > 0) {
     const adjustmentFactor = Math.min(1.2, Math.max(0.8, weightKg / 70));
     const baseAdjustment   = (data.weightChangeRate * 3500) / 7;
     const calorieAdjustment = baseAdjustment * adjustmentFactor;
+
+    console.log('[OnBoardingScreen] Weight change adjustments:', {
+      adjustmentFactor,
+      baseAdjustment,
+      calorieAdjustment,
+      goal: data.goal
+    });
 
     if (data.goal === 'Lose Weight') {
       TDEE -= calorieAdjustment;
@@ -1617,26 +1650,26 @@ const calculateGoals = (data) => {
     fatsPercent   = 0.30;
   }
 
+  console.log('[OnBoardingScreen] Macro splits:', {
+    proteinPerKg,
+    carbsPercent,
+    fatsPercent
+  });
+
   const calories       = Math.round(TDEE);
   const proteins       = Math.round(weightKg * proteinPerKg);          // grams
   const fats           = Math.round((calories * fatsPercent) / 9);     // grams
   const carbohydrates  = Math.round((calories - proteins * 4 - fats * 9) / 4);
 
-  // Final debug logging
-  console.log('calculateGoals => BMR:', BMR, 
-    'calories:', calories, 
-    'protein(g):', proteins, 
-    'carbs(g):', carbohydrates, 
-    'fats(g):', fats
-  );
-
-  // Return the final goals
-  return {
+  const goals = {
     calories,
     proteins,
     carbohydrates,
     fats
   };
+
+  console.log('[OnBoardingScreen] Final calculated goals:', goals);
+  return goals;
 };
 
   // Function to validate current step
@@ -1686,32 +1719,6 @@ const calculateGoals = (data) => {
 
     return true;
   };
-
-  // Update the useEffect to handle all step skipping logic
-  useEffect(() => {
-    const currentStep = ONBOARDING_STEPS[currentIndex];
-    if (userData.goal === 'Maintain Weight') {
-      if (currentStep?.showWeightChangeOptions || currentStep?.field === 'targetWeight') {
-        // Use a timeout to avoid immediate state updates
-        const timer = setTimeout(() => {
-          // Find the index of the next valid step
-          const nextStepIndex = ONBOARDING_STEPS.findIndex((step, idx) => 
-            idx > currentIndex && 
-            !step.showWeightChangeOptions && 
-            step.field !== 'targetWeight'
-          );
-          if (nextStepIndex !== -1) {
-            setCurrentIndex(nextStepIndex);
-            flatListRef.current?.scrollToIndex({
-              index: nextStepIndex,
-              animated: true,
-            });
-          }
-        }, 0);
-        return () => clearTimeout(timer);
-      }
-    }
-  }, [currentIndex, userData.goal]);
 
   // Modify the animateGoalCards function to chain the affirmation animation
   const animateGoalCards = () => {
@@ -1864,7 +1871,8 @@ const calculateGoals = (data) => {
 
   // Update the useEffect for calculated goals
   useEffect(() => {
-    if (ONBOARDING_STEPS[currentIndex]?.showCalculatedGoals && !hasCalculatedGoals) {
+    const step = filteredSteps[currentIndex];
+    if (step?.showCalculatedGoals && !hasCalculatedGoals) {
       setIsCalculatingGoals(true);
       contentOpacity.setValue(0);
       loadingOpacity.setValue(1);
@@ -1919,7 +1927,7 @@ const calculateGoals = (data) => {
       }, totalWaitTime);
 
       return cleanup;
-    } else if (ONBOARDING_STEPS[currentIndex]?.showCalculatedGoals && hasCalculatedGoals) {
+    } else if (step?.showCalculatedGoals && hasCalculatedGoals) {
       // If goals were already calculated, show content immediately
       contentOpacity.setValue(1);
       titleOpacity.setValue(1);
@@ -1928,7 +1936,7 @@ const calculateGoals = (data) => {
       setIsCalculatingGoals(false);
       animateGoalCards();
     }
-  }, [currentIndex]);
+  }, [currentIndex, filteredSteps]);
 
   const renderItem = ({ item, index }) => {
     if ((item.field === 'targetWeight' || item.showWeightChangeOptions) && userData.goal === 'Maintain Weight') {
@@ -2832,11 +2840,29 @@ const calculateGoals = (data) => {
     </Text>
   );
 
+  // Helper function to filter steps based on userData
+  function getFilteredSteps(userData) {
+    // Always clone the original steps
+    let steps = [...ONBOARDING_STEPS];
+
+    // If the user's goal is "Maintain Weight", filter out steps 10a and 10b
+    if (userData.goal === 'Maintain Weight') {
+      steps = steps.filter(step => step.id !== '10a' && step.id !== '10b');
+    }
+
+    return steps;
+  }
+
+  // NEW: A memoized filtered list of steps for FlatList
+  const filteredSteps = useMemo(() => {
+    return getFilteredSteps(userData);
+  }, [userData]);
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <FlatList
         ref={flatListRef}
-        data={ONBOARDING_STEPS}
+        data={filteredSteps}
         renderItem={renderItem}
         horizontal
         pagingEnabled
@@ -2849,16 +2875,8 @@ const calculateGoals = (data) => {
         initialNumToRender={1}
         onMomentumScrollEnd={(event) => {
           const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-          // If trying to scroll forward and validation fails, scroll back
-          if (newIndex > currentIndex && !isCurrentStepValid()) {
-            flatListRef.current?.scrollToIndex({
-              index: currentIndex,
-              animated: true
-            });
-            showValidation('Please complete this step first');
-            return;
-          }
-          setCurrentIndex(newIndex);
+          const safeIndex = Math.min(newIndex, filteredSteps.length - 1);
+          setCurrentIndex(safeIndex);
         }}
         onScrollBeginDrag={(event) => {
           // Prevent scrolling forward if current step is invalid
@@ -2928,7 +2946,7 @@ const calculateGoals = (data) => {
             onPress={handleValidationAndNext}
           >
             <Text style={styles.actionButtonText}>
-              {currentIndex === ONBOARDING_STEPS.length - 1 ? 'Get Started' : 'Continue'}
+              {currentIndex === filteredSteps.length - 1 ? 'Get Started' : 'Continue'}
             </Text>
           </TouchableOpacity>
         </View>

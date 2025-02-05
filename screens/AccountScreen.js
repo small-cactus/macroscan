@@ -32,6 +32,11 @@ import { useIAP } from '../IAPContext';
 import { useUser } from '../userContext';
 import { LinearGradient } from 'expo-linear-gradient';
 
+// Constants for AsyncStorage keys
+const LAST_PLACEHOLDER_KEY = '@last_placeholder';
+const LAST_PLACEHOLDER_TIME_KEY = '@last_placeholder_time';
+const FILTER_SECTION_STATE_KEY = '@filter_section_state';
+
 const { width } = Dimensions.get('window');
 const avatarSize = width * 0.3;
 
@@ -323,35 +328,76 @@ export default function AccountScreen() {
           text: 'Delete',
           onPress: async () => {
             try {
+              // Add loading state
+              setShowAndroidPicker(true); // Temporary reuse of loading state
+              
               const keysToRemove = [
+                // User related
                 '@user',
                 '@user_goals',
-                'userImageUri',
-                'userName',
+                // '@user_data', //stores all goal related inputs that are saved in onboarding
                 '@user_logged_in',
+                '@apikey',
+                'userName',
+                'userImageUri',
+
+                // Product and history related
                 '@product_history',
+                '@average_processing_times',
+                LAST_PLACEHOLDER_KEY,
+                LAST_PLACEHOLDER_TIME_KEY,
+                FILTER_SECTION_STATE_KEY,
+
+                // App state and settings
                 'selectedModel',
+                'selectedMode',
+                '@selected_provider',
+                'foodSelectionEnabled',
+                '@openai_api_key',
+                '@gemini_api_key',
+                '@anthropic_api_key',
+                '@selected_macro',
+
+                // Usage tracking
                 'dailyScanCount',
                 'firstUseDate',
                 'dateLastUsed',
+                'freeAccurateScansUsed',
+                'selectedProcessing',
+                'selectedProvider',
+                'previousModel',
+                'hasScannedEver',
+
+                // Onboarding and tutorials
                 'hasViewedTutorial',
                 'hasViewedFeaturesTutorial',
-                'freeAccurateScansUsed',
+                '@has_seen_whats_new_1_6_0',
+                '@visited_steps',
+
+                // paywall
+                '@paywall_last_shown',
+                '@has_ever_scanned',
               ];
-              // Use multiRemove to delete all keys at once
+              
+              // Clear storage first
               await AsyncStorage.multiRemove(keysToRemove);
-              log(`Deleted keys: ${keysToRemove.join(', ')}`);
-              // Clear user state
+              
+              // Then clear user context
               setUser(null);
-              Alert.alert('Account Deleted', 'Your account has been deleted.');
-              // Reset navigation stack to prevent going back
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Goodbye' }],
-              });
+              
+              // Add slight delay to ensure state updates propagate
+              setTimeout(() => {
+                navigation.reset({
+                  index: 0,
+                  routes: [{ name: 'Goodbye' }],
+                });
+              }, 100);
+              
             } catch (error) {
               Alert.alert('Error', 'Failed to delete account.');
               logError('Failed to delete account', error);
+            } finally {
+              setShowAndroidPicker(false);
             }
           },
           style: 'destructive',
@@ -615,8 +661,16 @@ export default function AccountScreen() {
         <View style={styles.dangerZone}>
           <Text style={styles.dangerTitle}></Text>
           <View style={styles.separator} />
-          <TouchableOpacity style={styles.deleteButton} onPress={deleteAccount}>
-            <Text style={styles.deleteButtonText}>Delete Account</Text>
+          <TouchableOpacity 
+            style={styles.deleteButton} 
+            onPress={deleteAccount}
+            disabled={showAndroidPicker}
+          >
+            {showAndroidPicker ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.deleteButtonText}>Delete Account</Text>
+            )}
           </TouchableOpacity>
           <Text style={styles.dangerSubtitle}>
             This action cannot be undone, there is a second confirmation pop up.

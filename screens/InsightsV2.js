@@ -28,7 +28,7 @@ import { BlurView } from 'expo-blur';
 import * as Animatable from 'react-native-animatable';
 import * as Haptics from 'expo-haptics';
 import AnimatedCenteredText from './AnimatedCenteredText';
-import AnimatedAnswer from './AnimatedAnswer'; // Ensure path is correct
+import AnimatedAnswer from './AnimatedAnswer';
 import { LinearGradient } from 'expo-linear-gradient';
 
 // Android LayoutAnimation fix
@@ -103,10 +103,18 @@ const AnimatedBar = ({
     setBarX(e.nativeEvent.layout.x);
   };
 
-  // Decide which side to place the tooltip
-  let tooltipPositionStyle = { left: '100%', marginLeft: 8 };
-  if (barX > width / 2) {
+  // Update: Determine current day and adjust tooltip position if it's Friday, Saturday, or Monday.
+  let tooltipPositionStyle;
+  const currentDay = new Date().getDay(); // Sunday = 0, Monday = 1, ..., Saturday = 6
+  if (currentDay === 5 || currentDay === 6 || currentDay === 1) {
+    // Force tooltip to the left side (i.e. shown using right side alignment)
     tooltipPositionStyle = { right: '100%', marginRight: 8 };
+  } else {
+    // Existing behavior based on bar's X position
+    tooltipPositionStyle = { left: '100%', marginLeft: 8 };
+    if (barX > width / 2) {
+      tooltipPositionStyle = { right: '100%', marginRight: 8 };
+    }
   }
 
   // Compute how far over the goal we are
@@ -134,7 +142,7 @@ const AnimatedBar = ({
       {showTooltip && (
         <View style={[styles.tooltip, tooltipPositionStyle]}>
           <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-            <Ionicons name="warning" size={16} color="#FFD700" style={styles.tooltipIcon} />
+            <Ionicons name="warning" size={25} color="#FFD700" style={styles.tooltipIcon} />
             <Text style={styles.tooltipText}>
               You are {realDifference}%{tooltipText.includes('%') ? tooltipText.split('%')[1] : tooltipText}
             </Text>
@@ -369,8 +377,12 @@ const InsightsV2 = () => {
 
   const loadGoals = async () => {
     try {
+      console.log('[InsightsV2] Starting to load goals...');
       const storedGoalsString = await AsyncStorage.getItem('@user_goals');
+      console.log('[InsightsV2] Stored goals string:', storedGoalsString);
+      
       if (DEBUG_SHOW_ONBOARDING || !storedGoalsString) {
+        console.log('[InsightsV2] No stored goals or DEBUG_SHOW_ONBOARDING is true, showing onboarding...');
         setShowOnboarding(true);
         // Animate onboarding in
         Animated.timing(onboardingOpacityAnim, {
@@ -379,10 +391,12 @@ const InsightsV2 = () => {
           useNativeDriver: true,
         }).start();
       } else {
-        setGoals(JSON.parse(storedGoalsString));
+        const parsedGoals = JSON.parse(storedGoalsString);
+        console.log('[InsightsV2] Successfully loaded goals:', parsedGoals);
+        setGoals(parsedGoals);
       }
     } catch (error) {
-      console.error('Error loading goals:', error);
+      console.error('[InsightsV2] Error loading goals:', error);
     }
   };
 
@@ -434,13 +448,13 @@ const InsightsV2 = () => {
   }, [currentOnboardingIndex]);
 
   const calculateGoals = data => {
+    console.log('[InsightsV2] Starting goals calculation with data:', data);
     let weightKg;
     let heightCm;
     if (data.unit === 'imperial') {
       weightKg = parseFloat(data.weight) * 0.453592;
       if (data.heightFeet && data.heightInches) {
-        heightCm =
-          (parseFloat(data.heightFeet) * 12 + parseFloat(data.heightInches)) * 2.54;
+        heightCm = (parseFloat(data.heightFeet) * 12 + parseFloat(data.heightInches)) * 2.54;
       } else {
         heightCm = 0;
       }
@@ -448,6 +462,9 @@ const InsightsV2 = () => {
       weightKg = parseFloat(data.weight);
       heightCm = parseFloat(data.height);
     }
+    
+    console.log('[InsightsV2] Converted measurements - Weight (kg):', weightKg, 'Height (cm):', heightCm);
+    
     const age = parseInt(data.age, 10) || 0;
     const gender = data.gender;
     let BMR;
@@ -456,6 +473,9 @@ const InsightsV2 = () => {
     } else {
       BMR = 10 * weightKg + 6.25 * heightCm - 5 * age - 161;
     }
+    
+    console.log('[InsightsV2] Calculated BMR:', BMR);
+    
     let activityFactor = 1.2;
     switch (data.activityLevel) {
       case 'Sedentary':
@@ -470,6 +490,7 @@ const InsightsV2 = () => {
       default:
         activityFactor = 1.2;
     }
+    
     let TDEE = BMR * activityFactor;
     if (data.goal === 'Lose Weight') {
       TDEE -= 500;
@@ -477,22 +498,35 @@ const InsightsV2 = () => {
       TDEE += 500;
     }
     TDEE = Math.max(TDEE, 1200); // safety
+    
+    console.log('[InsightsV2] Calculated TDEE:', TDEE, 'with activity factor:', activityFactor);
+    
     const calories = Math.round(TDEE);
     const proteins = Math.round(weightKg * 1.2);
     const fats = Math.round((calories * 0.30) / 9);
     const carbohydrates = Math.round((calories - proteins * 4 - fats * 9) / 4);
-    return { calories, proteins, carbohydrates, fats };
+    
+    const calculatedGoals = { calories, proteins, carbohydrates, fats };
+    console.log('[InsightsV2] Final calculated goals:', calculatedGoals);
+    return calculatedGoals;
   };
 
   const handleSaveGoalsFromOnboarding = async () => {
     try {
+      console.log('[InsightsV2] Starting to save goals from onboarding...');
+      console.log('[InsightsV2] Initial calculated goals:', calculatedGoals);
+      console.log('[InsightsV2] Goals adjustments:', goalsAdjustments);
+      
       const finalGoals = {};
       ['calories', 'proteins', 'carbohydrates', 'fats'].forEach(macro => {
         finalGoals[macro] = Math.round(
           calculatedGoals[macro] * (1 + goalsAdjustments[macro] / 100)
         );
       });
+      
+      console.log('[InsightsV2] Final adjusted goals to save:', finalGoals);
       await AsyncStorage.setItem('@user_goals', JSON.stringify(finalGoals));
+      console.log('[InsightsV2] Successfully saved goals to AsyncStorage');
 
       // Fade out the onboarding overlay
       Animated.timing(onboardingOpacityAnim, {
@@ -508,7 +542,7 @@ const InsightsV2 = () => {
         loadHistory();
       });
     } catch (error) {
-      console.error('Error saving goals:', error);
+      console.error('[InsightsV2] Error saving goals:', error);
     }
   };
 
@@ -834,7 +868,8 @@ const InsightsV2 = () => {
       const goalValue = goals?.[macro] || 0;
 
       let insight = {
-        macro: prettyMacro,
+        macro: macro, // Store the actual macro name for gradient lookup
+        displayMacro: prettyMacro, // Store the display name
         icon,
         color,
         lastWeekAvg: Math.round(last7Daily),
@@ -932,15 +967,31 @@ const InsightsV2 = () => {
     const repeats = Object.keys(foodDateMap).filter(name =>
       Object.values(foodDateMap[name]).some(count => count >= 2)
     ).map(name => {
-      // Total count across all history
       const totalCount = historyData.filter(item => item.productName === name).length;
-      // Today's count
       const todayCount = foodDateMap[name][today] || 0;
-      // Collect samples (e.g., latest two)
       const samples = historyData
         .filter(item => item.productName === name)
-        .slice(-2); // Get last two samples
-      return { name, count: totalCount, countToday: todayCount, samples };
+        .slice(-2);
+      
+      // Map the macro type for the icon
+      const lastSample = samples[samples.length - 1];
+      let dominantMacro = 'calories';
+      if (lastSample && lastSample.nutrients) {
+        const macros = {
+          proteins: lastSample.nutrients.proteins?.amount || 0,
+          carbohydrates: lastSample.nutrients.carbohydrates?.amount || 0,
+          fats: lastSample.nutrients.fats?.amount || 0
+        };
+        dominantMacro = Object.entries(macros).reduce((a, b) => a[1] > b[1] ? a : b)[0];
+      }
+      
+      return { 
+        name, 
+        count: totalCount, 
+        countToday: todayCount, 
+        samples,
+        dominantMacro 
+      };
     });
   
     // Remove duplicates and sort by count descending
@@ -1542,10 +1593,26 @@ const InsightsV2 = () => {
   const isAnyMacroOverLimit = overLimitInfo.length > 0;
 
   const miniBarConfig = {
-    calories: { icon: 'fire', color: '#FF4500' },
-    proteins: { icon: 'arm-flex', color: '#3CB371' },
-    carbohydrates: { icon: 'corn', color: '#FFA500' },
-    fats: { icon: 'water', color: '#6495ED' },
+    calories: { 
+      icon: 'fire', 
+      color: '#FF4500',
+      gradientColors: ['#FF6B6B', '#FF4500']
+    },
+    proteins: { 
+      icon: 'arm-flex', 
+      color: '#3CB371',
+      gradientColors: ['#4CD964', '#32CD32']
+    },
+    carbohydrates: { 
+      icon: 'corn', 
+      color: '#FFA500',
+      gradientColors: ['#FFD700', '#FFA500']
+    },
+    fats: { 
+      icon: 'water', 
+      color: '#6495ED',
+      gradientColors: ['#87CEEB', '#4169E1']
+    }
   };
 
   // Finally, conditionally render loading or main UI in ONE return.
@@ -1766,9 +1833,14 @@ const InsightsV2 = () => {
                     return (
                       <View key={`${macro}-${idx}`} style={styles.overLimitRow}>
                         <View style={styles.overLimitMacroHeader}>
-                          <View style={[styles.overLimitIconContainer, { backgroundColor: `${color}20` }]}>
-                            <MaterialCommunityIcons name={icon} size={20} color={color} />
-                          </View>
+                          <LinearGradient
+                            colors={miniBarConfig[macro].gradientColors}
+                            style={[styles.overLimitIconContainer]}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                          >
+                            <MaterialCommunityIcons name={miniBarConfig[macro].icon} size={20} color="#FFF" />
+                          </LinearGradient>
                           <View style={styles.overLimitMacroInfo}>
                             <Text style={styles.overLimitMacroName}>{prettyMacroName}</Text>
                             <Text style={[styles.overLimitPercentage, { color }]}>+{overPercent}% over goal</Text>
@@ -1799,17 +1871,37 @@ const InsightsV2 = () => {
                   {trends.map((trend, idx) => (
                     <View key={idx} style={styles.trendCard}>
                       <View style={styles.trendIconContainer}>
-                        <View style={[styles.trendIcon, { backgroundColor: `${trend.color}20` }]}>
-                          <MaterialCommunityIcons name={trend.icon} size={20} color={trend.color} />
-                        </View>
-                        <View style={[styles.trendStatusDot, { backgroundColor: getTrendStatusColor(trend.status, colorScheme) }]} />
+                        <LinearGradient
+                          colors={miniBarConfig[trend.macro].gradientColors}
+                          style={[styles.trendIcon]}
+                          start={{ x: 0, y: 0 }}
+                          end={{ x: 1, y: 1 }}
+                        >
+                          <MaterialCommunityIcons 
+                            name={miniBarConfig[trend.macro].icon} 
+                            size={20} 
+                            color="#FFF" 
+                          />
+                        </LinearGradient>
+                        <View 
+                          style={[
+                            styles.trendStatusDot, 
+                            { backgroundColor: getTrendStatusColor(trend.status, colorScheme) }
+                          ]} 
+                        />
                       </View>
                       <View style={styles.trendContent}>
                         <View style={styles.trendHeader}>
-                          <Text style={styles.trendMacro}>{capitalizeFirstLetter(trend.macro)}</Text>
+                          <Text style={styles.trendMacro}>{capitalizeFirstLetter(trend.displayMacro)}</Text>
                           {trend.status !== 'new' && (
-                            <View style={[styles.trendChange, { backgroundColor: getTrendStatusColor(trend.status, colorScheme) + '20' }]}>
-                              <Text style={[styles.trendChangeText, { color: getTrendStatusColor(trend.status, colorScheme) }]}>
+                            <View style={[
+                              styles.trendChange, 
+                              { backgroundColor: getTrendStatusColor(trend.status, colorScheme) + '20' }
+                            ]}>
+                              <Text style={[
+                                styles.trendChangeText, 
+                                { color: getTrendStatusColor(trend.status, colorScheme) }
+                              ]}>
                                 {trend.changePercent > 0 ? '+' : ''}{trend.changePercent}%
                               </Text>
                             </View>
@@ -1818,11 +1910,15 @@ const InsightsV2 = () => {
                         <Text style={styles.trendMessage}>{trend.message}</Text>
                         <View style={styles.trendStats}>
                           <Text style={styles.trendStatsText}>
-                            Last week avg: <Text style={styles.trendStatsValue}>{trend.lastWeekAvg}{trend.macro === 'calories' ? ' kcal' : 'g'}</Text>
+                            Last week avg: <Text style={styles.trendStatsValue}>
+                              {trend.lastWeekAvg}{trend.macro === 'calories' ? ' kcal' : 'g'}
+                            </Text>
                           </Text>
                           {trend.goal > 0 && (
                             <Text style={styles.trendStatsText}>
-                              Goal: <Text style={styles.trendStatsValue}>{trend.goal}{trend.macro === 'calories' ? ' kcal' : 'g'}</Text>
+                              Goal: <Text style={styles.trendStatsValue}>
+                                {trend.goal}{trend.macro === 'calories' ? ' kcal' : 'g'}
+                              </Text>
                             </Text>
                           )}
                         </View>
@@ -2092,6 +2188,11 @@ const getDynamicStyles = colorScheme =>
       justifyContent: 'center',
       alignItems: 'center',
       marginRight: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+      elevation: 5,
     },
     overLimitMacroInfo: {
       flex: 1,
@@ -2172,6 +2273,11 @@ const getDynamicStyles = colorScheme =>
       borderRadius: 20,
       justifyContent: 'center',
       alignItems: 'center',
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+      elevation: 5,
     },
     trendStatusDot: {
       width: 12,
@@ -2366,19 +2472,21 @@ const getDynamicStyles = colorScheme =>
       position: 'absolute',
       zIndex: 10,
       pointerEvents: 'none',
-      backgroundColor: 'rgba(0, 0, 0, 0.9)',
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F8F8F8',
       padding: 10,
-      borderRadius: 8,
+      borderRadius: 10,
       minWidth: 170,
       maxWidth: 200,
       elevation: 5,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#F0F0F0',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.3,
-      shadowRadius: 4,
+      shadowOffset: { width: -5, height: 10 },
+      shadowOpacity: 0.2,
+      shadowRadius: 10,
     },
     tooltipText: {
-      color: '#fff',
+      color: colorScheme === 'dark' ? '#fff' : '#000',
       fontSize: 12,
       textAlign: 'left',
     },

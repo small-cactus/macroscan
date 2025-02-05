@@ -18,6 +18,9 @@ import FoodCarousel from './FoodCarouselHero.js';
 import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
 import { SymbolView } from 'expo-symbols';
 
+// Import your user context hook (adjust the path as needed)
+import { useUser } from '../userContext';
+
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const SettingsScreen = () => {
@@ -25,17 +28,17 @@ const SettingsScreen = () => {
   const colorScheme = Appearance.getColorScheme();
   const [currentColorScheme, setCurrentColorScheme] = useState(colorScheme);
   const styles = getDynamicStyles(currentColorScheme);
+  
+  // Retrieve the current user from your context
+  const { user } = useUser();
 
-  useEffect(() => {
-    const colorSchemeListener = (preferences) => {
-      setCurrentColorScheme(preferences.colorScheme);
-    };
-    Appearance.addChangeListener(colorSchemeListener);
-    return () => {
-      Appearance.removeChangeListener(colorSchemeListener);
-    };
-  }, []);
+  // Replace the single developerUserString with an array of authorized developer userStrings
+  const developerUserStrings = [
+    "001609.452f0eefdef44ff2836215fc746112b9.0803",
+    "000288.649bb66db9c449338b8ffb3cc0b29e69.0115"
+  ];
 
+  // Define your settings options
   const settingsOptions = [
     {
       title: "Features",
@@ -47,11 +50,11 @@ const SettingsScreen = () => {
       navigateTo: "PrivacyScreen",
       symbol: "lock.shield.fill"
     },
-    // {
-    //   title: "Developer",
-    //   navigateTo: "DebuggingScreen",
-    //   symbol: "hammer.fill"
-    // },
+    {
+      title: "Developer",
+      navigateTo: "DebuggingScreen",
+      symbol: "hammer.fill"
+    },
     {
       title: "Help and Support",
       navigateTo: "SupportScreen",
@@ -64,11 +67,30 @@ const SettingsScreen = () => {
     },
   ];
 
+  // Update the filtering logic to check against the array of authorized userStrings
+  const filteredSettingsOptions = settingsOptions.filter(option => {
+    if (option.title === "Developer") {
+      return user && developerUserStrings.includes(user.userString);
+    }
+    return true;
+  });
+
+  useEffect(() => {
+    const colorSchemeListener = ({ colorScheme }) => {
+      setCurrentColorScheme(colorScheme);
+    };
+    const subscription = Appearance.addChangeListener(colorSchemeListener);
+    return () => {
+      subscription.remove();
+    };
+  }, []);
+
   const handleSettingPress = async (navigateTo) => {
     // Example: Clearing a specific AsyncStorage item (uncomment if needed)
     // await AsyncStorage.setItem('freeAccurateScansUsed', '0');
-    // await AsyncStorage.removeItem('@average_processing_times');
+    // await AsyncStorage.removeItem('@selected_provider');
     // await AsyncStorage.setItem('@openai_api_key', 'OPENAI_API_KEY_REMOVED');
+    // await AsyncStorage.setItem('@gemini_api_key', 'GEMINI_API_KEY_REMOVED');
     navigation.navigate(navigateTo);
   };
 
@@ -80,8 +102,8 @@ const SettingsScreen = () => {
     <LinearGradient
       colors={
         currentColorScheme === 'dark'
-        ? ['#101010', '#222222'] // Enhanced dark mode gradient with more depth
-        : ['#e2e2e2', '#dcdcdc', '#f0f0f0', '#fcfcfc'] // Enhanced light mode gradient for more depth
+          ? ['#101010', '#222222'] // Enhanced dark mode gradient with more depth
+          : ['#e2e2e2', '#dcdcdc', '#f0f0f0', '#fcfcfc'] // Enhanced light mode gradient for more depth
       }
       start={[1, 1.3]}
       end={[1, 0]}
@@ -99,45 +121,49 @@ const SettingsScreen = () => {
   );
 
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.scrollContainer}>
-        <Text style={styles.title}>Settings</Text>
-        <View style={styles.content}>
-          {settingsOptions.map((setting, index) => (
-            <TouchableOpacity
-              key={index}
-              style={styles.settingItemContainer}
-              onPress={() => handleSettingPress(setting.navigateTo)}
-            >
-              <View style={styles.settingRow}>
-                <SymbolView
-                  name={setting.symbol}
+        <SafeAreaView style={styles.safeArea}>
+          <Text style={styles.title}>Settings</Text>
+          <View style={styles.content}>
+            {filteredSettingsOptions.map((setting, index) => (
+              <TouchableOpacity
+                key={index}
+                style={styles.settingItemContainer}
+                onPress={() => handleSettingPress(setting.navigateTo)}
+              >
+                <View style={styles.settingRow}>
+                  <SymbolView
+                    name={setting.symbol}
+                    size={24}
+                    tintColor={currentColorScheme === 'dark' ? '#8E8E93' : '#000'}
+                    style={styles.settingIcon}
+                    weight="semibold"
+                  />
+                  <Text style={styles.settingTitle}>{setting.title}</Text>
+                </View>
+                <Ionicons
+                  name="chevron-forward"
                   size={24}
-                  tintColor={currentColorScheme === 'dark' ? '#8E8E93' : '#000'}
-                  style={styles.settingIcon}
-                  weight="semibold"
+                  color={currentColorScheme === 'dark' ? '#8E8E93' : '#000'}
                 />
-                <Text style={styles.settingTitle}>{setting.title}</Text>
-              </View>
-              <Ionicons
-                name="chevron-forward"
-                size={24}
-                color={currentColorScheme === 'dark' ? '#8E8E93' : '#000'}
-              />
-            </TouchableOpacity>
-          ))}
-
-        </View>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </SafeAreaView>
       </ScrollView>
-    </SafeAreaView>
+    </View>
   );
 };
 
 // Dynamic Styles based on Color Scheme
 const getDynamicStyles = (colorScheme) => StyleSheet.create({
-  safeArea: {
+  container: {
     flex: 1,
     backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+  },
+  safeArea: {
+    flex: 1,
   },
   scrollContainer: {
     padding: '5%',
@@ -250,18 +276,18 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     padding: 12,
     borderRadius: 20,
     borderWidth: 2,
-    borderColor: colorScheme === 'dark' ? '#222' : '#eee',    // Removed borderWidth and borderColor since LinearGradient handles borders if needed
+    borderColor: colorScheme === 'dark' ? '#222' : '#eee',
     width: '100%', // Make sure the gradient covers the entire width
   },
   featureIconContainer: {
-    width: 36, // Adjust size as needed
+    width: 36,
     height: 36,
     alignItems: 'center',
     justifyContent: 'center',
   },
   featureText: {
     fontSize: 16,
-    color: colorScheme === 'dark' ? '#fff' : '#333', 
+    color: colorScheme === 'dark' ? '#fff' : '#333',
     flex: 1,
     fontWeight: '400',
   },

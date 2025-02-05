@@ -11,6 +11,7 @@ import {
   Dimensions,
   Platform,
   Image,
+  Switch,
 } from 'react-native';
 import { FontAwesome, Ionicons } from '@expo/vector-icons';
 import NetInfo from '@react-native-community/netinfo';
@@ -48,16 +49,23 @@ const NoInternetScreen = () => {
   const fadeAnim = useState(new Animated.Value(0))[0];
   const [buttonScaleAnim] = useState(new Animated.Value(1));
 
+  // Set debugNoInternet to true to simulate no internet connection
+  const [debugNoInternet] = useState(false);
+
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
       setColorScheme(colorScheme);
     });
-    return () => subscription.remove();
+    return () => {
+      if (subscription) {
+        subscription.remove();
+      }
+    };
   }, []);
 
   useEffect(() => {
     const unsubscribe = NetInfo.addEventListener(state => {
-      setIsConnected(state.isConnected);
+      setIsConnected(debugNoInternet ? false : state.isConnected);
     });
     const interval = setInterval(() => {
       if (!isConnected) {
@@ -139,7 +147,7 @@ const NoInternetScreen = () => {
             <View style={styles.headerLogo}>
               <Image 
                 source={require('../assets/icon.png')} 
-                style={{width: 24, height: 24}}
+                style={{width: 35, height: 35}}
                 resizeMode="contain"
               />
             </View>
@@ -167,6 +175,11 @@ const NoInternetScreen = () => {
               ? 'You are now connected to the internet. Click Go Back to continue using MacroScan!'
               : 'It seems that you are not connected to the internet. Please check your connection to continue using MacroScan.'}
           </Text>
+          <Animated.View style={[styles.timerContainer, { opacity: fadeAnim }]}>
+          <Text style={styles.timerText}>
+            You've been disconnected for {secondsDisconnected} seconds
+          </Text>
+        </Animated.View>
         </View>
 
         <View style={styles.buttonContainer}>
@@ -204,20 +217,21 @@ const NoInternetScreen = () => {
             style={styles.secondaryButton}
             onPress={openSettings}>
             <Text style={styles.secondaryButtonText}>
-              Open Internet Settings
+              Open App Settings
             </Text>
           </TouchableOpacity>
         </View>
-
-        <Animated.View style={[styles.timerContainer, { opacity: fadeAnim }]}>
-          <Text style={styles.timerText}>
-            You've been disconnected for {secondsDisconnected} seconds
-          </Text>
-        </Animated.View>
       </View>
     </View>
   );
 };
+
+// Calculate scale factor based on screen size
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
 
 const getDynamicStyles = (colorScheme) =>
   StyleSheet.create({
@@ -229,20 +243,20 @@ const getDynamicStyles = (colorScheme) =>
       flex: 1,
       alignItems: 'center',
       justifyContent: 'space-between',
-      paddingVertical: Platform.OS === 'ios' ? 60 : 40,
+      paddingVertical: scale * 60,
     },
     textContainer: {
       alignItems: 'center',
-      paddingHorizontal: 20,
+      paddingHorizontal: scale * 20,
     },
     buttonContainer: {
       width: '100%',
-      paddingHorizontal: 24,
+      paddingHorizontal: scale * 24,
       alignItems: 'center',
     },
     logoContainer: {
       alignItems: 'center',
-      marginTop: Platform.OS === 'ios' ? 140 : 80,
+      marginTop: scale * 140,
     },
     logoBackground: {
       backgroundColor: '#FFF',
@@ -254,20 +268,20 @@ const getDynamicStyles = (colorScheme) =>
       padding: 16,
     },
     title: {
-      fontSize: isIphoneSE() ? 25 : 35,
+      fontSize: scale * 25,
       fontWeight: '800',
       color: colorScheme === 'dark' ? '#fff' : '#000',
       textAlign: 'center',
-      marginBottom: 16,
+      marginBottom: scale * 16,
       letterSpacing: -0.5,
-      padding: 4,
+      padding: scale * 4,
     },
     description: {
-      fontSize: 18,
+      fontSize: scale * 18,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#999' : '#666',
       textAlign: 'center',
-      marginBottom: 250,
+      marginBottom: scale * 250,
       letterSpacing: 0.2,
       paddingHorizontal: '5%',
     },
@@ -276,29 +290,30 @@ const getDynamicStyles = (colorScheme) =>
       maxWidth: 400,
     },
     button: {
-      borderRadius: 16,
-      padding: 16,
+      borderRadius: scale * 16,
+      padding: scale * 16,
       width: '100%',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
+      shadowOffset: { width: 0, height: scale * 4 },
       shadowOpacity: 0.3,
-      shadowRadius: 8,
+      shadowRadius: scale * 8,
       elevation: 5,
     },
     buttonText: {
       color: '#fff',
-      fontSize: 18,
+      fontSize: scale * 18,
       fontWeight: '600',
       letterSpacing: 0.3,
     },
     secondaryButton: {
-      marginTop: 20,
-      padding: 12,
+      marginTop: scale * 20,
+      padding: scale * 12,
     },
     secondaryButtonText: {
-      fontSize: 15,
+      fontSize: scale * 15,
       color: colorScheme === 'dark' ? '#999' : '#666',
       textAlign: 'center',
+      textDecorationLine: 'underline',
     },
     buttonContent: {
       flexDirection: 'row',
@@ -306,25 +321,25 @@ const getDynamicStyles = (colorScheme) =>
       justifyContent: 'center',
     },
     arrowIcon: {
-      marginLeft: 8,
+      marginLeft: scale * 8,
     },
     timerContainer: {
       position: 'absolute',
-      bottom: 20,
+      bottom: scale * 20,
       alignItems: 'center',
     },
     timerText: {
-      fontSize: 15,
+      fontSize: scale * 15,
       color: colorScheme === 'dark' ? '#999' : '#666',
     },
     headerContainer: {
       position: 'absolute',
-      top: Platform.OS === 'ios' ? 60 : 40,
-      left: 24,
+      top: scale * 60,
+      left: scale * 24,
       backgroundColor: colorScheme === 'dark' ? '#1a1a1a' : '#f5f5f5',
-      borderRadius: 16,
-      paddingVertical: 12,
-      paddingHorizontal: 16,
+      borderRadius: scale * 16,
+      paddingVertical: scale * 12,
+      paddingHorizontal: scale * 16,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#333' : '#e0e0e0',
       zIndex: 1,
@@ -335,18 +350,18 @@ const getDynamicStyles = (colorScheme) =>
       alignItems: 'center',
     },
     headerLogo: {
-      width: 30,
-      height: 30,
-      borderRadius: 8,
+      width: scale * 45,
+      height: scale * 45,
+      borderRadius: scale * 12,
       backgroundColor: '#fff',
       justifyContent: 'center',
       alignItems: 'center',
     },
     headerText: {
-      fontSize: 20,
+      fontSize: scale * 22,
       fontWeight: '700',
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      marginLeft: 12,
+      marginLeft: scale * 12,
       letterSpacing: 0.3,
     },
   });

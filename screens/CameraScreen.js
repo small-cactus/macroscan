@@ -12,6 +12,8 @@ import {
   ActivityIndicator,
   AppState,
   Alert,
+  Dimensions,
+  useColorScheme,
 } from 'react-native';
 import { useNavigation, useIsFocused } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
@@ -19,6 +21,15 @@ import { BlurView } from 'expo-blur';
 import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
+import { getModel } from './providers/models';
+
+const { width, height } = Dimensions.get('window');
+
+// Add these constants
+const MODE_LABELS = {
+  fast: 'Fast Mode',
+  accurate: 'Accurate Mode',
+};
 
 export default function CameraScreen() {
   const [facing, setFacing] = useState('back');
@@ -27,6 +38,12 @@ export default function CameraScreen() {
   const [flash, setFlash] = useState('off');
   const [zoom, setZoom] = useState(0);
   const [showTutorial, setShowTutorial] = useState(false);
+  const [showHelpText, setShowHelpText] = useState(false);
+  const helpTextAnim = useRef(new Animated.Value(0)).current;
+  const [selectedMode, setSelectedMode] = useState('fast');
+  const [prevMode, setPrevMode] = useState('fast');
+  const chipTextOpacity = useRef(new Animated.Value(1)).current;
+  const colorScheme = useColorScheme();
 
   const DEBUG_ALWAYS_SHOW_TUTORIAL = false;
 
@@ -344,6 +361,38 @@ export default function CameraScreen() {
   const [isShowingFrontPrompt, setIsShowingFrontPrompt] = useState(false);
   const [frontPromptAnim] = useState(new Animated.Value(0));
 
+  // Add this effect after the other useEffect hooks
+  useEffect(() => {
+    const loadSelectedMode = async () => {
+      try {
+        const savedMode = await AsyncStorage.getItem('selectedMode');
+        if (savedMode) {
+          setSelectedMode(savedMode);
+          setPrevMode(savedMode);
+        }
+      } catch (error) {
+        console.error('Error loading selected mode:', error);
+      }
+    };
+    loadSelectedMode();
+  }, []);
+
+  // Add this near the top with other state declarations
+  const [useComplexProcessing, setUseComplexProcessing] = useState(false);
+
+  // Add this effect to load the complex processing setting
+  useEffect(() => {
+    const loadComplexProcessing = async () => {
+      try {
+        const complexSetting = await AsyncStorage.getItem('useComplexProcessing');
+        setUseComplexProcessing(complexSetting === 'true');
+      } catch (error) {
+        console.error('Error loading complex processing setting:', error);
+      }
+    };
+    loadComplexProcessing();
+  }, []);
+
   if (!permission) {
     return <View />;
   }
@@ -351,37 +400,52 @@ export default function CameraScreen() {
   if (!permission.granted) {
     return (
       <View style={styles.container}>
-        <BlurView intensity={50} style={StyleSheet.absoluteFill} />
-        {/* Close Button */}
-        <TouchableOpacity style={styles.closeButton} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}>
-          <BlurView intensity={30} style={styles.blurViewButton}>
-            <Ionicons name="close" size={40} color="#fff" />
-          </BlurView>
-        </TouchableOpacity>
-
-        {/* Permissions needed title */}
-        <TouchableOpacity style={styles.flashButton} onPress={() => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy)}>
-          <BlurView intensity={30} style={styles.blurViewTitle}>
-            <Text style={styles.title}>Permissions needed</Text>
-          </BlurView>
-        </TouchableOpacity>
-
+        <BlurView intensity={90} style={StyleSheet.absoluteFill} tint="dark" />
+        
+        {/* Modern Permission Content */}
         <View style={styles.permissionContent}>
-          <Text style={styles.permissionDescription}>
-            We need your permission to use the camera.
+          <View style={styles.permissionIconContainer}>
+            <BlurView intensity={30} style={styles.permissionIconBlur}>
+              <Ionicons name="camera" size={60} color="#fff" />
+            </BlurView>
+          </View>
+
+          <Text style={styles.permissionTitle}>
+            Camera Access Needed
           </Text>
+          
           <Text style={styles.permissionDescription}>
-            If this button doesn't do anything, go into your iPhone's settings, scroll down and find MacroScan in Apps at the bottom, and toggle on Camera permissions.
+            To scan your food and track nutrition, we need permission to use your camera. Your privacy is important to us - photos are only used for food recognition.
           </Text>
-          <TouchableOpacity
-            style={styles.tutorialCloseButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              requestPermission();
-            }}
-          >
-            <Text style={styles.tutorialCloseButtonText}>Grant Permission</Text>
-          </TouchableOpacity>
+
+          <View style={styles.permissionButtonsContainer}>
+            <TouchableOpacity
+              style={styles.primaryPermissionButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                requestPermission();
+                setShowHelpText(true);
+                Animated.timing(helpTextAnim, {
+                  toValue: 1,
+                  duration: 500,
+                  useNativeDriver: true,
+                }).start();
+              }}
+            >
+              <Text style={styles.primaryPermissionButtonText}>Allow Camera Access</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.secondaryPermissionButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Text style={styles.secondaryPermissionButtonText}>Not Now</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Animated.Text style={[styles.helpText, { opacity: helpTextAnim }]}>
+            If the button doesn't work, please enable camera access in your iPhone Settings
+          </Animated.Text>
         </View>
       </View>
     );
@@ -405,6 +469,48 @@ export default function CameraScreen() {
       }
     }
     return null;
+  };
+
+  // Add this function before the secret function
+  const crossfadeChipText = (newMode) => {
+    Animated.timing(chipTextOpacity, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      setPrevMode(selectedMode);
+      setSelectedMode(newMode);
+
+      Animated.timing(chipTextOpacity, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  const handleModePress = async () => {
+    const currentMode = selectedMode;
+    const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
+    
+    Alert.alert(
+      'Scan Mode',
+      `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
+      (currentMode === 'fast' 
+        ? 'Fast Mode provides quick results and is great for packaged foods.'
+        : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: `Switch to ${MODE_LABELS[oppositeMode]}`,
+          onPress: async () => {
+            await AsyncStorage.setItem('selectedMode', oppositeMode);
+            crossfadeChipText(oppositeMode);
+            Haptics.selectionAsync();
+          }
+        }
+      ]
+    );
   };
 
   // Easter egg to re-show tutorial
@@ -438,11 +544,22 @@ export default function CameraScreen() {
       duration: 500,
       useNativeDriver: true,
     }).start(() => {
-      setTimeout(() => {
-        // If there's valid productData, we pass that along, else pass null
+      setTimeout(async () => {
+        // Get the current mode and provider
+        const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+        
+        // Get the appropriate model based on mode and user preference
+        const currentModel = getModel(provider, { 
+          selectedMode,
+          hasDrawing: false
+        });
+        
+        // Navigate with all the necessary data
         navigation.navigate('Home', {
           imageUri,
           barcodeData: productData || null,
+          selectedMode,
+          provider
         });
 
         blurOpacityAnim.setValue(0);
@@ -582,51 +699,48 @@ export default function CameraScreen() {
           <View style={styles.tutorialContent}>
             <View style={styles.tutorialTitleContainer}>
               <BlurView intensity={50} style={styles.blurViewTitleTutorial}>
-                <Text style={styles.title}>Welcome to Photo Mode</Text>
+                <Text style={[styles.title, { fontSize: 28 * scale }]}>Quick Start</Text>
+                <Text style={[styles.description, { marginTop: 8 * scale, opacity: 0.8 }]}>
+                  Let's get you started with the basics
+                </Text>
               </BlurView>
             </View>
             <View style={styles.tutorialStepsContainer}>
               <Animated.View style={[styles.tutorialStep, { opacity: tutorialStepAnims[0] }]}>
                 <View style={styles.tutorialIcon}>
-                  <BlurView intensity={50} style={styles.blurViewButton}>
-                    <Ionicons name="scan" size={50} color="#fff" />
-                  </BlurView>
+                  <Ionicons name="scan" size={32 * scale} color="#fff" />
                 </View>
                 <Text style={styles.tutorialText}>
-                  Tap the scan button to capture your meal.
+                  Point your camera at any food item and tap the scan button
                 </Text>
               </Animated.View>
               <Animated.View style={[styles.tutorialStep, { opacity: tutorialStepAnims[1] }]}>
                 <View style={styles.tutorialIcon}>
-                  <BlurView intensity={50} style={styles.blurViewButton}>
-                    <Ionicons name="move" size={50} color="#fff" />
-                  </BlurView>
+                  <Ionicons name="barcode-outline" size={32 * scale} color="#fff" />
                 </View>
                 <Text style={styles.tutorialText}>
-                  Use pinch gestures to zoom in and out.
+                  For packaged foods, scan the barcode for instant recognition
                 </Text>
               </Animated.View>
               <Animated.View style={[styles.tutorialStep, { opacity: tutorialStepAnims[2] }]}>
                 <View style={styles.tutorialIcon}>
-                  <BlurView intensity={50} style={styles.blurViewButton}>
-                    <Ionicons name="barcode-outline" size={50} color="#fff" />
-                  </BlurView>
+                  <Ionicons name="flash" size={32 * scale} color="#fff" />
                 </View>
                 <Text style={styles.tutorialText}>
-                  Barcodes are automatically detected and used to improve your meal scans.
+                  Switch between Fast and Accurate modes for different types of foods
                 </Text>
               </Animated.View>
             </View>
+            <TouchableOpacity
+              style={styles.tutorialCloseButton}
+              onPress={() => {
+                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                dismissTutorial();
+              }}
+            >
+              <Text style={styles.tutorialCloseButtonText}>Get Started</Text>
+            </TouchableOpacity>
           </View>
-          <TouchableOpacity
-            style={styles.tutorialCloseButton}
-            onPress={() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-              dismissTutorial();
-            }}
-          >
-            <Text style={styles.tutorialCloseButtonText}>Got it!</Text>
-          </TouchableOpacity>
         </Animated.View>
       )}
 
@@ -733,6 +847,14 @@ export default function CameraScreen() {
               ],
             }}
           >
+            {/* Fixed scanning frame */}
+            <View style={styles.fixedScanFrame}>
+              <View style={[styles.fixedCorner, styles.fixedTopLeftCorner]} />
+              <View style={[styles.fixedCorner, styles.fixedTopRightCorner]} />
+              <View style={[styles.fixedCorner, styles.fixedBottomLeftCorner]} />
+              <View style={[styles.fixedCorner, styles.fixedBottomRightCorner]} />
+            </View>
+
             {/* Animated bounding box if a barcode is in frame */}
             {isBarcodeInFrame && (
               <Animated.View style={[styles.barcodeBoundingBox, boundingBoxStyle]} pointerEvents="none">
@@ -762,10 +884,23 @@ export default function CameraScreen() {
               </BlurView>
             </TouchableOpacity>
 
-            {/* Example "secret" button re-using flashButton style */}
-            <TouchableOpacity style={styles.flashButton} onPress={secret}>
-              <BlurView intensity={30} style={styles.blurViewTitle}>
-                <Text style={styles.title}>Photo Mode</Text>
+            {/* Mode selection button */}
+            <TouchableOpacity style={styles.flashButton} onPress={handleModePress}>
+              <BlurView intensity={30} style={[
+                styles.blurViewTitle,
+                selectedMode === 'accurate' && { backgroundColor: 'rgba(25, 72, 110, 0.3)' }
+              ]}>
+                <View style={styles.chipContent}>
+                  <Ionicons 
+                    name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
+                    size={24} 
+                    color="#fff" 
+                    style={{ marginRight: 8 }}
+                  />
+                  <Animated.Text style={[styles.title, { opacity: chipTextOpacity }]}>
+                    {MODE_LABELS[selectedMode]}
+                  </Animated.Text>
+                </View>
               </BlurView>
             </TouchableOpacity>
 
@@ -791,11 +926,17 @@ export default function CameraScreen() {
   );
 }
 
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
+
 // --------------------- Styles ---------------------
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: 'black',
+    backgroundColor: '#000',
   },
   cameraContainer: {
     flex: 1,
@@ -804,100 +945,104 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   title: {
-    fontSize: 28,
-    fontWeight: 'bold',
+    fontSize: 24 * scale,
+    fontWeight: '600',
     color: '#FFF',
     textAlign: 'center',
+    letterSpacing: -0.5,
   },
   description: {
-    fontSize: 18,
-    fontWeight: '400',
-    color: '#eee',
+    fontSize: 17 * scale,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
+    letterSpacing: -0.2,
   },
   loadingText: {
-    marginTop: 10,
-    color: '#a9a9a9',
+    marginTop: 12 * scale,
+    color: 'rgba(255, 255, 255, 0.7)',
     fontWeight: '500',
-    fontSize: 16,
+    fontSize: 16 * scale,
+    letterSpacing: -0.2,
   },
   closeButton: {
     position: 'absolute',
-    right: 20,
-    top: 70,
+    right: 16 * scale,
+    top: 60 * scale,
     zIndex: 5,
-    borderRadius: 20,
+    borderRadius: 100 * scale,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#555',
   },
   flashButton: {
     position: 'absolute',
-    left: 20,
-    top: 70,
+    left: 16 * scale,
+    top: 60 * scale,
     zIndex: 5,
     overflow: 'hidden',
   },
   blurViewButton: {
-    borderRadius: 25,
-    padding: 10,
+    borderRadius: 40 * scale,
+    padding: 12 * scale,
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backdropFilter: 'blur(20px)',
   },
   iconBlur: {
-    borderRadius: 25,
-    padding: 10,
+    borderRadius: 0 * scale,
+    padding: 12 * scale,
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backdropFilter: 'blur(20px)',
   },
   blurViewTitle: {
-    borderRadius: 20,
-    padding: 13.5,
-    paddingHorizontal: 18,
+    borderRadius: 18 * scale,
+    padding: 14 * scale,
+    paddingHorizontal: 20 * scale,
     alignItems: 'center',
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#555',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backdropFilter: 'blur(20px)',
+    borderWidth: 0,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   blurViewDescription: {
-    borderRadius: 20,
-    padding: 14,
-    paddingHorizontal: 40,
+    borderRadius: 16 * scale,
+    padding: 12 * scale,
+    paddingHorizontal: 24 * scale,
     alignItems: 'center',
     overflow: 'hidden',
-    marginBottom: 20,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderWidth: 1,
-    borderColor: '#555',
+    marginBottom: 24 * scale,
+    backgroundColor: 'rgba(0, 0, 0, 0.4)',
+    backdropFilter: 'blur(20px)',
+    borderWidth: 0,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   blurView: {
-    padding: 20,
+    padding: 24 * scale,
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    borderRadius: 25,
+    backgroundColor: 'rgba(0, 0, 0, 0.40)',
+    backdropFilter: 'blur(20px)',
+    borderRadius: 0 * scale,
     borderWidth: 0,
-    borderColor: '#555',
+    borderColor: 'rgba(255, 255, 255, 0.1)',
   },
   buttonContainer: {
     position: 'absolute',
-    bottom: 40,
+    bottom: 40 * scale,
     width: '100%',
     alignItems: 'center',
     zIndex: 5,
   },
   button: {
-    borderRadius: 30,
-    marginBottom: 25,
+    borderRadius: 50 * scale,
+    marginBottom: 25 * scale,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#555',
   },
   loadingContainer: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'black',
+    backgroundColor: '#000',
     zIndex: 6,
   },
   blurOverlay: {
@@ -905,161 +1050,302 @@ const styles = StyleSheet.create({
     zIndex: 4,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   checkmarkOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 5,
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   screenBlurOverlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 7,
     justifyContent: 'center',
     alignItems: 'center',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   tutorialOverlay: {
     ...StyleSheet.absoluteFillObject,
-    backgroundColor: 'transparent',
-    justifyContent: 'center',
+    backgroundColor: 'rgba(0, 0, 0, 0.75)',
+    justifyContent: 'flex-end',
     alignItems: 'center',
     zIndex: 8,
-    padding: 20,
+    padding: 24 * scale,
+    paddingBottom: 50 * scale,
   },
   tutorialContent: {
     width: '100%',
+    maxWidth: 400 * scale,
   },
   tutorialTitleContainer: {
     width: '100%',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 32 * scale,
   },
   tutorialStep: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 35,
+    marginBottom: 16 * scale,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+    backdropFilter: 'blur(20px)',
+    borderRadius: 20 * scale,
+    padding: 16 * scale,
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    transform: [{ scale: 1 }],
   },
   tutorialIcon: {
-    borderRadius: 20,
+    width: 60 * scale,
+    height: 60 * scale,
+    borderRadius: 18 * scale,
     overflow: 'hidden',
-    borderWidth: 1,
-    borderColor: '#555',
-    backgroundColor: 'rgba(255, 255, 255, 0.05)',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   tutorialText: {
-    color: '#eee',
-    fontWeight: '400',
+    color: '#FFFFFF',
+    fontWeight: '500',
     textAlign: 'left',
-    fontSize: 18,
-    marginLeft: 15,
+    fontSize: 17 * scale,
+    marginLeft: 16 * scale,
     flexShrink: 1,
+    letterSpacing: -0.3,
+    lineHeight: 24 * scale,
   },
   tutorialCloseButton: {
-    marginTop: 20,
-    backgroundColor: '#fff',
-    paddingVertical: 12,
-    paddingHorizontal: 40,
-    borderRadius: 25,
+    marginTop: 32 * scale,
+    backgroundColor: '#FFFFFF',
+    paddingVertical: 16 * scale,
+    paddingHorizontal: 32 * scale,
+    borderRadius: 20 * scale,
+    width: '100%',
+    maxWidth: 400 * scale,
+    shadowColor: '#000',
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    marginBottom: 120 * scale,
   },
   tutorialCloseButtonText: {
-    color: '#000',
-    fontSize: 18,
-    fontWeight: 'bold',
+    color: '#000000',
+    fontSize: 17 * scale,
+    fontWeight: '600',
+    letterSpacing: -0.3,
+    textAlign: 'center',
   },
   blurViewTitleTutorial: {
-    borderRadius: 20,
-    padding: 13.5,
-    paddingHorizontal: 18,
+    borderRadius: 20 * scale,
+    padding: 20 * scale,
+    paddingHorizontal: 32 * scale,
     alignItems: 'center',
     overflow: 'hidden',
+    backgroundColor: 'rgba(255, 255, 255, 0.15)',
+    backdropFilter: 'blur(20px)',
     borderWidth: 1,
-    borderColor: '#555',
-    backgroundColor: 'rgba(255, 255, 255, 0.1)',
-    marginBottom: 50,
+    borderColor: 'rgba(255, 255, 255, 0.15)',
+    marginBottom: 32 * scale,
+    width: '100%',
   },
   permissionContent: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20,
+    paddingHorizontal: 32 * scale,
+    paddingBottom: 40 * scale,
+  },
+  permissionIconContainer: {
+    marginBottom: 32 * scale,
+    borderRadius: 30 * scale,
+    overflow: 'hidden',
+  },
+  permissionIconBlur: {
+    padding: 24 * scale,
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  permissionTitle: {
+    fontSize: 28 * scale,
+    fontWeight: '700',
+    color: '#fff',
+    textAlign: 'center',
+    marginBottom: 16 * scale,
+    letterSpacing: -0.5,
   },
   permissionDescription: {
-    fontSize: 18,
+    fontSize: 17 * scale,
     fontWeight: '400',
-    color: '#eee',
+    color: 'rgba(255, 255, 255, 0.9)',
     textAlign: 'center',
-    marginBottom: 50,
-    paddingHorizontal: 20,
+    marginBottom: 32 * scale,
+    lineHeight: 24 * scale,
+    letterSpacing: -0.2,
+  },
+  permissionButtonsContainer: {
+    width: '100%',
+    gap: 12 * scale,
+    marginBottom: 24 * scale,
+  },
+  primaryPermissionButton: {
+    backgroundColor: '#fff',
+    paddingVertical: 16 * scale,
+    paddingHorizontal: 20 * scale,
+    borderRadius: 16 * scale,
+    alignItems: 'center',
+  },
+  primaryPermissionButtonText: {
+    color: '#000',
+    fontSize: 17 * scale,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  secondaryPermissionButton: {
+    paddingVertical: 16 * scale,
+    paddingHorizontal: 20 * scale,
+    borderRadius: 16 * scale,
+    alignItems: 'center',
+    backgroundColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  secondaryPermissionButtonText: {
+    color: '#fff',
+    fontSize: 17 * scale,
+    fontWeight: '600',
+    letterSpacing: -0.2,
+  },
+  helpText: {
+    fontSize: 15 * scale,
+    fontWeight: '500',
+    color: 'rgba(255, 255, 255, 0.6)',
+    textAlign: 'center',
+    paddingHorizontal: 24 * scale,
+    lineHeight: 20 * scale,
+    letterSpacing: -0.2,
   },
   barcodeIconContainer: {
     position: 'absolute',
-    top: 130,
-    right: 20,
+    top: 150 * scale,
+    right: 16 * scale,
     zIndex: 10,
-    borderRadius: 40,
+    borderRadius: 40 * scale,
     overflow: 'hidden',
   },
   barcodeBoundingBox: {},
   corner: {
     position: 'absolute',
-    width: 20,
-    height: 20,
+    width: 20 * scale,
+    height: 20 * scale,
     backgroundColor: 'transparent',
     borderColor: 'yellow',
-    minWidth: 20,
-    minHeight: 20,
+    minWidth: 20 * scale,
+    minHeight: 20 * scale,
   },
   topLeftCorner: {
     top: 0,
     left: 0,
-    borderTopWidth: 2,
-    borderLeftWidth: 2,
-    borderTopLeftRadius: 10,
-    marginRight: 20,
-    marginBottom: 20,
+    borderTopWidth: 2 * scale,
+    borderLeftWidth: 2 * scale,
+    borderTopLeftRadius: 10 * scale,
+    marginRight: 20 * scale,
+    marginBottom: 20 * scale,
   },
   topRightCorner: {
     top: 0,
     right: 0,
-    borderTopWidth: 2,
-    borderRightWidth: 2,
-    borderTopRightRadius: 10,
-    marginLeft: 20,
-    marginBottom: 20,
+    borderTopWidth: 2 * scale,
+    borderRightWidth: 2 * scale,
+    borderTopRightRadius: 10 * scale,
+    marginLeft: 20 * scale,
+    marginBottom: 20 * scale,
   },
   bottomLeftCorner: {
     bottom: 0,
     left: 0,
-    borderBottomWidth: 2,
-    borderLeftWidth: 2,
-    borderBottomLeftRadius: 10,
-    marginRight: 20,
-    marginTop: 20,
+    borderBottomWidth: 2 * scale,
+    borderLeftWidth: 2 * scale,
+    borderBottomLeftRadius: 10 * scale,
+    marginRight: 20 * scale,
+    marginTop: 20 * scale,
   },
   bottomRightCorner: {
     bottom: 0,
     right: 0,
-    borderBottomWidth: 2,
-    borderRightWidth: 2,
-    borderBottomRightRadius: 10,
-    marginLeft: 20,
-    marginTop: 20,
+    borderBottomWidth: 2 * scale,
+    borderRightWidth: 2 * scale,
+    borderBottomRightRadius: 10 * scale,
+    marginLeft: 20 * scale,
+    marginTop: 20 * scale,
   },
   frontPromptOverlay: {
     ...StyleSheet.absoluteFillObject,
     justifyContent: 'center',
     alignItems: 'center',
     zIndex: 6,
+    backgroundColor: 'rgba(0, 0, 0, 0.6)',
   },
   frontPromptText: {
     color: '#fff',
-    fontSize: 24,
+    fontSize: 22 * scale,
     fontWeight: '600',
     textAlign: 'center',
-    paddingHorizontal: 30,
-    lineHeight: 32,
+    paddingHorizontal: 32 * scale,
+    lineHeight: 30 * scale,
+    letterSpacing: -0.3,
+  },
+  fixedScanFrame: {
+    position: 'absolute',
+    width: 280 * scale,
+    height: 320 * scale,
+    top: '45%',
+    left: '50%',
+    transform: [
+      { translateX: -140 * scale },
+      { translateY: -140 * scale }
+    ],
+    zIndex: 3,
+  },
+  fixedCorner: {
+    position: 'absolute',
+    width: 40 * scale,
+    height: 40 * scale,
+    backgroundColor: 'transparent',
+    borderColor: '#FFFFFF',
+    borderWidth: 4 * scale,
+  },
+  fixedTopLeftCorner: {
+    top: 0,
+    left: 0,
+    borderBottomWidth: 0,
+    borderRightWidth: 0,
+    borderTopLeftRadius: 15 * scale,
+  },
+  fixedTopRightCorner: {
+    top: 0,
+    right: 0,
+    borderBottomWidth: 0,
+    borderLeftWidth: 0,
+    borderTopRightRadius: 15 * scale,
+  },
+  fixedBottomLeftCorner: {
+    bottom: 0,
+    left: 0,
+    borderTopWidth: 0,
+    borderRightWidth: 0,
+    borderBottomLeftRadius: 15 * scale,
+  },
+  fixedBottomRightCorner: {
+    bottom: 0,
+    right: 0,
+    borderTopWidth: 0,
+    borderLeftWidth: 0,
+    borderBottomRightRadius: 15 * scale,
+  },
+  chipContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
   },
 });

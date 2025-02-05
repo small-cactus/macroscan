@@ -5,7 +5,9 @@
     "version": "1.6.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "scheme": ["macroscan"],
+    "scheme": [
+      "macroscan"
+    ],
     "userInterfaceStyle": "automatic",
     "splash": {
       "image": "./assets/splash.png",
@@ -45,7 +47,12 @@
       [
         "expo-asset",
         {
-          "assets": ["./assets/icon.png", "./assets/splash.png", "./assets/adaptive-icon.png", "./assets/favicon.png"]
+          "assets": [
+            "./assets/icon.png",
+            "./assets/splash.png",
+            "./assets/adaptive-icon.png",
+            "./assets/favicon.png"
+          ]
         }
       ],
       [
@@ -56,7 +63,8 @@
           "recordAudioAndroid": true
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      "expo-build-properties"
     ],
     "jsEngine": "hermes"
   }

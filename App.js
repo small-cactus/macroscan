@@ -25,7 +25,9 @@ import { UserProvider } from './userContext';
 import { SymbolView, SymbolViewProps, SFSymbol } from 'expo-symbols';
 import { GestureHandlerRootView } from 'react-native-gesture-handler'; // **Import GestureHandlerRootView**
 // UNCOMMENT THIS FOR PRODUCTION USE
-import Superwall from "@superwall/react-native-superwall"
+import Superwall from '@superwall/react-native-superwall';
+import WhatsNew from './screens/WhatsNew';
+import DataMigrationScreen from './screens/DataMigrationScreen';
 
 // Screens
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -133,6 +135,8 @@ function App() {
   const [theme, setTheme] = useState(systemScheme);
   const [initialRoute, setInitialRoute] = useState(null);
   const [isConnected, setIsConnected] = useState(true);
+  const [showWhatsNew, setShowWhatsNew] = useState(true);
+  const [needsMigration, setNeedsMigration] = useState(false);
 
   const generateChecksum = (data) => {
     let checksum = 0;
@@ -145,36 +149,42 @@ function App() {
   // UNCOMMENT THIS FOR PRODUCTION USE
   React.useEffect(() => {
     const apiKey = Platform.OS === "ios" ? "pk_bda2670c19f0b35a69ea4d829c74af62e480386339850ce8" : "MY_ANDROID_API_KEY"
-
     Superwall.configure(apiKey)
   }, [])
 
   useEffect(() => {
+    const checkMigrationNeeded = async () => {
+      try {
+        const userData = await AsyncStorage.getItem('@user');
+        const selectedProvider = await AsyncStorage.getItem('@selected_provider');
+        
+        if (userData && !selectedProvider) {
+          setNeedsMigration(true);
+          return true;
+        }
+        return false;
+      } catch (error) {
+        console.error('Error checking migration:', error);
+        return false;
+      }
+    };
+
     const verifyChecksum = (name, storedChecksum) => {
       const generatedChecksum = generateChecksum(name);
       return generatedChecksum === storedChecksum;
     };
 
-    const deleteUserAccount = async () => {
-      await AsyncStorage.removeItem('@user');
-      await AsyncStorage.removeItem('userImageUri');
-      await AsyncStorage.removeItem('userName');
-      await AsyncStorage.removeItem('@user_logged_in');
-      await AsyncStorage.removeItem('@product_history');
-      await AsyncStorage.removeItem('selectedModel');
-      await AsyncStorage.removeItem('dailyScanCount');
-      await AsyncStorage.removeItem('firstUseDate');
-      await AsyncStorage.removeItem('dateLastUsed');
-    };
-
     const checkUser = async () => {
       try {
-        const userName = await AsyncStorage.getItem('userName');
+        const migrationNeeded = await checkMigrationNeeded();
+        if (migrationNeeded) {
+          return;
+        }
 
+        const userName = await AsyncStorage.getItem('userName');
         if (userName) {
           setInitialRoute('HomeTabs');
         } else {
-          await deleteUserAccount();
           setInitialRoute('Welcome');
         }
       } catch (e) {
@@ -203,6 +213,11 @@ function App() {
     };
   }, []);
 
+  const handleMigrationComplete = () => {
+    setNeedsMigration(false);
+    setInitialRoute('Welcome');
+  };
+
   useEffect(() => {
     if (!isConnected) {
       navigationRef.current?.reset({
@@ -212,11 +227,19 @@ function App() {
     }
   }, [isConnected]);
 
+  if (needsMigration) {
+    return (
+      <GestureHandlerRootView style={{ flex: 1 }}>
+        <DataMigrationScreen onComplete={handleMigrationComplete} />
+      </GestureHandlerRootView>
+    );
+  }
+
   if (initialRoute === null) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
         <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#0000ff" />
+          <ActivityIndicator size="large" color="#ccc" />
         </View>
       </GestureHandlerRootView>
     );
@@ -227,10 +250,8 @@ function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <NavigationContainer ref={navigationRef}>
-        {/* [MODIFIED] Pass mockSubscriptionStatus prop here */}
         <UserProvider
           navigation={navigationRef.current}
-          // mockSubscriptionStatus="macroscan-unlimited" // **Add this line to mock the subscription**
         >
           <IAPProvider>
             <Stack.Navigator
@@ -368,22 +389,29 @@ function App() {
   );
 }
 
+// Calculate scale factor based on screen size
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
+
 const getDynamicStyles = (colorScheme) =>
   StyleSheet.create({
     headerStyle: {
       backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.6)' : '#fff',
     },
     headerTitleStyle: {
-      fontSize: 18,
+      fontSize: 18 * scale,
     },
     tabBarStyle: {
       backgroundColor: colorScheme === 'dark' ? '#000' : '#fff',
       borderTopColor: colorScheme === 'dark' ? '#3a3a3a' : '#e0e0e0',
-      paddingBottom: isIphoneSE() ? 8 : 30, // 20% from the top of the screen
-      paddingTop: isIphoneSE() ? 3 : 10, // 20% from the top of the screen
+      paddingBottom: isIphoneSE() ? 8 : 30 * scale, // 20% from the top of the screen
+      paddingTop: isIphoneSE() ? 3 : 10 * scale, // 20% from the top of the screen
     },
     tabBarLabelStyle: {
-      fontSize: 12,
+      fontSize: 12 * scale,
       fontWeight: '600',
     },
   });

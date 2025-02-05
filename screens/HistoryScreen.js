@@ -14,6 +14,13 @@ import * as Haptics from 'expo-haptics';
 
 const { width, height } = Dimensions.get('window');
 
+// Calculate scale factor based on screen size
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -79,7 +86,14 @@ const HistoryCard = ({
           style={styles.card}
           onPress={() => onSelect(item)}
         >
-          <Image source={{ uri: item.imageUri }} style={styles.productImage} />
+          <Image 
+            source={{ 
+              uri: typeof item.imageUri === 'string' && !item.imageUri.startsWith('data:image/jpeg;base64,')
+                ? 'data:image/jpeg;base64,' + item.imageUri
+                : item.imageUri 
+            }} 
+            style={styles.productImage} 
+          />
           <View style={styles.info}>
             <Text style={styles.productName}>{item.productName}</Text>
             {formatDate(item.date).map((line, lineIndex) => (
@@ -133,14 +147,16 @@ const HistoryScreen = () => {
     fast: false,
     startDate: null,
     endDate: null,
+    circleScan: false
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState('start');
-
-  // Animated rotation value for filter icon
+  
+  // Filter chips "open/closed" state and related animated values.
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const filterRotation = useRef(new Animated.Value(0)).current;
-  const filterTranslation = useRef(new Animated.Value(0)).current;
-  const filterOpacity = useRef(new Animated.Value(1)).current;
+  const filterOpacity = useRef(new Animated.Value(0)).current;
+  const filterHeight = useRef(new Animated.Value(0)).current;
 
   // Add new state for temporary date selection
   const [tempSelectedDate, setTempSelectedDate] = useState(null);
@@ -566,12 +582,12 @@ const HistoryScreen = () => {
   );
 
   useEffect(() => {
-    const colorSchemeListener = (preferences) => {
-      setColorScheme(preferences.colorScheme);
+    const colorSchemeListener = ({ colorScheme }) => {
+      setColorScheme(colorScheme);
     };
-    Appearance.addChangeListener(colorSchemeListener);
+    const subscription = Appearance.addChangeListener(colorSchemeListener);
     return () => {
-      Appearance.removeChangeListener(colorSchemeListener);
+      subscription.remove();
     };
   }, []);
 
@@ -609,7 +625,7 @@ const HistoryScreen = () => {
       let historyArray = historyData ? JSON.parse(historyData) : [];
       historyArray.sort((a, b) => new Date(b.date) - new Date(a.date));
       setHistory(historyArray);
-      console.log('Entire history array:', JSON.stringify(historyArray, null, 2));
+      console.log('History loaded:', historyArray.length, 'items');
     } catch (e) {
       console.error('Error loading history: ', e);
     }
@@ -619,7 +635,12 @@ const HistoryScreen = () => {
     try {
       const savedState = await AsyncStorage.getItem(FILTER_SECTION_STATE_KEY);
       if (savedState !== null) {
-        setShowFilters(JSON.parse(savedState));
+        const isOpen = JSON.parse(savedState);
+        setFiltersOpen(isOpen);
+        if (isOpen) {
+          filterHeight.setValue(58 * scale);
+          filterOpacity.setValue(1);
+        }
       }
     } catch (error) {
       console.error('Error loading filter section state:', error);
@@ -721,7 +742,7 @@ const HistoryScreen = () => {
             try {
               await AsyncStorage.removeItem('@product_history');
               setHistory([]);
-              console.log('History cleared successfully.');
+              console.log('History cleared');
             } catch (e) {
               console.error('Error clearing history: ', e);
             }
@@ -859,6 +880,11 @@ const HistoryScreen = () => {
             <Text style={styles.metadataBadgeText}>Barcode</Text>
           </View>
         )}
+        {scanMetadata.usedCircleScan && (
+          <View style={[styles.metadataBadge, styles.circleScanBadge]}>
+            <Text style={styles.metadataBadgeText}>Circle Scan</Text>
+          </View>
+        )}
         <View style={styles.metadataBadge}>
           <Text style={styles.metadataBadgeText}>{scanMetadata.processingTime}s</Text>
         </View>
@@ -886,7 +912,7 @@ const HistoryScreen = () => {
     }
 
     // Apply scan type filters
-    if (filters.barcode || filters.accurate || filters.fast) {
+    if (filters.barcode || filters.accurate || filters.fast || filters.circleScan) {
       filtered = filtered.filter(item => {
         if (!item.scanMetadata) {
           willBeVisible[item.date] = false;
@@ -895,7 +921,8 @@ const HistoryScreen = () => {
         const matches = (
           (filters.barcode && item.scanMetadata.usedBarcode) ||
           (filters.accurate && item.scanMetadata.scanMode === 'accurate') ||
-          (filters.fast && item.scanMetadata.scanMode === 'fast')
+          (filters.fast && item.scanMetadata.scanMode === 'fast') ||
+          (filters.circleScan && item.scanMetadata.usedCircleScan)
         );
         if (!matches) willBeVisible[item.date] = false;
         return matches;
@@ -922,7 +949,7 @@ const HistoryScreen = () => {
     hadMatches = filtered.length > 0;
 
     // Only trigger error haptic for filters, not search (search error is handled in onSubmitEditing)
-    if (!hadMatches && (filters.barcode || filters.accurate || filters.fast || filters.startDate || filters.endDate)) {
+    if (!hadMatches && (filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.startDate || filters.endDate)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
 
@@ -990,238 +1017,212 @@ const HistoryScreen = () => {
       fast: false,
       startDate: null,
       endDate: null,
+      circleScan: false
     });
     setSearchQuery('');
   };
 
   const renderFilterChips = () => {
-    if (!showFilters) return null;
-
     return (
-      <Animated.ScrollView 
-        horizontal 
-        showsHorizontalScrollIndicator={false}
-        style={[
-          styles.filterChipsContainer,
-          {
-            transform: [{ translateY: filterTranslation }],
-            opacity: filterOpacity
-          }
-        ]}
-        contentContainerStyle={styles.filterChipsContent}
-      >
-        <TouchableOpacity
-          disabled={isFilterButtonsDisabled}
-          style={[styles.filterChip, filters.barcode && styles.filterChipActive]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setFilters(prev => ({ ...prev, barcode: !prev.barcode }));
+      <Animated.View style={{ height: filterHeight, overflow: 'hidden', marginTop: 8 * scale }}>
+        <Animated.ScrollView 
+          horizontal 
+          showsHorizontalScrollIndicator={false}
+          style={{
+            opacity: filterOpacity,
+            transform: [{
+              translateY: filterOpacity.interpolate({
+                inputRange: [0, 1],
+                outputRange: [-10, 0] // Changed from [10, 0] to [-10, 0] to animate from top
+              })
+            }]
           }}
+          contentContainerStyle={styles.filterChipsContent}
         >
-          <SymbolView
-            name="barcode.viewfinder"
-            size={16}
-            tintColor={filters.barcode ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
-            type="hierarchical"
-            style={styles.filterChipIcon}
-          />
-          <Text style={[styles.filterChipText, filters.barcode && styles.filterChipTextActive]}>
-            Barcode
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          disabled={isFilterButtonsDisabled}
-          style={[styles.filterChip, filters.accurate && styles.filterChipActive]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setFilters(prev => ({ ...prev, accurate: !prev.accurate }));
-          }}
-        >
-          <SymbolView
-            name="checkmark.seal.fill"
-            size={16}
-            tintColor={filters.accurate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
-            type="hierarchical"
-            style={styles.filterChipIcon}
-          />
-          <Text style={[styles.filterChipText, filters.accurate && styles.filterChipTextActive]}>
-            Accurate
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          disabled={isFilterButtonsDisabled}
-          style={[styles.filterChip, filters.fast && styles.filterChipActive]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setFilters(prev => ({ ...prev, fast: !prev.fast }));
-          }}
-        >
-          <SymbolView
-            name="bolt.fill"
-            size={16}
-            tintColor={filters.fast ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
-            type="hierarchical"
-            style={styles.filterChipIcon}
-          />
-          <Text style={[styles.filterChipText, filters.fast && styles.filterChipTextActive]}>
-            Fast
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          disabled={isFilterButtonsDisabled}
-          style={[styles.filterChip, filters.startDate && styles.filterChipActive]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setDatePickerMode('start');
-            setShowDatePicker(true);
-          }}
-        >
-          <SymbolView
-            name="calendar"
-            size={16}
-            tintColor={filters.startDate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
-            type="hierarchical"
-            style={styles.filterChipIcon}
-          />
-          <Text style={[styles.filterChipText, filters.startDate && styles.filterChipTextActive]}>
-            {filters.startDate ? filters.startDate.toLocaleDateString() : 'Start Date'}
-          </Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          disabled={isFilterButtonsDisabled}
-          style={[styles.filterChip, filters.endDate && styles.filterChipActive]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            setDatePickerMode('end');
-            setShowDatePicker(true);
-          }}
-        >
-          <SymbolView
-            name="calendar"
-            size={16}
-            tintColor={filters.endDate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
-            type="hierarchical"
-            style={styles.filterChipIcon}
-          />
-          <Text style={[styles.filterChipText, filters.endDate && styles.filterChipTextActive]}>
-            {filters.endDate ? filters.endDate.toLocaleDateString() : 'End Date'}
-          </Text>
-        </TouchableOpacity>
-
-        {(filters.barcode || filters.accurate || filters.fast || filters.startDate || filters.endDate) && (
           <TouchableOpacity
-            disabled={isFilterButtonsDisabled}
-            style={[styles.filterChip, styles.clearFilterChip]}
+            style={[styles.filterChip, filters.barcode && styles.filterChipActive]}
             onPress={() => {
               Haptics.selectionAsync();
-              clearFilters();
+              setFilters(prev => ({ ...prev, barcode: !prev.barcode }));
             }}
           >
             <SymbolView
-              name="xmark.circle.fill"
+              name="barcode.viewfinder"
               size={16}
-              tintColor={colorScheme === 'dark' ? '#fff' : '#000'}
+              tintColor={filters.barcode ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
               type="hierarchical"
               style={styles.filterChipIcon}
             />
-            <Text style={styles.filterChipText}>Clear All</Text>
+            <Text style={[styles.filterChipText, filters.barcode && styles.filterChipTextActive]}>
+              Barcode
+            </Text>
           </TouchableOpacity>
-        )}
 
-        <TouchableOpacity
-          disabled={isFilterButtonsDisabled}
-          style={[styles.filterChip, { backgroundColor: colorScheme === 'dark' ? '#FF453A' : '#FF3B30' }]}
-          onPress={() => {
-            Haptics.selectionAsync();
-            clearHistory();
-          }}
-        >
-          <SymbolView
-            name="trash.slash.fill"
-            size={16}
-            tintColor="#fff"
-            type="hierarchical"
-            style={styles.filterChipIcon}
-          />
-          <Text style={[styles.filterChipText, { color: '#fff' }]}>Clear History</Text>
-        </TouchableOpacity>
-      </Animated.ScrollView>
+          <TouchableOpacity
+            style={[styles.filterChip, filters.accurate && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setFilters(prev => ({ ...prev, accurate: !prev.accurate }));
+            }}
+          >
+            <SymbolView
+              name="checkmark.seal.fill"
+              size={16}
+              tintColor={filters.accurate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={[styles.filterChipText, filters.accurate && styles.filterChipTextActive]}>
+              Accurate
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterChip, filters.fast && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setFilters(prev => ({ ...prev, fast: !prev.fast }));
+            }}
+          >
+            <SymbolView
+              name="bolt.fill"
+              size={16}
+              tintColor={filters.fast ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={[styles.filterChipText, filters.fast && styles.filterChipTextActive]}>
+              Fast
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterChip, filters.circleScan && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setFilters(prev => ({ ...prev, circleScan: !prev.circleScan }));
+            }}
+          >
+            <SymbolView
+              name="circle.grid.cross"
+              size={16}
+              tintColor={filters.circleScan ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={[styles.filterChipText, filters.circleScan && styles.filterChipTextActive]}>
+              Circle Scan
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterChip, filters.startDate && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setDatePickerMode('start');
+              setShowDatePicker(true);
+            }}
+          >
+            <SymbolView
+              name="calendar"
+              size={16}
+              tintColor={filters.startDate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={[styles.filterChipText, filters.startDate && styles.filterChipTextActive]}>
+              {filters.startDate ? filters.startDate.toLocaleDateString() : 'Start Date'}
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[styles.filterChip, filters.endDate && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setDatePickerMode('end');
+              setShowDatePicker(true);
+            }}
+          >
+            <SymbolView
+              name="calendar"
+              size={16}
+              tintColor={filters.endDate ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={[styles.filterChipText, filters.endDate && styles.filterChipTextActive]}>
+              {filters.endDate ? filters.endDate.toLocaleDateString() : 'End Date'}
+            </Text>
+          </TouchableOpacity>
+
+          {(filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.startDate || filters.endDate) && (
+            <TouchableOpacity
+              style={[styles.filterChip, styles.clearFilterChip]}
+              onPress={() => {
+                Haptics.selectionAsync();
+                clearFilters();
+              }}
+            >
+              <SymbolView
+                name="xmark.circle.fill"
+                size={16}
+                tintColor={colorScheme === 'dark' ? '#fff' : '#000'}
+                type="hierarchical"
+                style={styles.filterChipIcon}
+              />
+              <Text style={styles.filterChipText}>Clear All</Text>
+            </TouchableOpacity>
+          )}
+
+          <TouchableOpacity
+            style={[styles.filterChip, { backgroundColor: colorScheme === 'dark' ? '#FF453A' : '#FF3B30' }]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              clearHistory();
+            }}
+          >
+            <SymbolView
+              name="trash.slash.fill"
+              size={16}
+              tintColor="#fff"
+              type="hierarchical"
+              style={styles.filterChipIcon}
+            />
+            <Text style={[styles.filterChipText, { color: '#fff' }]}>Clear History</Text>
+          </TouchableOpacity>
+        </Animated.ScrollView>
+      </Animated.View>
     );
   };
 
   const toggleFilterSection = () => {
-    const newShow = !showFilters;
+    const newShow = !filtersOpen;
+    const targetHeight = newShow ? 58 * scale : 0; // Increased from 50 to 58 to account for margin
     
-    // Immediately disable buttons when hiding
-    if (!newShow) {
-      setIsFilterButtonsDisabled(true);
-    }
-    
-    // Save the new state to AsyncStorage
-    try {
-      AsyncStorage.setItem(FILTER_SECTION_STATE_KEY, JSON.stringify(newShow));
-    } catch (error) {
-      console.error('Error saving filter section state:', error);
-    }
-
-    // Reset values if showing
-    if (newShow) {
-      filterTranslation.setValue(-50);
-      filterOpacity.setValue(0);
-      setIsFilterButtonsDisabled(false);
-    }
-
-    // Configure animations
-    const animations = [
+    Animated.parallel([
       Animated.timing(filterRotation, {
         toValue: newShow ? 1 : 0,
         duration: 300,
         useNativeDriver: true,
       }),
-      Animated.spring(filterTranslation, {
-        toValue: newShow ? 0 : -50,
-        useNativeDriver: true,
-        friction: 8,
-        tension: 40,
-      }),
       Animated.timing(filterOpacity, {
         toValue: newShow ? 1 : 0,
-        duration: 200,
+        duration: newShow ? 400 : 200, // Slower fade in, faster fade out
         useNativeDriver: true,
-      })
-    ];
-
-    // Configure layout animation
-    const customLayoutAnimation = {
-      duration: 300,
-      create: {
-        type: LayoutAnimation.Types.easeInEaseOut,
-        property: LayoutAnimation.Properties.opacity,
-      },
-      update: {
-        type: LayoutAnimation.Types.easeInEaseOut,
-      },
-      delete: {
-        type: LayoutAnimation.Types.easeInEaseOut,
-        property: LayoutAnimation.Properties.opacity,
-      },
-    };
-
-    // Start animations
-    if (newShow) {
-      setShowFilters(true);
-      LayoutAnimation.configureNext(customLayoutAnimation);
-      Animated.parallel(animations).start();
-    } else {
-      // For hiding, we want to coordinate the layout animation with the parallel animation
-      LayoutAnimation.configureNext(customLayoutAnimation);
-      Animated.parallel(animations).start(() => {
-        setShowFilters(false);
-      });
+      }),
+      Animated.timing(filterHeight, {
+        toValue: targetHeight,
+        duration: 300,
+        useNativeDriver: false,
+      }),
+    ]).start();
+    
+    setFiltersOpen(newShow);
+    
+    try {
+      AsyncStorage.setItem(FILTER_SECTION_STATE_KEY, JSON.stringify(newShow));
+    } catch (error) {
+      console.error('Error saving filter section state:', error);
     }
   };
 
@@ -1250,7 +1251,7 @@ const HistoryScreen = () => {
               }).start();
             }
             setHistory(updatedHistory);
-            console.log('Entry deleted successfully.');
+            console.log('History entry deleted');
           }}
           styles={styles}
           colorScheme={colorScheme}
@@ -1267,78 +1268,78 @@ const HistoryScreen = () => {
         style={styles.scrollContainer}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
       >
-        <Text style={styles.historyTitle}>History</Text>
+            <Text style={styles.historyTitle}>History</Text>
       
-        <View style={styles.searchContainer}>
-          <View style={styles.searchInputContainer}>
-            <SymbolView
-              name="magnifyingglass"
-              size={20}
-              tintColor={colorScheme === 'dark' ? '#666' : '#999'}
-              type="hierarchical"
-              style={styles.searchIcon}
-            />
-            <TextInput
-              style={styles.searchInput}
-              placeholder={searchPlaceholder}
-              placeholderTextColor={colorScheme === 'dark' ? '#666' : '#999'}
-              value={searchQuery}
-              onChangeText={(text) => {
-                setSearchQuery(text);
-                if (text === '') {
-                  Haptics.selectionAsync();
-                }
-              }}
-              onSubmitEditing={() => {
-                // Only trigger error haptic if there's a search query and no results
-                if (searchQuery && filteredHistory.length === 0) {
-                  Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
-                }
-              }}
-              returnKeyType="done"
-              enablesReturnKeyAutomatically={false}
-            />
-            {searchQuery !== '' && (
-              <TouchableOpacity onPress={() => {
-                Haptics.selectionAsync();
-                setSearchQuery('');
-              }}>
+            <View style={styles.searchContainer}>
+              <View style={styles.searchInputContainer}>
                 <SymbolView
-                  name="xmark.circle.fill"
+                  name="magnifyingglass"
                   size={20}
                   tintColor={colorScheme === 'dark' ? '#666' : '#999'}
                   type="hierarchical"
-                  style={styles.clearSearchIcon}
+                  style={styles.searchIcon}
                 />
+                <TextInput
+                  style={styles.searchInput}
+                  placeholder={searchPlaceholder}
+                  placeholderTextColor={colorScheme === 'dark' ? '#666' : '#999'}
+                  value={searchQuery}
+                  onChangeText={(text) => {
+                    setSearchQuery(text);
+                    if (text === '') {
+                      Haptics.selectionAsync();
+                    }
+                  }}
+                  onSubmitEditing={() => {
+                // Only trigger error haptic if there's a search query and no results
+                    if (searchQuery && filteredHistory.length === 0) {
+                      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                    }
+                  }}
+                  returnKeyType="done"
+                  enablesReturnKeyAutomatically={false}
+                />
+                {searchQuery !== '' && (
+                  <TouchableOpacity onPress={() => {
+                    Haptics.selectionAsync();
+                    setSearchQuery('');
+                  }}>
+                    <SymbolView
+                      name="xmark.circle.fill"
+                      size={20}
+                      tintColor={colorScheme === 'dark' ? '#666' : '#999'}
+                      type="hierarchical"
+                      style={styles.clearSearchIcon}
+                    />
+                  </TouchableOpacity>
+                )}
+              </View>
+              <TouchableOpacity 
+                style={styles.filterButton} 
+                onPress={toggleFilterSection}
+              >
+                <Animated.View 
+                  style={{
+                    transform: [{
+                      rotate: filterRotation.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0deg', '180deg']
+                      })
+                    }]
+                  }}
+                >
+                  <SymbolView
+                    name="line.3.horizontal.decrease.circle.fill"
+                    size={24}
+                    tintColor={colorScheme === 'dark' ? '#fff' : '#000'} 
+                    type="hierarchical"
+                    style={styles.filterIcon}
+                  />
+                </Animated.View>
               </TouchableOpacity>
-            )}
-          </View>
-          <TouchableOpacity 
-            style={styles.filterButton} 
-            onPress={toggleFilterSection}
-          >
-            <Animated.View 
-              style={{
-                transform: [{
-                  rotate: filterRotation.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '180deg']
-                  })
-                }]
-              }}
-            >
-              <SymbolView
-                name="line.3.horizontal.decrease.circle.fill"
-                size={24}
-                tintColor={colorScheme === 'dark' ? '#fff' : '#000'} 
-                type="hierarchical"
-                style={styles.filterIcon}
-              />
-            </Animated.View>
-          </TouchableOpacity>
-        </View>
+            </View>
 
-        {renderFilterChips()}
+            {renderFilterChips()}
 
         {filteredHistory.length > 0 ? (
           <View style={styles.historyList}>
@@ -1449,6 +1450,11 @@ const HistoryScreen = () => {
                         <Text style={styles.metadataBadgeText}>Barcode</Text>
                       </View>
                     )}
+                    {selectedItem.scanMetadata.usedCircleScan && (
+                      <View style={[styles.metadataBadge, styles.circleScanBadge]}>
+                        <Text style={styles.metadataBadgeText}>Circle Scan</Text>
+                      </View>
+                    )}
                     <View style={styles.metadataBadge}>
                       <Text style={styles.metadataBadgeText}>
                         {selectedItem.scanMetadata.processingTime}s
@@ -1457,7 +1463,14 @@ const HistoryScreen = () => {
                   </View>
                 )}
               </View>
-              <Image source={{ uri: selectedItem.imageUri }} style={styles.modalImage} />
+              <Image 
+                source={{ 
+                  uri: typeof selectedItem.imageUri === 'string' && !selectedItem.imageUri.startsWith('data:image/jpeg;base64,')
+                    ? 'data:image/jpeg;base64,' + selectedItem.imageUri
+                    : selectedItem.imageUri 
+                }} 
+                style={styles.modalImage} 
+              />
             </View>
 
             <View style={styles.tabContainer}>
@@ -1526,7 +1539,7 @@ const getDynamicStyles = (colorScheme) =>
     container: {
       flex: 1,
       alignItems: 'center',
-      paddingTop: 20,
+      paddingTop: 50 * scale,
       backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
     },
     scrollContainer: {
@@ -1534,88 +1547,89 @@ const getDynamicStyles = (colorScheme) =>
       width: '100%',
     },
     cardContainer: {
-      marginVertical: 6,
+      marginVertical: 0 * scale,
     },
     card: {
       flexDirection: 'row',
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
-      padding: 13,
-      borderRadius: 25,
+      padding: 13 * scale,
+      borderRadius: 25 * scale,
       borderWidth: 1,
+      marginBottom: 16 * scale,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     productImage: {
-      width: 100,
-      height: 100,
-      borderRadius: 15,
+      width: 100 * scale,
+      height: 100 * scale,
+      borderRadius: 15 * scale,
     },
     info: {
       flex: 1,
-      marginLeft: 10,
+      marginLeft: 10 * scale,
       justifyContent: 'center',
     },
     productName: {
-      fontSize: 18,
+      fontSize: 18 * scale,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#fff' : '#000',
     },
     date: {
-      fontSize: 14,
+      fontSize: 14 * scale,
       color: colorScheme === 'dark' ? '#888' : '#7a7a7a',
-      marginTop: 3,
-      marginLeft: 1,
+      marginTop: 3 * scale,
+      marginLeft: 1 * scale,
     },
     emptyText: {
-      marginTop: '50%',
-      fontSize: 16,
+      marginTop: 50 * scale,
+      fontSize: 16 * scale,
       color: '#AAAAAA',
       textAlign: 'center',
-      marginHorizontal: '13%',
+      marginHorizontal: 13 * scale,
     },
     modalView: {
       flex: 1,
-      marginTop: '14%',
+      marginTop: 80 * scale,
       backgroundColor: colorScheme === 'dark' ? '#111' : '#FFF',
-      borderRadius: isIphoneSE() ? 15 : 48,
-      padding: 20,
+      borderRadius: isIphoneSE() ? 15 * scale : 48 * scale,
+      padding: 20 * scale,
       alignItems: 'center',
       shadowColor: '#000',
-      shadowOffset: { width: 0, height: 2 },
+      shadowOffset: { width: 0, height: 2 * scale },
       shadowOpacity: 0.75,
-      shadowRadius: 50,
+      shadowRadius: 50 * scale,
       elevation: 5,
     },
     productNameModal: {
-      fontSize: 24,
+      fontSize: 24 * scale,
       alignSelf: 'center',
-      marginBottom: '3%',
+      marginBottom: 3 * scale,
       fontWeight: 'bold',
-      top: '0.3%',
+      top: 0.3 * scale,
       color: colorScheme === 'dark' ? '#fff' : '#000',
     },
     imageContainer: {
       width: '100%',
-      height: 250,
-      borderRadius: 24,
-      marginBottom: 16,
+      height: 250 * scale,
+      borderRadius: 24 * scale,
+      marginBottom: 16 * scale,
       position: 'relative',
     },
     modalImage: {
       width: '100%',
       height: '100%',
-      borderRadius: 24,
+      borderRadius: 24 * scale,
     },
     controlsOverlay: {
       position: 'absolute',
-      top: 12,
-      left: 12,
-      right: 12,
+      top: 12 * scale ,
+      left: 12 * scale,
+      right: 12 * scale,
       zIndex: 2,
     },
     metadataOverlay: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 8,
+      gap: 8 * scale,
     },
     nutrientContainer: {
       width: '100%',
@@ -1624,27 +1638,27 @@ const getDynamicStyles = (colorScheme) =>
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: 2,
+      paddingVertical: 2 * scale,
     },
     nutrientLabel: {
       fontWeight: '500',
-      fontSize: 17,
+      fontSize: 17 * scale,
       color: colorScheme === 'dark' ? '#f9f9f9' : '#000',
     },
     nutrientValue: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '400',
       color: colorScheme === 'dark' ? '#d9d9d9' : '#7a7a7a',
       textAlign: 'right',
     },
     closeButton: {
       backgroundColor: colorScheme === 'dark' ? '#3a3a3F' : '#000',
-      borderRadius: 100,
+      borderRadius: 100 * scale,
       padding: 8,
       elevation: 2,
       position: 'absolute',
-      right: '5%',
-      top: '2%',
+      right: 15,
+      top: 15,
       zIndex: 1,
       shadowColor: '#000',
       shadowOffset: { width: 0, height: 2 },
@@ -1653,75 +1667,75 @@ const getDynamicStyles = (colorScheme) =>
     },
     iconButton: {
       position: 'absolute',
-      right: '6%',
-      top: isIphoneSE() ? '1.5%' : '3%',
-      padding: 10,
+      right: 6 * scale,
+      top: isIphoneSE() ? 1.5 * scale : 3 * scale,
+      padding: 10 * scale,
       zIndex: 1,
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-      borderRadius: 15,
+      borderRadius: 15 * scale,
     },
     historyTitle: {
-      marginTop: isIphoneSE() ? '5%' : '12%',
-      fontSize: 28,
+      marginTop: isIphoneSE() ? 5 * scale : 12 * scale,
+      fontSize: 28 * scale,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#fff' : '#000',
       textAlign: 'center',
     },
     separatorTitle: {
-      height: 5,
-      width: 300,
+      height: 5 * scale,
+      width: 300 * scale,
       backgroundColor: '#333',
-      marginVertical: 20,
-      borderRadius: 900,
+      marginVertical: 20 * scale,
+      borderRadius: 900 * scale,
     },
     separator: {
-      height: 4,
+      height: 4 * scale,
       backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
-      marginVertical: 8,
-      marginBottom: 16,
-      borderRadius: 900,
+      marginVertical: 8 * scale,
+      marginBottom: 16 * scale,
+      borderRadius: 900 * scale,
     },
     deleteButton: {
       alignItems: 'center',
       justifyContent: 'center',
-      padding: 10,
+      padding: 10 * scale,
       backgroundColor: colorScheme === 'dark' ? '#161618' : '#ddd',
-      borderRadius: 15,
+      borderRadius: 15 * scale,
     },
     debugButton: {
       position: 'absolute',
-      right: '84%',
-      top: isIphoneSE() ? '5%' : '8%',
-      padding: 10,
+      right: 84 * scale,
+      top: isIphoneSE() ? 5 * scale : 8 * scale,
+      padding: 10 * scale,
       zIndex: 1,
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#000',
-      borderRadius: 15,
+      borderRadius: 15 * scale,
     },
     subtitle: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       color: '#888888',
       textAlign: 'center',
-      marginTop: 40,
-      marginBottom: 35,
-      marginHorizontal: 25,
+      marginTop: 40 * scale,
+      marginBottom: 35 * scale,
+      marginHorizontal: 25 * scale,
     },
     tabContainer: {
       flexDirection: 'row',
       justifyContent: 'space-around',
-      marginBottom: 16,
+      marginBottom: 16 * scale,
       width: '100%',
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#F0F0F0',
-      marginHorizontal: 15,
-      borderRadius: 20,
-      paddingVertical: 6,
+      marginHorizontal: 15 * scale,
+      borderRadius: 20 * scale,
+      paddingVertical: 6 * scale,
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
       position: 'relative',
       overflow: 'hidden',
     },
     tabButton: {
-      paddingVertical: 8,
-      paddingHorizontal: 16,
+      paddingVertical: 8 * scale,
+      paddingHorizontal: 16 * scale,
       flex: 1,
       alignItems: 'center',
       justifyContent: 'center',
@@ -1729,7 +1743,7 @@ const getDynamicStyles = (colorScheme) =>
     activeTabButton: {},
     tabButtonText: {
       color: colorScheme === 'dark' ? '#666' : '#888',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '400',
     },
     activeTabButtonText: {
@@ -1738,72 +1752,72 @@ const getDynamicStyles = (colorScheme) =>
     },
     tabContentContainer: {
       backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
-      borderRadius: 25,
-      padding: 16,
-      marginBottom: 16,
-      borderWidth: 1,
+      borderRadius: 25 * scale,
+      padding: 16 * scale,
+      marginBottom: 16 * scale,
+      borderWidth: 1 * scale,
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     ingredientDescriptionNote: {
       color: '#888888',
-      fontSize: 14,
-      marginBottom: 10,
+      fontSize: 14 * scale,
+      marginBottom: 10 * scale,
       textAlign: 'center',
     },
     ingredientItem: {
-      marginBottom: 5,
+      marginBottom: 5 * scale,
     },
     ingredientName: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: 'bold',
-      marginBottom: 4,
+      marginBottom: 4 * scale,
     },
     ingredientDescription: {
       color: '#888888',
-      fontSize: 14,
+      fontSize: 14 * scale,
     },
     detailText: {
       color: colorScheme === 'dark' ? '#ccc' : '#555',
-      fontSize: 16,
-      marginBottom: 20,
+      fontSize: 16 * scale,
+      marginBottom: 20 * scale,
     },
     detailPrepTime: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
-      marginBottom: 8,
+      marginBottom: 8 * scale,
     },
     detailServingSize: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
-      marginBottom: 8,
+      marginBottom: 8 * scale,
     },
     wikipediaLink: {
       color: '#3498DB',
-      fontSize: 16,
+      fontSize: 16 * scale,
       textDecorationLine: 'underline',
       marginTop: 0,
     },
     dateModal: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       color: '#888888',
       textAlign: 'center',
-      marginBottom: '4%',
+      marginBottom: 4 * scale,
     },
     metadataBadgesContainer: {
       flexDirection: 'row',
       flexWrap: 'wrap',
-      gap: 6,
-      marginTop: 8,
+      gap: 6 * scale,
+      marginTop: 8 * scale,
     },
     metadataBadge: {
       backgroundColor: colorScheme === 'dark' ? '#2a2a2c' : '#e0e0e0',
-      paddingHorizontal: 8,
-      paddingVertical: 4,
-      borderRadius: 8,
-      borderWidth: 1,
+      paddingHorizontal: 8 * scale,
+      paddingVertical: 4 * scale,
+      borderRadius: 8 * scale,
+      borderWidth: 1 * scale,
       borderColor: colorScheme === 'dark' ? '#3a3a3c' : '#d0d0d0',
     },
     accurateBadge: {
@@ -1814,31 +1828,35 @@ const getDynamicStyles = (colorScheme) =>
       backgroundColor: colorScheme === 'dark' ? '#2c3c2c' : '#e5f5e5',
       borderColor: colorScheme === 'dark' ? '#3c4c3c' : '#c5e5c5',
     },
+    circleScanBadge: {
+      backgroundColor: colorScheme === 'dark' ? '#2c3c2c' : '#e5f5e5',
+      borderColor: colorScheme === 'dark' ? '#3c4c3c' : '#c5e5c5',
+    },
     metadataBadgeText: {
-      fontSize: 12,
+      fontSize: 12 * scale,
       color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
       fontWeight: '500',
     },
     scanMetadataContainer: {
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-      borderRadius: 15,
-      padding: 16,
-      marginBottom: 16,
+      borderRadius: 15 * scale,
+      padding: 16 * scale,
+      marginBottom: 16 * scale,
       width: '100%',
     },
     scanMetadataRow: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      marginBottom: 8,
+      marginBottom: 8 * scale,
     },
     scanMetadataLabel: {
-      fontSize: 15,
+      fontSize: 15 * scale,
       color: colorScheme === 'dark' ? '#888' : '#666',
       fontWeight: '500',
     },
     scanMetadataValue: {
-      fontSize: 15,
+      fontSize: 15 * scale,
       color: colorScheme === 'dark' ? '#fff' : '#000',
       fontWeight: '600',
     },
@@ -1850,43 +1868,44 @@ const getDynamicStyles = (colorScheme) =>
     },
     tabIndicator: {
       position: 'absolute',
-      bottom: 4,
-      height: 3,
+      bottom: 4 * scale,
+      height: 3 * scale,
       backgroundColor: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-      borderRadius: 90,
+      borderRadius: 90 * scale,
     },
     filterChipsContainer: {
       width: '100%',
-      paddingHorizontal: 16,
-      paddingVertical: 8,
+      paddingHorizontal: 16 * scale,
+      paddingTop: 8 * scale,
     },
     filterChipsContent: {
-      paddingRight: 16,
-      gap: 8,
+      left: 16 * scale,
+      paddingRight: 32 * scale,
+      gap: 8 * scale,
       flexDirection: 'row',
     },
     filterChip: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 12,
-      paddingVertical: 8,
-      borderRadius: 16,
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 8 * scale,
+      borderRadius: 16 * scale,
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
       borderWidth: 0,
-      height: 50,
-      maxHeight: 50,
+      height: 50 * scale,
+      maxHeight: 50 * scale,
     },
     filterChipActive: {
       backgroundColor: colorScheme === 'dark' ? '#0A84FF' : '#007AFF',
-      maxHeight: 50,
+      maxHeight: 50 * scale,
     },
     filterChipIcon: {
-      width: 16,
-      height: 16,
-      marginRight: 6,
+      width: 16 * scale,
+      height: 16 * scale,
+      marginRight: 6 * scale,
     },
     filterChipText: {
-      fontSize: 15,
+      fontSize: 15 * scale,
       fontWeight: '500',
       color: colorScheme === 'dark' ? '#fff' : '#000',
     },
@@ -1900,9 +1919,9 @@ const getDynamicStyles = (colorScheme) =>
     searchContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      paddingHorizontal: 16,
-      marginTop: 16,
-      gap: 12,
+      paddingHorizontal: 16 * scale,
+      marginTop: 16 * scale,
+      gap: 12 * scale,
       width: '100%',
     },
     searchInputContainer: {
@@ -1910,29 +1929,29 @@ const getDynamicStyles = (colorScheme) =>
       flexDirection: 'row',
       alignItems: 'center',
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3',
-      borderRadius: 12,
-      paddingHorizontal: 12,
-      height: 40,
+      borderRadius: 12 * scale,
+      paddingHorizontal: 12 * scale,
+      height: 40 * scale,
     },
     searchInput: {
       flex: 1,
       color: colorScheme === 'dark' ? '#fff' : '#000',
-      fontSize: 16,
-      marginLeft: 8,
+      fontSize: 16 * scale,
+      marginLeft: 8 * scale,
       height: '100%',
     },
     searchIcon: {
-      width: 20,
-      height: 20,
+      width: 20 * scale,
+      height: 20 * scale,
     },
     clearSearchIcon: {
-      width: 20,
-      height: 20,
-      marginLeft: 8,
+      width: 20 * scale,
+      height: 20 * scale,
+      marginLeft: 8 * scale,
     },
     filterIcon: {
-      width: 34,
-      height: 34,
+      width: 34 * scale,
+      height: 34 * scale,
     },
     filterButton: {
       // Define any additional styling if needed for consistency
@@ -1944,31 +1963,31 @@ const getDynamicStyles = (colorScheme) =>
     },
     datePickerContainer: {
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#ffffff',
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingBottom: 20,
+      borderTopLeftRadius: 20 * scale,
+      borderTopRightRadius: 20 * scale,
+      paddingBottom: 20 * scale,
     },
     datePickerHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
       alignItems: 'center',
-      padding: 16,
+      padding: 16 * scale,
       borderBottomWidth: 1,
       borderBottomColor: colorScheme === 'dark' ? '#333' : '#e5e5e5',
     },
     datePickerButton: {
-      padding: 8,
+      padding: 8 * scale,
     },
     datePickerButtonText: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       color: colorScheme === 'dark' ? '#fff' : '#000',
     },
     datePicker: {
-      height: 200,
+      height: 200 * scale,
       backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#ffffff',
     },
     historyList: {
-      padding: '3%',
+      padding: 12 * scale,
     },
   });
 
