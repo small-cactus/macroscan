@@ -35,6 +35,8 @@ import WhatsNew from './WhatsNew';
 import { handleAnthropicScan, handleOpenAIScan, handleGeminiScan } from './providers';
 import { getModel } from './providers/models';
 import { updateAverageProcessingTime, loadAverageProcessingTimes } from './providers/processingTimes';  // Add loadAverageProcessingTimes
+import ModeTooltip from '../components/ModeTooltip';
+import ScanButtonTooltip from '../components/ScanButtonTooltip';
 
 const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
 
@@ -871,6 +873,13 @@ const pickImage = async () => {
 };
 
 const takePhoto = async () => {
+  // If tooltip is showing, hide it with animation
+  if (showScanButtonTooltip && scanButtonTooltipRef.current) {
+    scanButtonTooltipRef.current.hideTooltipWithAnimation();
+    // Wait for animation before proceeding
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+
   if (isFirstDayUnlimited || isSubscribed) {
     navigation.navigate('CameraScreen');
   } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
@@ -1709,6 +1718,7 @@ const takePhoto = async () => {
         </Pressable>
 
         <Pressable
+          ref={scanButtonRef}
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
             takePhoto();
@@ -1760,62 +1770,127 @@ const takePhoto = async () => {
     });
   };
 
+  // Add tooltipRef near other refs
+  const tooltipRef = useRef(null);
+
   // Update the handleModeChipPress function
   const handleModeChipPress = async () => {
-    const currentMode = selectedMode;
-    const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
-    
-    Alert.alert(
-      'Scan Mode',
-      `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
-      (currentMode === 'fast' 
-        ? 'Fast Mode provides quick results and is great for packaged foods.'
-        : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: `Switch to ${MODE_LABELS[oppositeMode]}`,
-          onPress: async () => {
-            if (oppositeMode === 'accurate') {
-              if (isSubscribed || isFirstDayUnlimited) {
+    // Hide tooltip when chip is pressed
+    if (showModeTooltip && tooltipRef.current) {
+      tooltipRef.current.hideTooltipWithAnimation();
+      // Let the tooltip animation finish before showing the mode selection alert
+      setTimeout(() => {
+        const currentMode = selectedMode;
+        const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
+        
+        Alert.alert(
+          'Scan Mode',
+          `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
+          (currentMode === 'fast' 
+            ? 'Fast Mode provides quick results and is great for packaged foods.'
+            : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { 
+              text: `Switch to ${MODE_LABELS[oppositeMode]}`,
+              onPress: async () => {
+                if (oppositeMode === 'accurate') {
+                  if (isSubscribed || isFirstDayUnlimited) {
+                    await AsyncStorage.setItem('selectedMode', oppositeMode);
+                    crossfadeChipText(oppositeMode);
+                    Haptics.selectionAsync();
+                  } else {
+                    const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+                    if (freeAccurateScansUsed === '1') {
+                      Alert.alert(
+                        'Daily Limit Reached',
+                        'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+                      );
+                      return;
+                    }
+                    Alert.alert(
+                      'Heads Up!',
+                      'You only get one accurate scan a day on the free plan, so make it count!',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        {
+                          text: 'OK',
+                          onPress: async () => {
+                            await AsyncStorage.setItem('selectedMode', oppositeMode);
+                            crossfadeChipText(oppositeMode);
+                            Haptics.selectionAsync();
+                          },
+                        },
+                      ],
+                      { cancelable: false }
+                    );
+                  }
+                } else {
+                  await AsyncStorage.setItem('selectedMode', oppositeMode);
+                  crossfadeChipText(oppositeMode);
+                  Haptics.selectionAsync();
+                }
+              }
+            }
+          ]
+        );
+      }, 1500); // Wait for tooltip animation to complete
+    } else {
+      const currentMode = selectedMode;
+      const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
+      
+      Alert.alert(
+        'Scan Mode',
+        `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
+        (currentMode === 'fast' 
+          ? 'Fast Mode provides quick results and is great for packaged foods.'
+          : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { 
+            text: `Switch to ${MODE_LABELS[oppositeMode]}`,
+            onPress: async () => {
+              if (oppositeMode === 'accurate') {
+                if (isSubscribed || isFirstDayUnlimited) {
+                  await AsyncStorage.setItem('selectedMode', oppositeMode);
+                  crossfadeChipText(oppositeMode);
+                  Haptics.selectionAsync();
+                } else {
+                  const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+                  if (freeAccurateScansUsed === '1') {
+                    Alert.alert(
+                      'Daily Limit Reached',
+                      'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+                    );
+                    return;
+                  }
+                  Alert.alert(
+                    'Heads Up!',
+                    'You only get one accurate scan a day on the free plan, so make it count!',
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      {
+                        text: 'OK',
+                        onPress: async () => {
+                          await AsyncStorage.setItem('selectedMode', oppositeMode);
+                          crossfadeChipText(oppositeMode);
+                          Haptics.selectionAsync();
+                        },
+                      },
+                    ],
+                    { cancelable: false }
+                  );
+                }
+              } else {
                 await AsyncStorage.setItem('selectedMode', oppositeMode);
                 crossfadeChipText(oppositeMode);
                 Haptics.selectionAsync();
-              } else {
-                const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
-                if (freeAccurateScansUsed === '1') {
-                  Alert.alert(
-                    'Daily Limit Reached',
-                    'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
-                  );
-                  return;
-                }
-                Alert.alert(
-                  'Heads Up!',
-                  'You only get one accurate scan a day on the free plan, so make it count!',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await AsyncStorage.setItem('selectedMode', oppositeMode);
-                        crossfadeChipText(oppositeMode);
-                        Haptics.selectionAsync();
-                      },
-                    },
-                  ],
-                  { cancelable: false }
-                );
               }
-            } else {
-              await AsyncStorage.setItem('selectedMode', oppositeMode);
-              crossfadeChipText(oppositeMode);
-              Haptics.selectionAsync();
             }
           }
-        }
-      ]
-    );
+        ]
+      );
+    }
   };
 
   // Add this state variable with the other state declarations
@@ -2246,6 +2321,78 @@ const takePhoto = async () => {
   // Add this near other state declarations
   const [useComplexProcessing, setUseComplexProcessing] = useState(false);
 
+  // Add this state near other state declarations
+  const [showModeTooltip, setShowModeTooltip] = useState(false);
+
+  // Add this with other refs near the top
+  const modeChipRef = useRef(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
+  // Separate useEffect for tooltip that only runs after WhatsNew is closed
+  useEffect(() => {
+    let tooltipTimeout;
+    
+    const checkTooltipStatus = async () => {
+      try {
+        const hasSeenTooltip = await AsyncStorage.getItem('@has_seen_mode_tooltip');
+        if (!showWhatsNew && hasSeenTooltip !== 'true' && selectedMode === 'fast' && modeChipRef.current) {
+          tooltipTimeout = setTimeout(() => {
+            modeChipRef.current.measure((x, y, width, height, pageX, pageY) => {
+              setTooltipPosition({ x: pageX + width/2, y: pageY + height });
+              setShowModeTooltip(true);
+            });
+          }, 15000);
+        }
+      } catch (error) {
+        console.error('Error checking tooltip status:', error);
+      }
+    };
+    
+    checkTooltipStatus();
+
+    // Cleanup timeout when component unmounts or dependencies change
+    return () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+      }
+    };
+  }, [selectedMode, showWhatsNew]);
+
+  // Add these with other state declarations
+  const [showScanButtonTooltip, setShowScanButtonTooltip] = useState(false);
+  const [scanButtonTooltipPosition, setScanButtonTooltipPosition] = useState({ x: 0, y: 0 });
+  const scanButtonTooltipRef = useRef(null);
+  const scanButtonRef = useRef(null);
+
+  // Add this effect after the other tooltip effect
+  useEffect(() => {
+    let tooltipTimeout;
+    
+    const checkScanButtonTooltipStatus = async () => {
+      try {
+        const hasSeenTooltip = await AsyncStorage.getItem('@has_seen_scan_button_tooltip');
+        if (!showWhatsNew && hasSeenTooltip !== 'true' && scanButtonRef.current) {
+          tooltipTimeout = setTimeout(() => {
+            scanButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+              setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
+              setShowScanButtonTooltip(true);
+            });
+          }, 1000); // Show after mode tooltip
+        }
+      } catch (error) {
+        console.error('Error checking scan button tooltip status:', error);
+      }
+    };
+    
+    checkScanButtonTooltipStatus();
+
+    return () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+      }
+    };
+  }, [showWhatsNew]);
+
   return (
     <View style={styles.container}>
 
@@ -2412,30 +2559,31 @@ const takePhoto = async () => {
             </TouchableOpacity>
 
             <TouchableOpacity
-              style={styles.chipContainer}
+              ref={modeChipRef}
+              style={[styles.chipContainer, { position: 'relative' }]}
               onPress={handleModeChipPress}
             >
               <BlurView
                 intensity={50}
-                tint={chipAppearance} // Updated here
+                tint={chipAppearance}
                 style={[
                   styles.chip,
                   selectedMode === 'accurate' && styles.chipAccurate,
-                  { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' } // New border color update
+                  { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' }
                 ]}
               >
                 <View style={styles.chipContent}>
                   <Icon
                     name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'}
                     size={16}
-                    color={chipAppearance === 'dark' ? '#fff' : '#444'} // Updated here
+                    color={chipAppearance === 'dark' ? '#fff' : '#444'}
                   />
                   <Animated.Text
                     style={[
                       styles.chipText,
                       {
                         opacity: chipTextOpacity,
-                        color: chipAppearance === 'dark' ? '#fff' : '#444' // Updated here
+                        color: chipAppearance === 'dark' ? '#fff' : '#444'
                       }
                     ]}
                   >
@@ -2820,6 +2968,30 @@ const takePhoto = async () => {
       />
       
       {showWhatsNew && <WhatsNew onClose={handleWhatsNewClose} />}
+      {/* Move the ModeTooltip to the root level, just before the closing View of the container */}
+      <ModeTooltip 
+        visible={showModeTooltip} 
+        onHide={() => {
+          setShowModeTooltip(false);
+          AsyncStorage.setItem('@has_seen_mode_tooltip', 'true');
+        }}
+        position={tooltipPosition}
+        hideTooltipWithAnimation={() => {
+          setShowModeTooltip(false);
+          AsyncStorage.setItem('@has_seen_mode_tooltip', 'true');
+        }}
+        ref={tooltipRef}
+      />
+      {/* Add this before the closing View */}
+      <ScanButtonTooltip 
+        visible={showScanButtonTooltip} 
+        onHide={() => {
+          setShowScanButtonTooltip(false);
+          AsyncStorage.setItem('@has_seen_scan_button_tooltip', 'true');
+        }}
+        position={scanButtonTooltipPosition}
+        ref={scanButtonTooltipRef}
+      />
     </View>
   );
 };
