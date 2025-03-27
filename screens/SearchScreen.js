@@ -87,18 +87,40 @@ const SearchScreen = () => {
   // Reference to the FunctionalAIVisualization component
   const visualizationRef = useRef(null);
   
-  // Add a reference to track interval IDs
-  const intervalIdsRef = useRef([]);
+  // Add a reference to track interval/timeout IDs using an object
+  const timersRef = useRef({}); // Changed from array to object
   
-  // Helper to safely clear all intervals
-  const clearAllIntervals = () => {
-    // Clear all tracked intervals
-    if (intervalIdsRef.current) {
-      intervalIdsRef.current.forEach(id => {
+  // Helper to safely clear all timers (intervals and timeouts)
+  const clearAllTimers = () => {
+    console.log('Clearing all timers:', Object.keys(timersRef.current));
+    Object.keys(timersRef.current).forEach(key => {
+      const id = timersRef.current[key];
+      if (id) {
+        clearTimeout(id); // Works for both intervals and timeouts
         clearInterval(id);
-        clearTimeout(id);
-      });
-      intervalIdsRef.current = [];
+      }
+    });
+    timersRef.current = {}; // Reset the object
+  };
+  
+  // Helper to add a timer
+  const addTimer = (key, id) => {
+    // Clear previous timer with the same key if it exists
+    if (timersRef.current[key]) {
+      clearTimeout(timersRef.current[key]);
+      clearInterval(timersRef.current[key]);
+    }
+    timersRef.current[key] = id;
+    console.log('Added timer:', key, id);
+  };
+
+  // Helper to remove a timer (optional, clearAllTimers is often sufficient)
+  const removeTimer = (key) => {
+    if (timersRef.current[key]) {
+      clearTimeout(timersRef.current[key]);
+      clearInterval(timersRef.current[key]);
+      delete timersRef.current[key];
+      console.log('Removed timer:', key);
     }
   };
   
@@ -157,10 +179,8 @@ const SearchScreen = () => {
         }
       }, 2000);
       
-      // Track the timeout ID for cleanup
-      if (intervalIdsRef.current) {
-        intervalIdsRef.current.push(intervalId);
-      }
+      // Track the timeout ID using the new helper
+      addTimer(`loadingQueue_${nextText.replace(/\s/g, '_')}`, intervalId);
     }
   };
   
@@ -188,6 +208,9 @@ const SearchScreen = () => {
     loadingAnimationRef.current = setTimeout(() => {
       processLoadingQueue();
     }, 2000);
+
+    // Track the timeout ID using the new helper
+    addTimer('loadingAnimationStart', loadingAnimationRef.current);
   };
   
   // Add a function to safely stop animations
@@ -215,7 +238,7 @@ const SearchScreen = () => {
     }
     
     // Reset any running intervals
-    clearAllIntervals();
+    clearAllTimers();
   }, [fadeAnim, visualizationFadeAnim]);
   
   const stopLoadingAnimation = () => {
@@ -227,7 +250,7 @@ const SearchScreen = () => {
     }
     
     // Clear any other intervals/timeouts
-    clearAllIntervals();
+    clearAllTimers();
     
     // Use animation to fade out safely
     Animated.timing(fadeAnim, {
@@ -315,7 +338,7 @@ const SearchScreen = () => {
       }
       
       // Reset any running intervals (like loading text cycling)
-      clearAllIntervals();
+      clearAllTimers();
       
       // Reset temporary states
       setProcessingImage(null);
@@ -426,12 +449,14 @@ const SearchScreen = () => {
       isProcessingRef.current = true;
       
       // Reset states from any previous scan
-      clearAllIntervals();
+      clearAllTimers(); 
       
-      // Explicitly reset the visualization component itself first
+      // Explicitly reset the visualization component itself *before* showing it
       if (visualizationRef.current && visualizationRef.current.reset) {
-        console.log('Explicitly resetting visualization component');
+        console.log('Explicitly resetting visualization component before new scan');
         visualizationRef.current.reset();
+      } else {
+        console.log('Visualization ref not available for reset yet');
       }
       
       // Always use the selected provider
@@ -459,7 +484,7 @@ const SearchScreen = () => {
       setDetectedPackaging('');
       setDetectedPortionSize('');
       
-      // Set showVisualization first
+      // Set showVisualization *after* potential reset
       setShowVisualization(true);
       
       // Log reset confirmation to verify states are clean
@@ -507,7 +532,7 @@ const SearchScreen = () => {
       }, 100);
       
       // Track the timeout for cleanup
-      intervalIdsRef.current.push(delayTimer);
+      addTimer('animationDelay', delayTimer); // Use the new helper
       
       console.log('Mode: search, Provider:', provider, 'Has drawing:', hasDrawing);
       startTimeRef.current = Date.now();
@@ -600,7 +625,7 @@ const SearchScreen = () => {
                     // Increase the delay before hiding the visualization (from 2000ms to 4000ms)
                     // This gives users more time to see the completed visualization
                     if (!isLoading) {
-                      setTimeout(() => {
+                      const fadeOutTimer = setTimeout(() => { // Track this timer
                         if (isProcessingRef.current) {
                           fadeOutVisualization(() => {
                             // After fade completes, update state and refresh UI
@@ -624,9 +649,11 @@ const SearchScreen = () => {
                           });
                         }
                       }, 2000); // Reduced from 4000ms to 2000ms
+                      addTimer('fadeOutVizSuccess', fadeOutTimer); // Track timer
                     }
                   }
                 }, 1500);
+                addTimer('completeVizDelay', completeVizDelayTimer); // Track timer
               }
               
               return true;
@@ -644,7 +671,7 @@ const SearchScreen = () => {
           setIsLoading(false);
           
           // Reset all animation and visualization states
-          stopLoadingAnimation();
+          stopLoadingAnimation(); // This now calls clearAllTimers
           
           // Explicitly reset the visualization component
           if (visualizationRef.current && visualizationRef.current.reset) {
@@ -895,15 +922,18 @@ const SearchScreen = () => {
       console.error('Error in sendImageToApi:', error);
       setIsLoading(false);
       
-      // Safely stop animations with the helper function
-      safelyStopAnimations();
+      // Explicitly stop animations before resetting state
+      fadeAnim.stopAnimation();
+      visualizationFadeAnim.stopAnimation();
+      fadeAnimTitle.stopAnimation(); // Stop other animations too if necessary
+      tabFadeAnim.stopAnimation();
+
+      // Safely stop animations and clear timers
+      safelyStopAnimations(); 
       setProcessingImage(null);
       
       // Reset all animation and temporary states
-      setTimeout(() => {
-        // Reset any running intervals
-        clearAllIntervals();
-        
+      const resetTimer = setTimeout(() => { 
         // Explicitly reset the visualization component
         if (visualizationRef.current && visualizationRef.current.reset) {
           console.log('Resetting visualization component due to error');
@@ -913,6 +943,7 @@ const SearchScreen = () => {
         // Hide visualization if it was shown
         setShowVisualization(false);
       }, 200);
+      addTimer('errorReset', resetTimer); 
       
       Alert.alert('Error', 'An error occurred during image processing. Please try again.');
     } finally {
@@ -1265,13 +1296,14 @@ const SearchScreen = () => {
   useEffect(() => {
     return () => {
       // Cleanup all timeouts and intervals when component unmounts
-      if (loadingAnimationRef.current) {
-        clearTimeout(loadingAnimationRef.current);
-        loadingAnimationRef.current = null;
-      }
+      // if (loadingAnimationRef.current) { // No longer needed with clearAllTimers
+      //   clearTimeout(loadingAnimationRef.current);
+      //   loadingAnimationRef.current = null;
+      // }
       
-      // Reset any running intervals (like loading text cycling)
-      clearAllIntervals();
+      // Reset any running intervals/timeouts
+      clearAllTimers(); // Use the new helper
+      // clearAllIntervals(); // Remove old call
       
       // Reset all states
       setIsLoading(false);

@@ -124,8 +124,7 @@ function HomeTabs() {
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
-      {/* Uncomment and add the Beta screen if needed
-      <Tab.Screen name="Beta" component={BetaScreen} /> */}
+      <Tab.Screen name="Beta" component={SearchScreen} />
     </Tab.Navigator>
   );
 }
