@@ -65,6 +65,16 @@ const SettingsScreen = () => {
       navigateTo: "AboutScreen",
       symbol: "info.circle.fill"
     },
+    {
+      title: "Multi-Food Scan (BETA)",
+      navigateTo: "MultiFoodScanScreen",
+      symbol: "fork.knife"
+    },
+    {
+      title: "Search Mode (BETA)",
+      navigateTo: "SearchScreen",
+      symbol: "fork.knife"
+    }
   ];
 
   // Update the filtering logic to check against the array of authorized userStrings
@@ -91,9 +101,9 @@ const SettingsScreen = () => {
     // await AsyncStorage.removeItem('@selected_provider');
     // await AsyncStorage.setItem('@openai_api_key', 'OPENAI_API_KEY_REMOVED');
     // await AsyncStorage.setItem('@gemini_api_key', 'GEMINI_API_KEY_REMOVED');
-    await AsyncStorage.removeItem('@has_seen_whats_new_1_6_0');
-    await AsyncStorage.removeItem('@has_seen_mode_tooltip');
-    await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
+    // await AsyncStorage.removeItem('@has_seen_whats_new_1_6_0');
+    // await AsyncStorage.removeItem('@has_seen_mode_tooltip');
+    // await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
     navigation.navigate(navigateTo);
   };
 

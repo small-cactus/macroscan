@@ -1,0 +1,1528 @@
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
+  Modal, Alert, useColorScheme, Animated, Dimensions, Platform, TextInput,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import { useFocusEffect } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/Ionicons';
+import { useUser } from '../userContext';
+import { LinearGradient } from 'expo-linear-gradient';
+import { BlurView } from 'expo-blur';
+import { handleWebSearch } from './providers';
+import { getModel } from './providers/models';
+import { updateAverageProcessingTime } from './providers/processingTimes';
+import { useTimeZone } from '../TimeZoneContext';
+import FunctionalAIVisualization from './FunctionalAIVisualization';
+
+const { width, height } = Dimensions.get('window');
+
+const LOADING_TEXTS = [
+  "Searching the web...",
+  "Analyzing nutrition data...",
+  "Checking sources...",
+  "Comparing information...",
+  "Finding accurate details...",
+  "Verifying sources...",
+  "Gathering nutrition facts...",
+  "Processing search results...",
+  "Almost there...",
+];
+
+const SearchScreen = () => {
+  // Core state
+  const [image, setImage] = useState(null);
+  const [processingImage, setProcessingImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [foodData, setFoodData] = useState(null);
+  const [activeTab, setActiveTab] = useState('nutrition');
+  const colorScheme = useColorScheme();
+  const styles = getDynamicStyles(colorScheme);
+  
+  // Loading animation state
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [loadingTextQueue, setLoadingTextQueue] = useState([]);
+  const [currentLoadingText, setCurrentLoadingText] = useState('');
+  const isAnimationRunningRef = useRef(false);
+  const tabFadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnimTitle = useRef(new Animated.Value(1)).current;
+  const fadeAnimImage = useRef(new Animated.Value(1)).current;
+  const fadeAnimPlaceholder = useRef(new Animated.Value(1)).current;
+  const [showPlaceholder, setShowPlaceholder] = useState(true);
+  
+  // Add fade animation for visualization
+  const visualizationFadeAnim = useRef(new Animated.Value(1)).current;
+  
+  // Status state
+  const [noFoodFound, setNoFoodFound] = useState(false);
+  const [errorOccurred, setErrorOccurred] = useState(false);
+  const loadingAnimationRef = useRef(null);
+  const startTimeRef = useRef(null);
+  
+  // External hooks
+  const { user, apiKeys } = useUser();
+  const { getTodayString } = useTimeZone();
+  
+  // Scan settings
+  const [selectedProvider, setSelectedProvider] = useState('anthropic');
+  const [selectedModel, setSelectedModel] = useState(null);
+  const isProcessingRef = useRef(false);
+  
+  // Search results display
+  const [searchQueries, setSearchQueries] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  
+  // New state for visualization
+  const [showVisualization, setShowVisualization] = useState(false);
+  
+  // Add array to track detected food items during scanning
+  const [detectedFoodItems, setDetectedFoodItems] = useState([]);
+  const [detectedBrand, setDetectedBrand] = useState('');
+  const [detectedPackaging, setDetectedPackaging] = useState('');
+  const [detectedPortionSize, setDetectedPortionSize] = useState('');
+  
+  // Reference to the FunctionalAIVisualization component
+  const visualizationRef = useRef(null);
+  
+  // Add a reference to track interval IDs
+  const intervalIdsRef = useRef([]);
+  
+  // Helper to safely clear all intervals
+  const clearAllIntervals = () => {
+    // Clear all tracked intervals
+    intervalIdsRef.current.forEach(id => {
+      clearInterval(id);
+    });
+    intervalIdsRef.current = [];
+  };
+  
+  // Initialize settings when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      const loadSettings = async () => {
+        try {
+          // Always use search mode in this screen
+          const mode = 'search';
+          
+          // Get the provider preference from storage
+          const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+          setSelectedProvider(provider);
+          
+          // Get the model for the selected provider in search mode
+          const currentModel = getModel(provider, {
+            selectedMode: mode,
+            selectedModel: await AsyncStorage.getItem('selectedModel'),
+            hasDrawing: false
+          });
+          
+          setSelectedModel(currentModel);
+        } catch (error) {
+          console.error("Error loading settings:", error);
+        }
+      };
+      
+      loadSettings();
+      setLoadingTextQueue(LOADING_TEXTS);
+    }, [])
+  );
+  
+  // Loading animation functions
+  const enqueueLoadingText = (text) => {
+    setLoadingTextQueue(prevQueue => [...prevQueue, text]);
+  };
+  
+  const scheduleLoadingTexts = () => {
+    setLoadingTextQueue(LOADING_TEXTS);
+    isAnimationRunningRef.current = true;
+    processLoadingQueue();
+  };
+  
+  const processLoadingQueue = () => {
+    if (loadingTextQueue.length > 0 && isAnimationRunningRef.current) {
+      const nextText = loadingTextQueue[0];
+      setCurrentLoadingText(nextText);
+      setLoadingTextQueue(prevQueue => prevQueue.slice(1));
+      
+      // Re-add the text to the end of the queue for cycling
+      const intervalId = setTimeout(() => {
+        if (isAnimationRunningRef.current) {
+          setLoadingTextQueue(prevQueue => [...prevQueue, nextText]);
+          processLoadingQueue();
+        }
+      }, 2000);
+      
+      // Track the timeout ID for cleanup
+      intervalIdsRef.current.push(intervalId);
+    }
+  };
+  
+  const startLoadingAnimation = () => {
+    setCurrentLoadingText(LOADING_TEXTS[0]);
+    isAnimationRunningRef.current = true;
+    
+    // Extract food names from any preliminary detection results if available
+    const foodNames = [];
+    try {
+      if (processingImage) {
+        // See if we can extract food names from ML model results or other sources
+        // This is a placeholder for potential real detection
+        if (foodData?.food?.name) {
+          foodNames.push(foodData.food.name);
+        }
+      }
+    } catch (error) {
+      console.error('Error extracting food names:', error);
+    }
+    
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+    
+    loadingAnimationRef.current = setTimeout(() => {
+      processLoadingQueue();
+    }, 2000);
+  };
+  
+  const stopLoadingAnimation = () => {
+    isAnimationRunningRef.current = false;
+    
+    if (loadingAnimationRef.current) {
+      clearTimeout(loadingAnimationRef.current);
+      loadingAnimationRef.current = null;
+    }
+    
+    // Clear any other intervals/timeouts
+    clearAllIntervals();
+    
+    Animated.timing(fadeAnim, {
+      toValue: 0,
+      duration: 500,
+      useNativeDriver: true,
+    }).start();
+  };
+  
+  // Image processing functions
+  const resizeImage = async (uri) => {
+    try {
+      const manipResult = await manipulateAsync(
+        uri,
+        [{ resize: { width: 1024 } }],
+        { compress: 0.8, format: SaveFormat.JPEG }
+      );
+      return manipResult.uri;
+    } catch (error) {
+      console.error('Error resizing image:', error);
+      return uri;
+    }
+  };
+  
+  const imageToBase64 = async (uri) => {
+    const response = await fetch(uri);
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const base64data = reader.result.split(',')[1];
+        resolve(base64data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  };
+  
+  // UI animation functions
+  const fadeOutTitle = (callback) => {
+    Animated.timing(fadeAnimTitle, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(callback);
+  };
+  
+  const fadeInTitle = () => {
+    Animated.timing(fadeAnimTitle, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+  
+  // Add a function to reset the visualization component
+  const resetVisualization = () => {
+    // Reset the visualization component itself
+    if (visualizationRef.current && visualizationRef.current.reset) {
+      console.log('Explicitly resetting visualization component');
+      visualizationRef.current.reset();
+    }
+    
+    // Reset visualization-related states
+    setShowVisualization(false);
+    visualizationFadeAnim.setValue(1);
+  };
+  
+  // Update fadeOutVisualization to use resetVisualization
+  const fadeOutVisualization = (callback) => {
+    // Reset the visualization fade value first
+    visualizationFadeAnim.setValue(1);
+    
+    // Fade out smoothly
+    Animated.timing(visualizationFadeAnim, {
+      toValue: 0,
+      duration: 500, // 500ms fade out
+      useNativeDriver: true,
+    }).start(() => {
+      // After fade completes, update state and refresh UI
+      setShowVisualization(false);
+      
+      // Reset all animation states for next scan
+      fadeAnim.setValue(0);
+      visualizationFadeAnim.setValue(1);
+      
+      // Clear any pending loading animation timeouts or intervals
+      if (loadingAnimationRef.current) {
+        clearTimeout(loadingAnimationRef.current);
+        loadingAnimationRef.current = null;
+      }
+      
+      // Reset any running intervals (like loading text cycling)
+      clearAllIntervals();
+      
+      // Reset temporary states
+      setProcessingImage(null);
+      setCurrentLoadingText('');
+      setLoadingTextQueue(LOADING_TEXTS);
+      isAnimationRunningRef.current = false;
+      
+      // Reset the visualization component
+      resetVisualization();
+      
+      // Reset search tracking states if not needed in results
+      if (foodData) {
+        // Keep search queries and results since they're displayed in the results
+        // But reset detection states that were just for processing
+        setDetectedBrand('');
+        setDetectedPackaging('');
+        setDetectedPortionSize('');
+        // We keep detectedFoodItems since they're used in showing results
+      } else {
+        // If no food data, reset everything
+        setSearchQueries([]);
+        setSearchResults([]);
+        setDetectedFoodItems([]);
+        setDetectedBrand('');
+        setDetectedPackaging('');
+        setDetectedPortionSize('');
+      }
+      
+      // Force active tab to refresh by briefly toggling animation
+      if (activeTab === 'nutrition' && foodData) {
+        // Force re-render of nutrition tab content by toggling animation
+        tabFadeAnim.setValue(0);
+        setTimeout(() => {
+          tabFadeAnim.setValue(1);
+        }, 50);
+      }
+      
+      // Call callback if provided
+      if (callback) callback();
+    });
+  };
+  
+  // Image selection functions
+  const pickImage = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert('Permission Needed', 'Please grant permission to access your photo library.');
+      return;
+    }
+    
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const resizedImage = await resizeImage(result.assets[0].uri);
+        await sendImageToApi(resizedImage);
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'An error occurred while accessing your photos. Please try again.');
+    }
+  };
+  
+  const takePhoto = async () => {
+    const { status } = await ImagePicker.requestCameraPermissionsAsync();
+    
+    if (status !== 'granted') {
+      Alert.alert('Permission Needed', 'Please grant permission to access your camera.');
+      return;
+    }
+    
+    try {
+      const result = await ImagePicker.launchCameraAsync({
+        allowsEditing: true,
+        aspect: [4, 3],
+        quality: 0.8,
+      });
+      
+      if (!result.canceled && result.assets && result.assets.length > 0) {
+        const resizedImage = await resizeImage(result.assets[0].uri);
+        await sendImageToApi(resizedImage);
+      }
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'An error occurred while using your camera. Please try again.');
+    }
+  };
+  
+  // Main API function
+  const sendImageToApi = async (imageUri, barcodeData = null, hasDrawing = false) => {
+    if (isProcessingRef.current) {
+      console.log('Already processing an image, ignoring new request');
+      return;
+    }
+    
+    try {
+      isProcessingRef.current = true;
+      
+      // Reset states from any previous scan
+      resetVisualization();
+      clearAllIntervals();
+      fadeAnim.setValue(0); // Start with fade animation reset
+      
+      // Explicitly reset the visualization component itself first
+      if (visualizationRef.current && visualizationRef.current.reset) {
+        console.log('Explicitly resetting visualization component');
+        visualizationRef.current.reset();
+      }
+      
+      // Always use the selected provider
+      const provider = selectedProvider;
+      
+      // Always use search mode in this screen
+      const mode = 'search';
+      
+      // Get the appropriate model
+      const currentModel = getModel(provider, { 
+        selectedMode: mode,
+        selectedModel,
+        hasDrawing
+      });
+      
+      setIsLoading(true);
+      setNoFoodFound(false);
+      setErrorOccurred(false);
+      
+      // Explicitly clear search queries and results before starting a new scan
+      setSearchQueries([]);
+      setSearchResults([]);
+      setDetectedFoodItems([]);
+      setDetectedBrand('');
+      setDetectedPackaging('');
+      setDetectedPortionSize('');
+      
+      setShowVisualization(true);
+      
+      // Log reset confirmation to verify states are clean
+      console.log('All states reset for new scan. Ready to process new image.');
+      
+      // Convert image to base64
+      let base64Image;
+      if (typeof imageUri === 'string') {
+        if (imageUri.startsWith('data:image/jpeg;base64,')) {
+          base64Image = imageUri.replace('data:image/jpeg;base64,', '');
+        } else if (!imageUri.startsWith('file://')) {
+          base64Image = imageUri;
+        } else {
+          base64Image = await imageToBase64(imageUri);
+        }
+      } else {
+        base64Image = await imageToBase64(imageUri);
+      }
+      
+      base64Image = base64Image.replace(/[\n\r]/g, '').trim();
+      
+      if (!base64Image || !/^[A-Za-z0-9+/=]+$/.test(base64Image)) {
+        throw new Error('Invalid base64 string format');
+      }
+      
+      startLoadingAnimation();
+      console.log('Mode: search, Provider:', provider, 'Has drawing:', hasDrawing);
+      setProcessingImage(imageUri);
+      
+      scheduleLoadingTexts();
+      startTimeRef.current = Date.now();
+      
+      let foodFound = false;
+      
+      // Use API key from context
+      const apiKey = apiKeys?.[provider + 'ApiKey'];
+      
+      if (!apiKey) {
+        console.error(`API key not found for ${provider}`);
+        Alert.alert('Error', `API key not found for ${provider}`);
+        setIsLoading(false);
+        stopLoadingAnimation();
+        setProcessingImage(null);
+        isProcessingRef.current = false;
+        return;
+      }
+      
+      // Set up parameters for the web search handler
+      const providerParams = {
+        provider,
+        selectedModel: currentModel,
+        selectedMode: mode,
+        base64Image,
+        barcodeData,
+        hasDrawing,
+        apiKey,
+        handleSuccessfulScan: async (parsedData, imageUri, barcodeData, hasDrawing, actualModel) => {
+          try {
+            console.log('Processing successful scan with data:', parsedData);
+            
+            // Extract search sources if available
+            if (parsedData && parsedData.details && parsedData.details.sources) {
+              const sources = parsedData.details.sources;
+              console.log('Found sources in response:', sources);
+              
+              if (Array.isArray(sources) && sources.length > 0) {
+                setSearchResults(sources);
+              }
+            }
+            
+            // If we got food data, save it and set the active tab
+            if (parsedData && parsedData.food) {
+              setFoodData(parsedData);
+              setActiveTab('nutrition');
+              Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+              
+              // Check for search information that might be stored in custom fields
+              if (parsedData._searchInfo) {
+                if (parsedData._searchInfo.queries) {
+                  setSearchQueries(parsedData._searchInfo.queries);
+                }
+                if (parsedData._searchInfo.results) {
+                  setSearchResults(prev => 
+                    [...prev, ...parsedData._searchInfo.results.filter(r => 
+                      !prev.some(existing => existing.url === r.url)
+                    )]
+                  );
+                }
+                
+                // Clean up the custom field to avoid storing it
+                delete parsedData._searchInfo;
+              }
+              
+              // Add a flag to indicate this is the final processing step
+              parsedData._isProcessingComplete = true;
+              
+              // If we have the AI visualization ref, force all steps to complete in sequence
+              if (visualizationRef.current) {
+                console.log('Final data received - completing AI visualization');
+                
+                // First update with the final data
+                visualizationRef.current.updateWithScanData(parsedData);
+                
+                // Then complete the visualization with a series of deliberate delays
+                // to ensure the steps complete in the right order visually
+                setTimeout(() => {
+                  if (visualizationRef.current && visualizationRef.current.completeVisualization) {
+                    console.log('Explicitly completing AI visualization - using force flag');
+                    visualizationRef.current.completeVisualization(true); // Use force flag to bypass timing checks
+                    
+                    // Increase the delay before hiding the visualization (from 2000ms to 4000ms)
+                    // This gives users more time to see the completed visualization
+                    if (!isLoading) {
+                      setTimeout(() => {
+                        fadeOutVisualization();
+                      }, 4000); // Increased from 2000ms to 4000ms
+                    }
+                  }
+                }, 1500);
+              }
+              
+              return true;
+            }
+            
+            return false;
+          } catch (error) {
+            console.error('Error in handleSuccessfulScan:', error);
+            return false;
+          }
+        },
+        handleError: (error, imageUri, barcodeData) => {
+          console.error('Error in web search:', error);
+          setErrorOccurred(true);
+          setIsLoading(false);
+          
+          // Reset all animation and visualization states
+          stopLoadingAnimation();
+          
+          // Explicitly reset the visualization component
+          if (visualizationRef.current && visualizationRef.current.reset) {
+            console.log('Resetting visualization component due to API error');
+            visualizationRef.current.reset();
+          }
+          
+          resetVisualization();
+          
+          // Reset processing states
+          setProcessingImage(null);
+          isAnimationRunningRef.current = false;
+          
+          Alert.alert('Error', 'An error occurred during web search. Please try again.');
+        },
+        // Add a specific handler for tracking search queries and results
+        handleSearchTracking: (queries, results) => {
+          try {
+            // Store reference to base64Image to use in this scope
+            const hasValidImage = !!base64Image;
+            
+            if (Array.isArray(queries) && queries.length > 0) {
+              console.log('Received search queries:', queries);
+              setSearchQueries(prev => {
+                // Filter out duplicates
+                const uniqueQueries = [...prev];
+                queries.forEach(query => {
+                  if (!uniqueQueries.includes(query)) {
+                    uniqueQueries.push(query);
+                  }
+                });
+                return uniqueQueries;
+              });
+              
+              // Try to extract food items from queries
+              const foodKeywords = ['nutrition', 'calories', 'food', 'recipe', 'dish', 'meal', 'facts for'];
+              const possibleFoodItems = [];
+              
+              queries.forEach(query => {
+                // Look for "nutrition facts for X" pattern first (most reliable)
+                const factsForMatch = query.match(/(?:nutrition|nutrient)\s+facts\s+for\s+(.+?)(?:$|\.|,)/i);
+                if (factsForMatch && factsForMatch[1] && factsForMatch[1].length > 2) {
+                  const foodItem = factsForMatch[1].trim();
+                  if (!possibleFoodItems.includes(foodItem)) {
+                    possibleFoodItems.push(foodItem);
+                  }
+                  return; // Skip additional processing for this query
+                }
+                
+                // If query contains food-related keywords, extract potential food name
+                const containsFoodKeyword = foodKeywords.some(keyword => 
+                  query.toLowerCase().includes(keyword.toLowerCase())
+                );
+                
+                if (containsFoodKeyword) {
+                  const words = query.split(' ');
+                  if (words.length > 2) {
+                    // Find the keyword in the query
+                    const keywordIndex = words.findIndex(word => 
+                      foodKeywords.some(keyword => word.toLowerCase().includes(keyword.toLowerCase()))
+                    );
+                    
+                    if (keywordIndex > 0) {
+                      // Take words before the keyword as potential food name
+                      const foodPart = words.slice(0, keywordIndex).join(' ');
+                      if (foodPart && foodPart.length > 2 && !possibleFoodItems.includes(foodPart)) {
+                        possibleFoodItems.push(foodPart);
+                      }
+                    } else if (keywordIndex === 0 && words.length > 2) {
+                      // If keyword is first, try taking words after it (e.g., "nutrition for avocado toast")
+                      if (words[1].toLowerCase() === 'for' || words[1].toLowerCase() === 'of') {
+                        const foodPart = words.slice(2).join(' ');
+                        if (foodPart && foodPart.length > 2 && !possibleFoodItems.includes(foodPart)) {
+                          possibleFoodItems.push(foodPart);
+                        }
+                      }
+                    }
+                  }
+                }
+              });
+              
+              if (possibleFoodItems.length > 0) {
+                setDetectedFoodItems(prev => {
+                  const newItems = [...prev];
+                  possibleFoodItems.forEach(item => {
+                    if (!newItems.includes(item)) {
+                      newItems.push(item);
+                    }
+                  });
+                  return newItems;
+                });
+                
+                // Extract brand/restaurant information from query if available
+                const brandQuery = queries.find(q => q.toLowerCase().includes('mcdonald') || 
+                                                    q.toLowerCase().includes('burger king') ||
+                                                    q.toLowerCase().includes('wendy') ||
+                                                    q.toLowerCase().includes('taco bell') ||
+                                                    q.toLowerCase().includes('subway') ||
+                                                    q.toLowerCase().includes('starbucks'));
+                
+                if (brandQuery && !detectedBrand) {
+                  // Try to extract brand name from the query
+                  const brands = ['McDonald\'s', 'Burger King', 'Wendy\'s', 'Taco Bell', 'Subway', 'Starbucks', 
+                                  'Chipotle', 'Panera', 'KFC', 'Dunkin\'', 'Domino\'s', 'Pizza Hut'];
+                  
+                  for (const brand of brands) {
+                    if (brandQuery.includes(brand)) {
+                      setDetectedBrand(brand);
+                      break;
+                    }
+                  }
+                }
+              }
+              
+              // Force update visualization with new queries
+              if (visualizationRef.current && visualizationRef.current.forceUpdateSubtitles) {
+                console.log('Forcing visualization update for new queries');
+                visualizationRef.current.forceUpdateSubtitles();
+              }
+            }
+            if (Array.isArray(results) && results.length > 0) {
+              console.log('Received search results:', results);
+              setSearchResults(prev => {
+                // Filter out duplicates by URL
+                return [...prev, ...results.filter(r => 
+                  !prev.some(existing => existing.url === r.url)
+                )];
+              });
+              
+              // Try to extract food items from search result titles and snippets
+              const possibleFoodItems = [];
+              
+              results.forEach(result => {
+                if (result.title) {
+                  // Check if title contains food terms
+                  const foodTerms = ['nutrition', 'calories', 'food', 'recipe', 'nutritional', 
+                                    'diet', 'protein', 'carbs', 'fat', 'serving'];
+                  
+                  const hasFoodTerm = foodTerms.some(term => 
+                    result.title.toLowerCase().includes(term.toLowerCase())
+                  );
+                  
+                  if (hasFoodTerm) {
+                    // Extract first part of title as potential food
+                    const parts = result.title.split(/\s+[\-–—:|\(]/);
+                    if (parts[0] && parts[0].length > 2 && 
+                        !possibleFoodItems.includes(parts[0]) && 
+                        !foodTerms.some(term => parts[0].toLowerCase().includes(term.toLowerCase()))) {
+                      possibleFoodItems.push(parts[0].trim());
+                    }
+                  }
+                }
+                
+                // Also check snippet for food mentions
+                if (result.snippet) {
+                  // Look for phrases like "nutrition facts for X" or "calories in X"
+                  const nutritionRegex = /(?:nutrition|calories|nutrients|facts|information)\s+(?:for|in|of)\s+([a-zA-Z0-9\s]+?)(?:\.|,|\s+\(|\s+\[|\s+is|\s+are|\s+contains|\s+per)/i;
+                  const match = result.snippet.match(nutritionRegex);
+                  
+                  if (match && match[1] && match[1].length > 2 && !possibleFoodItems.includes(match[1])) {
+                    possibleFoodItems.push(match[1].trim());
+                  }
+                }
+              });
+              
+              if (possibleFoodItems.length > 0) {
+                setDetectedFoodItems(prev => {
+                  const newItems = [...prev];
+                  possibleFoodItems.forEach(item => {
+                    if (!newItems.includes(item)) {
+                      newItems.push(item);
+                    }
+                  });
+                  return newItems;
+                });
+              }
+              
+              // Force update visualization with new results
+              if (visualizationRef.current && visualizationRef.current.forceUpdateSubtitles) {
+                console.log('Forcing visualization update for new results');
+                visualizationRef.current.forceUpdateSubtitles();
+              }
+            }
+            
+            // Try to analyze the image content to get food name if we don't have it yet
+            if (detectedFoodItems.length === 0 && hasValidImage) {
+              // Set a placeholder item based on the search query
+              const initialQueries = ['food image', 'meal image', 'dish image'];
+              const hasDetailedQuery = initialQueries.every(query => !query.startsWith(query));
+              
+              if (hasDetailedQuery && queries.length > 0) {
+                // Use the first query as a hint about the food type
+                setDetectedFoodItems(['food']);
+              }
+            }
+          } catch (error) {
+            // Prevent errors in handleSearchTracking from crashing the app
+            console.error('Error in handleSearchTracking:', error);
+          }
+        },
+        imageUri,
+        startTimeRef,
+        updateAverageProcessingTime,
+        isFirstDayUnlimited: false,
+        isSubscribed: true, // Assume subscribed for testing
+        setNoFoodFound,
+        setFoodData,
+        setActiveTab,
+      };
+      
+      // Call the web search handler
+      foodFound = await handleWebSearch(providerParams);
+      
+      setIsLoading(false);
+      stopLoadingAnimation();
+      setProcessingImage(null);
+      
+      // Allow visualization to complete before hiding it
+      setTimeout(() => {
+        fadeOutVisualization();
+      }, 2000); // Reduced from 4000ms to 2000ms
+      
+      fadeOutTitle(() => {
+        fadeInTitle();
+      });
+      
+      setShowPlaceholder(false);
+    } catch (error) {
+      console.error('Error in sendImageToApi:', error);
+      setIsLoading(false);
+      stopLoadingAnimation();
+      setProcessingImage(null);
+      
+      // Reset all animation and temporary states
+      fadeAnim.setValue(0);
+      visualizationFadeAnim.setValue(1);
+      setCurrentLoadingText('');
+      setLoadingTextQueue(LOADING_TEXTS);
+      isAnimationRunningRef.current = false;
+      
+      // Clear any pending animations
+      if (loadingAnimationRef.current) {
+        clearTimeout(loadingAnimationRef.current);
+        loadingAnimationRef.current = null;
+      }
+      
+      // Reset any running intervals
+      clearAllIntervals();
+      
+      // Explicitly reset the visualization component
+      if (visualizationRef.current && visualizationRef.current.reset) {
+        console.log('Resetting visualization component due to error');
+        visualizationRef.current.reset();
+      }
+      
+      // Hide visualization if it was shown
+      setShowVisualization(false);
+      
+      Alert.alert('Error', 'An error occurred during image processing. Please try again.');
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+  
+  // Handle tab switching
+  const handleTabPress = (tab) => {
+    if (activeTab === tab || isLoading || noFoodFound || !foodData) return;
+    
+    Animated.timing(tabFadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      setActiveTab(tab);
+      Animated.timing(tabFadeAnim, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+  
+  // Render functions for the UI
+  const renderTabs = () => (
+    <View style={styles.tabContainer}>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'nutrition' && styles.activeTab]}
+        onPress={() => handleTabPress('nutrition')}
+        disabled={isLoading || noFoodFound || !foodData}
+      >
+        <Text style={[styles.tabText, activeTab === 'nutrition' && styles.activeTabText]}>Nutrition</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'ingredients' && styles.activeTab]}
+        onPress={() => handleTabPress('ingredients')}
+        disabled={isLoading || noFoodFound || !foodData}
+      >
+        <Text style={[styles.tabText, activeTab === 'ingredients' && styles.activeTabText]}>Ingredients</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'details' && styles.activeTab]}
+        onPress={() => handleTabPress('details')}
+        disabled={isLoading || noFoodFound || !foodData}
+      >
+        <Text style={[styles.tabText, activeTab === 'details' && styles.activeTabText]}>Details</Text>
+      </TouchableOpacity>
+      <TouchableOpacity
+        style={[styles.tab, activeTab === 'search' && styles.activeTab]}
+        onPress={() => handleTabPress('search')}
+        disabled={isLoading || noFoodFound || !foodData}
+      >
+        <Text style={[styles.tabText, activeTab === 'search' && styles.activeTabText]}>Search</Text>
+      </TouchableOpacity>
+    </View>
+  );
+  
+  const renderNutritionTab = () => {
+    if (!foodData || !foodData.food) return null;
+    
+    return (
+      <View style={styles.tabContent}>
+        <View style={styles.nutritionContainer}>
+          <Text style={styles.foodName}>{foodData.food.name}</Text>
+          <Text style={styles.foodCategory}>{foodData.food.class} - {foodData.food.type}</Text>
+          
+          <View style={styles.macroContainer}>
+            <View style={styles.macroItem}>
+              <Text style={styles.macroValue}>{foodData.food.calories?.amount || 0}</Text>
+              <Text style={styles.macroLabel}>Calories</Text>
+            </View>
+            <View style={styles.macroItem}>
+              <Text style={styles.macroValue}>{foodData.food.proteins?.amount || 0}g</Text>
+              <Text style={styles.macroLabel}>Protein</Text>
+            </View>
+            <View style={styles.macroItem}>
+              <Text style={styles.macroValue}>{foodData.food.carbohydrates?.amount || 0}g</Text>
+              <Text style={styles.macroLabel}>Carbs</Text>
+            </View>
+            <View style={styles.macroItem}>
+              <Text style={styles.macroValue}>{foodData.food.fats?.amount || 0}g</Text>
+              <Text style={styles.macroLabel}>Fat</Text>
+            </View>
+          </View>
+          
+          <View style={styles.nutritionDetailsContainer}>
+            <View style={styles.nutritionRow}>
+              <Text style={styles.nutritionLabel}>Fiber</Text>
+              <Text style={styles.nutritionValue}>{foodData.food.fiber?.amount || 0}g</Text>
+            </View>
+            <View style={styles.nutritionRow}>
+              <Text style={styles.nutritionLabel}>Sugar</Text>
+              <Text style={styles.nutritionValue}>{foodData.food.sugar?.amount || 0}g</Text>
+            </View>
+            <View style={styles.nutritionRow}>
+              <Text style={styles.nutritionLabel}>Sodium</Text>
+              <Text style={styles.nutritionValue}>{foodData.food.sodium?.amount || 0}mg</Text>
+            </View>
+            <View style={styles.nutritionRow}>
+              <Text style={styles.nutritionLabel}>Serving Size</Text>
+              <Text style={styles.nutritionValue}>
+                {foodData.food.servingSize?.amount || 1} {foodData.food.servingSize?.unit || 'serving'}
+              </Text>
+            </View>
+          </View>
+        </View>
+      </View>
+    );
+  };
+  
+  const renderIngredientsTab = () => {
+    if (!foodData || !foodData.food || !foodData.food.ingredients) return null;
+    
+    return (
+      <View style={styles.tabContent}>
+        <View style={styles.ingredientsContainer}>
+          <Text style={styles.sectionTitle}>Ingredients</Text>
+          {foodData.food.ingredients.map((ingredient, index) => (
+            <View key={index} style={styles.ingredientItem}>
+              <Text style={styles.ingredientName}>{ingredient.name}</Text>
+              {ingredient.description && (
+                <Text style={styles.ingredientDescription}>{ingredient.description}</Text>
+              )}
+            </View>
+          ))}
+        </View>
+      </View>
+    );
+  };
+  
+  const renderDetailsTab = () => {
+    if (!foodData || !foodData.details) return null;
+    
+    return (
+      <View style={styles.tabContent}>
+        <View style={styles.detailsContainer}>
+          <Text style={styles.sectionTitle}>Details</Text>
+          {foodData.details.summaryText && (
+            <Text style={styles.summaryText}>{foodData.details.summaryText}</Text>
+          )}
+        </View>
+      </View>
+    );
+  };
+  
+  const renderSearchTab = () => {
+    return (
+      <View style={styles.tabContent}>
+        <View style={styles.searchContainer}>
+          <Text style={styles.sectionTitle}>Web Search</Text>
+          
+          {searchQueries.length > 0 && (
+            <View style={styles.searchQueriesContainer}>
+              <Text style={styles.subsectionTitle}>Search Queries</Text>
+              {searchQueries.map((query, index) => (
+                <View key={index} style={styles.searchQueryItem}>
+                  <Icon name="search-outline" size={16} color={colorScheme === 'dark' ? '#aaa' : '#666'} />
+                  <Text style={styles.searchQueryText}>{query}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          
+          {searchResults.length > 0 && (
+            <View style={styles.searchResultsContainer}>
+              <Text style={styles.subsectionTitle}>Results</Text>
+              {searchResults.map((result, index) => (
+                <View key={index} style={styles.searchResultItem}>
+                  <Text style={styles.searchResultTitle}>{result.title}</Text>
+                  <Text style={styles.searchResultUrl}>{result.url}</Text>
+                  <Text style={styles.searchResultSnippet}>{result.snippet}</Text>
+                </View>
+              ))}
+            </View>
+          )}
+          
+          {searchQueries.length === 0 && searchResults.length === 0 && (
+            <Text style={styles.noSearchText}>No web searches were performed for this analysis.</Text>
+          )}
+        </View>
+      </View>
+    );
+  };
+  
+  const renderLoadingState = () => (
+    <View style={styles.loadingContainer}>
+      <Animated.View style={{ opacity: visualizationFadeAnim }}>
+        <FunctionalAIVisualization 
+          ref={visualizationRef}
+          isDark={colorScheme === 'dark'}
+          isVisible={showVisualization}
+          searchQueries={searchQueries}
+          searchResults={searchResults}
+          foodItems={getFoodItems()}
+          processingSteps={LOADING_TEXTS}
+          brandName={detectedBrand}
+          onComplete={() => {
+            // When animation completes, we can do additional actions if needed
+            console.log('Animation completed, isLoading:', isLoading);
+            
+            // If we're no longer loading, we can hide the visualization after a delay
+            // but only if we have food data successfully processed
+            if (!isLoading && foodData) {
+              console.log('Setting timer to hide visualization');
+              setTimeout(() => {
+                console.log('Hiding visualization with fade');
+                fadeOutVisualization();
+              }, 2000); // Reduced from 4000ms to 2000ms
+            } else {
+              console.log('Keeping visualization visible - still loading or no food data');
+            }
+          }}
+        />
+      </Animated.View>
+      {isLoading && !searchQueries.length && !searchResults.length && (
+        <Text style={[styles.loadingText, { marginTop: 8 }]}>
+          Initializing search...
+        </Text>
+      )}
+    </View>
+  );
+  
+  const renderNoFoodFound = () => (
+    <View style={styles.noFoodContainer}>
+      <Icon name="alert-circle-outline" size={64} color={colorScheme === 'dark' ? '#fff' : '#000'} />
+      <Text style={styles.noFoodText}>No food found in the image</Text>
+      <TouchableOpacity style={styles.tryAgainButton} onPress={() => setNoFoodFound(false)}>
+        <Text style={styles.tryAgainButtonText}>Try Again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+  
+  const renderErrorState = () => (
+    <View style={styles.noFoodContainer}>
+      <Icon name="alert-circle-outline" size={64} color="#E53935" />
+      <Text style={styles.noFoodText}>An error occurred</Text>
+      <TouchableOpacity style={styles.tryAgainButton} onPress={() => setErrorOccurred(false)}>
+        <Text style={styles.tryAgainButtonText}>Try Again</Text>
+      </TouchableOpacity>
+    </View>
+  );
+  
+  const renderContent = () => {
+    if (showVisualization) {
+      return renderLoadingState();
+    }
+    
+    if (isLoading) {
+      return renderLoadingState();
+    }
+    
+    if (noFoodFound) {
+      return renderNoFoodFound();
+    }
+    
+    if (errorOccurred) {
+      return renderErrorState();
+    }
+    
+    if (foodData) {
+      return (
+        <View style={styles.contentContainer}>
+          {renderTabs()}
+          <Animated.View style={[styles.tabContentContainer, { opacity: tabFadeAnim }]}>
+            {activeTab === 'nutrition' && renderNutritionTab()}
+            {activeTab === 'ingredients' && renderIngredientsTab()}
+            {activeTab === 'details' && renderDetailsTab()}
+            {activeTab === 'search' && renderSearchTab()}
+          </Animated.View>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.placeholderContainer}>
+        <Animated.View style={[styles.placeholderTextContainer, { opacity: fadeAnimPlaceholder }]}>
+          <Image
+            source={require('../assets/search-placeholder.png')}
+            style={styles.placeholderImage}
+            resizeMode="contain"
+          />
+          <Text style={styles.placeholderTitle}>Search Mode (BETA)</Text>
+          <Text style={styles.placeholderText}>
+            This mode allows the AI to search the web to find accurate nutrition information. Take a photo or select an image to analyze.
+          </Text>
+        </Animated.View>
+      </View>
+    );
+  };
+  
+  const renderButtons = () => (
+    <View style={styles.buttonContainer}>
+      <TouchableOpacity
+        style={[styles.button, styles.cameraButton]}
+        onPress={takePhoto}
+        disabled={isLoading}
+      >
+        <Icon name="camera-outline" size={24} color="#fff" />
+        <Text style={styles.buttonText}>Camera</Text>
+      </TouchableOpacity>
+      
+      <TouchableOpacity
+        style={[styles.button, styles.galleryButton]}
+        onPress={pickImage}
+        disabled={isLoading}
+      >
+        <Icon name="image-outline" size={24} color="#fff" />
+        <Text style={styles.buttonText}>Gallery</Text>
+      </TouchableOpacity>
+    </View>
+  );
+  
+  // Add this helper function to extract food items
+  const getFoodItems = () => {
+    const items = [];
+    
+    // Add detected items first
+    detectedFoodItems.forEach(item => {
+      if (!items.includes(item)) {
+        items.push(item);
+      }
+    });
+    
+    // Then add from foodData if available
+    if (foodData?.food) {
+      if (foodData.food.name && !items.includes(foodData.food.name)) {
+        items.push(foodData.food.name);
+      }
+      
+      // Check for ingredients list
+      if (foodData.food.ingredients && Array.isArray(foodData.food.ingredients)) {
+        foodData.food.ingredients.forEach(ingredient => {
+          if (ingredient.name && !items.includes(ingredient.name)) {
+            items.push(ingredient.name);
+          }
+        });
+      }
+    }
+    
+    return items;
+  };
+  
+  // Add cleanup effect when component unmounts
+  useEffect(() => {
+    return () => {
+      // Cleanup all timeouts and intervals when component unmounts
+      if (loadingAnimationRef.current) {
+        clearTimeout(loadingAnimationRef.current);
+        loadingAnimationRef.current = null;
+      }
+      
+      // Reset any running intervals
+      clearAllIntervals();
+      
+      // Reset all states
+      setIsLoading(false);
+      setShowVisualization(false);
+      setProcessingImage(null);
+      setCurrentLoadingText('');
+      isAnimationRunningRef.current = false;
+      
+      // Reset animation values
+      fadeAnim.setValue(0);
+      visualizationFadeAnim.setValue(1);
+      tabFadeAnim.setValue(1);
+      fadeAnimTitle.setValue(1);
+    };
+  }, []);
+  
+  // Main render
+  return (
+    <View style={styles.container}>
+      <LinearGradient
+        colors={colorScheme === 'dark' ? ['#121212', '#121212'] : ['#f7f7f7', '#ffffff']}
+        style={styles.headerGradient}
+      >
+        <Animated.View style={[styles.header, { opacity: fadeAnimTitle }]}>
+          <Text style={styles.headerTitle}>Search Mode (BETA)</Text>
+          <View style={styles.providerBadge}>
+            <Text style={styles.providerText}>{selectedProvider.charAt(0).toUpperCase() + selectedProvider.slice(1)}</Text>
+          </View>
+        </Animated.View>
+      </LinearGradient>
+      
+      <ScrollView
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollViewContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {renderContent()}
+      </ScrollView>
+      
+      {renderButtons()}
+    </View>
+  );
+};
+
+const getDynamicStyles = (colorScheme) => StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: colorScheme === 'dark' ? '#121212' : '#ffffff',
+  },
+  headerGradient: {
+    paddingTop: Platform.OS === 'ios' ? 50 : 30,
+    paddingBottom: 15,
+    paddingHorizontal: 20,
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  headerTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  providerBadge: {
+    backgroundColor: colorScheme === 'dark' ? '#2c2c2c' : '#f0f0f0',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  providerText: {
+    fontSize: 14,
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  scrollView: {
+    flex: 1,
+  },
+  scrollViewContent: {
+    padding: 20,
+    paddingBottom: 100,
+  },
+  contentContainer: {
+    flex: 1,
+    backgroundColor: colorScheme === 'dark' ? '#1e1e1e' : '#f9f9f9',
+    borderRadius: 12,
+    overflow: 'hidden',
+  },
+  placeholderContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 30,
+    backgroundColor: colorScheme === 'dark' ? '#1e1e1e' : '#f9f9f9',
+    borderRadius: 12,
+    minHeight: 300,
+  },
+  placeholderTextContainer: {
+    alignItems: 'center',
+  },
+  placeholderImage: {
+    width: 100,
+    height: 100,
+    marginBottom: 20,
+    tintColor: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  placeholderTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    marginBottom: 10,
+    textAlign: 'center',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  placeholderText: {
+    fontSize: 16,
+    textAlign: 'center',
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+  },
+  loadingContainer: {
+    padding: 0,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 400,
+  },
+  loadingText: {
+    marginTop: 20,
+    fontSize: 16,
+    textAlign: 'center',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  noFoodContainer: {
+    padding: 30,
+    alignItems: 'center',
+    justifyContent: 'center',
+    minHeight: 300,
+  },
+  noFoodText: {
+    marginTop: 20,
+    fontSize: 18,
+    textAlign: 'center',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  tryAgainButton: {
+    marginTop: 20,
+    paddingVertical: 12,
+    paddingHorizontal: 24,
+    backgroundColor: colorScheme === 'dark' ? '#2c2c2c' : '#f0f0f0',
+    borderRadius: 8,
+  },
+  tryAgainButtonText: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  buttonContainer: {
+    position: 'absolute',
+    bottom: 20,
+    left: 20,
+    right: 20,
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+  },
+  button: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    flex: 0.48,
+  },
+  cameraButton: {
+    backgroundColor: '#4e54c8',
+  },
+  galleryButton: {
+    backgroundColor: '#1e88e5',
+  },
+  buttonText: {
+    color: '#ffffff',
+    fontSize: 16,
+    fontWeight: '600',
+    marginLeft: 8,
+  },
+  tabContainer: {
+    flexDirection: 'row',
+    borderBottomWidth: 1,
+    borderBottomColor: colorScheme === 'dark' ? '#333333' : '#e0e0e0',
+  },
+  tab: {
+    flex: 1,
+    paddingVertical: 16,
+    alignItems: 'center',
+  },
+  activeTab: {
+    borderBottomWidth: 2,
+    borderBottomColor: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  tabText: {
+    fontSize: 14,
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+  },
+  activeTabText: {
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  tabContentContainer: {
+    flex: 1,
+  },
+  tabContent: {
+    padding: 16,
+  },
+  nutritionContainer: {
+    marginBottom: 20,
+  },
+  foodName: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+    marginBottom: 4,
+  },
+  foodCategory: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+    marginBottom: 20,
+  },
+  macroContainer: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 24,
+  },
+  macroItem: {
+    alignItems: 'center',
+  },
+  macroValue: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  macroLabel: {
+    fontSize: 14,
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+    marginTop: 4,
+  },
+  nutritionDetailsContainer: {
+    borderTopWidth: 1,
+    borderTopColor: colorScheme === 'dark' ? '#333333' : '#e0e0e0',
+    paddingTop: 16,
+  },
+  nutritionRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+  },
+  nutritionLabel: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+  },
+  nutritionValue: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+  },
+  ingredientsContainer: {
+    marginBottom: 20,
+  },
+  sectionTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+    marginBottom: 16,
+  },
+  ingredientItem: {
+    marginBottom: 12,
+  },
+  ingredientName: {
+    fontSize: 16,
+    fontWeight: '500',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+    marginBottom: 2,
+  },
+  ingredientDescription: {
+    fontSize: 14,
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+  },
+  detailsContainer: {
+    marginBottom: 20,
+  },
+  summaryText: {
+    fontSize: 16,
+    lineHeight: 24,
+    color: colorScheme === 'dark' ? '#dddddd' : '#333333',
+  },
+  searchContainer: {
+    marginBottom: 20,
+  },
+  searchQueriesContainer: {
+    marginBottom: 24,
+  },
+  subsectionTitle: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+    marginBottom: 12,
+  },
+  searchQueryItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    padding: 12,
+    backgroundColor: colorScheme === 'dark' ? '#2c2c2c' : '#f0f0f0',
+    borderRadius: 8,
+  },
+  searchQueryText: {
+    marginLeft: 8,
+    fontSize: 15,
+    color: colorScheme === 'dark' ? '#dddddd' : '#333333',
+  },
+  searchResultsContainer: {
+    marginBottom: 20,
+  },
+  searchResultItem: {
+    marginBottom: 16,
+    padding: 12,
+    backgroundColor: colorScheme === 'dark' ? '#2c2c2c' : '#f0f0f0',
+    borderRadius: 8,
+  },
+  searchResultTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: colorScheme === 'dark' ? '#ffffff' : '#000000',
+    marginBottom: 4,
+  },
+  searchResultUrl: {
+    fontSize: 14,
+    color: colorScheme === 'dark' ? '#64B5F6' : '#1976D2',
+    marginBottom: 8,
+  },
+  searchResultSnippet: {
+    fontSize: 14,
+    color: colorScheme === 'dark' ? '#bbbbbb' : '#555555',
+  },
+  noSearchText: {
+    fontSize: 16,
+    color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
+    textAlign: 'center',
+    marginTop: 20,
+  },
+});
+
+export default SearchScreen; 

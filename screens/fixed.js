@@ -1,0 +1,3611 @@
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useNavigationState } from '@react-navigation/native';
+import { useRoute } from '@react-navigation/native';
+import {
+  View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
+  Modal, Alert, useColorScheme, Animated, Linking, TextInput, Dimensions, Platform, AppState,
+  LayoutAnimation,
+} from 'react-native';
+import * as ImagePicker from 'expo-image-picker';
+import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
+import Anthropic from '@anthropic-ai/sdk';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Haptics from 'expo-haptics';
+import { Entypo } from '@expo/vector-icons';
+import { Camera } from 'expo-camera';
+import { useFocusEffect, useNavigation, useIsFocused } from '@react-navigation/native';
+import Icon from 'react-native-vector-icons/Ionicons';
+import * as RNIap from 'react-native-iap';
+import { useIAP } from '../IAPContext';
+import { FontAwesomeIcon } from '@fortawesome/react-native-fontawesome';
+import { faInfinity } from '@fortawesome/free-solid-svg-icons';
+import { useUser } from '../userContext';
+import { Pressable } from 'react-native';
+import { LinearGradient } from 'expo-linear-gradient';
+import AnimatedTextFoodScan from './AnimatedTextFoodScan';
+import AnimatedTextFoodScanFast from './AnimatedTextFoodScanFast';
+import TutorialOverlay from './Tutorial';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
+import * as StoreReview from 'react-native-store-review';
+import Superwall from '@superwall/react-native-superwall';
+import FoodSelectionModal from './FoodSelectionModal.js';
+import WhatsNew from './WhatsNew';
+import { handleAnthropicScan, handleOpenAIScan, handleGeminiScan, handleWebSearch } from './providers';
+import { getModel } from './providers/models';
+import { updateAverageProcessingTime, loadAverageProcessingTimes } from './providers/processingTimes';  // Add loadAverageProcessingTimes
+import ModeTooltip from '../components/ModeTooltip';
+import ScanButtonTooltip from '../components/ScanButtonTooltip';
+import { useTimeZone } from '../TimeZoneContext';
+import { FadeInDown } from 'react-native-reanimated';
+import FunctionalAIVisualization from './FunctionalAIVisualization';
+import LottieView from 'lottie-react-native';
+import { legacyCompleteVisualization } from './utils/VisualizationHelper';
+
+const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
+
+const { width, height } = Dimensions.get('window');
+
+const LOADING_TEXTS = {
+  fast: [
+    "Analyzing image...",
+    "Asking Gordon Ramsay...",
+    "Cooking up results...",
+    "Formatting reply...",
+    "Sharpening sensors...",
+    "Warming up the engines...",
+    "Crunching numbers...",
+    "Making it tasty...",
+  ],
+  accurate: [
+    "Carefully examining details...",
+    "Running complex algorithms...",
+    "Verifying data...",
+    "Ensuring accuracy...",
+    "Double-checking results...",
+    "Refining analysis...",
+    "Calculating precision...",
+    "Validating information...",
+    "Enhancing accuracy...",
+    "Finalizing insights...",
+    "Still working on it...",
+    "Triple checking data...",
+    "Checking for errors...",
+    "Ensuring consistency...",
+  ],
+  search: [
+    "Identifying food in image...",
+    "Searching nutrition databases...",
+    "Consulting online sources...",
+    "Gathering nutritional data...",
+    "Cross-referencing information...",
+    "Verifying nutritional values...",
+    "Compiling comprehensive results...",
+    "Analyzing source reliability...",
+    "Calculating confidence levels...",
+    "Finalizing nutrition facts...",
+  ],
+};
+
+const isIphoneSE = () => {
+  const smallIphoneDimensions = [
+    { width: 320, height: 568 },
+    { width: 375, height: 667 },
+    { width: 414, height: 736 },
+    { width: 360, height: 640 },
+    { width: 375, height: 812 },
+    { width: 360, height: 780 },
+  ];
+
+  return (
+    Platform.OS === 'ios' &&
+    smallIphoneDimensions.some(
+      dim => (width === dim.width && height === dim.height) || (width === dim.height && height === dim.width)
+    )
+  );
+};
+
+// Constants can stay outside the component
+const MODE_LABELS = {
+  fast: 'Fast Mode',
+  accurate: 'Accurate Mode',
+  search: 'Search Mode',
+};
+
+const FAST_MODE = 'fast';
+const ACCURATE_MODE = 'accurate';
+const DYNAMIC_MODE = 'dynamic';
+const SEARCH_MODE = 'search'; // Add search mode as a new option
+
+const FoodScanScreen = () => {
+  // Add debug flag at the top of the component
+  const DEBUG_MODE = false; // Set to false for production
+
+  // Move useState inside the component
+  const [showModeChip, setShowModeChip] = useState(true);
+  const [image, setImage] = useState(null);
+  const [processingImage, setProcessingImage] = useState(null);
+  const [isLoading, setIsLoading] = useState(false);
+  const [foodData, setFoodData] = useState(null);
+  const [activeTab, setActiveTab] = useState('');
+  const colorScheme = useColorScheme();
+  const styles = getDynamicStyles(colorScheme);
+  const fadeAnim = useRef(new Animated.Value(0)).current;
+  const [loadingTextQueue, setLoadingTextQueue] = useState([]);
+  const [currentLoadingText, setCurrentLoadingText] = useState('');
+  const isAnimationRunningRef = useRef(false);
+  const tabFadeAnim = useRef(new Animated.Value(0)).current;
+  const fadeAnimTitle = useRef(new Animated.Value(1)).current;
+  const fadeAnimImage = useRef(new Animated.Value(1)).current;
+  const fadeAnimPlaceholder = useRef(new Animated.Value(1)).current;
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipFadeAnim = useRef(new Animated.Value(0)).current;
+  const [noFoodFound, setNoFoodFound] = useState(false);
+  const [ErrorOccured, setErrorOccured] = useState(false);
+  const [showPlaceholder, setShowPlaceholder] = useState(true);
+  const isTabsDisabled = !foodData || noFoodFound;
+  const loadingAnimationRef = useRef(null);
+  const [showScrollIndicator, setShowScrollIndicator] = useState(false);
+  const scrollViewRef = useRef(null);
+  const { user, apiKeys } = useUser();
+  const { isIAPEnabled } = useIAP();
+  const [hasPermission, setHasPermission] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+  const [modalImageUri, setModalImageUri] = useState(null);
+  const fadeAnimFeedback = useRef(new Animated.Value(0)).current;
+  const [inputModalVisible, setInputModalVisible] = useState(false);
+  const [userInput, setUserInput] = useState('');
+  const [scanCount, setScanCount] = useState(0);
+  const [isSubscribed, setIsSubscribed] = useState(false);
+  const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
+  const [timeLeftForScans, setTimeLeftForScans] = useState('');
+  const [freeAccurateScansUsed, setFreeAccurateScansUsed] = useState(0);
+  const [freeSearchScansUsed, setFreeSearchScansUsed] = useState(0);
+  const [detectionError, setDetectionError] = useState(null);
+
+  // Add new animated value for tab indicator
+  const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
+
+  const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
+  const [selectedProvider, setSelectedProvider] = useState('anthropic');
+  const [selectedModel, setSelectedModel] = useState(getModel('anthropic', { selectedMode: 'fast' }));
+  const [selectedMode, setSelectedMode] = useState('fast');
+  const [apiSuccess, setApiSuccess] = useState(false);
+  const loadingTextQueueRef = useRef([]);
+  const loadingIntervalRef = useRef(null);
+  const loadingTimeoutRef = useRef(null);
+  const isHoldingRef = useRef(false);
+  const loadingTextFadeAnim = useRef(new Animated.Value(1)).current;
+  const navigation = useNavigation();
+  const route = useRoute();
+  const scrollIndicatorOpacity = useRef(new Animated.Value(0)).current;
+  const [showTutorial, setShowTutorial] = useState(false);
+  const [hadBarcode, setHadBarcode] = useState(false);
+
+  // Add this state near the top with other state declarations
+  const [processingTime, setProcessingTime] = useState(0);
+  const [showProcessingTime, setShowProcessingTime] = useState(false);
+  const processingTimeRef = useRef(null);
+  const processingTimeFadeAnim = useRef(new Animated.Value(0)).current;
+
+  // Add these new state variables and refs at the top of the component
+  const [prevMode, setPrevMode] = useState(selectedMode);
+  const chipTextOpacity = useRef(new Animated.Value(1)).current;
+  const modeChipWidth = useRef(new Animated.Value(100)).current;
+
+  // Add this new Animated Value near your other animation refs
+  const longLoadingTextAnim = useRef(new Animated.Value(0)).current;
+
+  const startTimeRef = useRef(null); // Add this line
+
+  const tutorialSteps = [
+    { text: 'Welcome! This is your home screen.' },
+    { text: 'Tap on the menu to explore options.' },
+    { text: 'Use the search bar to find what you need.' },
+  ];
+
+  // Add this after other state declarations
+  const [tabLayout, setTabLayout] = useState({ width: 0, x: 0 });
+  const tabWidthAnim = useRef(new Animated.Value(0)).current;
+
+  const [hasPromptedForReview, setHasPromptedForReview] = useState(false);
+  const [accurateScansBeforeReview, setAccurateScansBeforeReview] = useState(0);
+  
+  // Load rating prompt state
+  useEffect(() => {
+    const loadRatingState = async () => {
+      try {
+        const hasPrompted = await AsyncStorage.getItem('@has_prompted_for_review');
+        const accurateScans = await AsyncStorage.getItem('@accurate_scans_before_review');
+        setHasPromptedForReview(hasPrompted === 'true');
+        setAccurateScansBeforeReview(accurateScans ? parseInt(accurateScans) : 0);
+      } catch (error) {
+        console.error('Error loading rating state:', error);
+      }
+    };
+    loadRatingState();
+  }, []);
+
+  // Add this with other refs at the top of the component
+  const lastProcessedImageRef = useRef(null);
+
+  // Add search mode state variables
+  const [searchQueries, setSearchQueries] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  const [detectedFoodItems, setDetectedFoodItems] = useState([]);
+  const [detectedBrand, setDetectedBrand] = useState('');
+  const [showVisualization, setShowVisualization] = useState(false);
+  const visualizationFadeAnim = useRef(new Animated.Value(1)).current;
+  const visualizationRef = useRef(null);
+  const intervalIdsRef = useRef([]);
+
+  useEffect(() => {
+    const processImageFromCamera = async () => {
+      // If an imageUri is present and we haven't processed it yet, handle it
+      if (route.params?.imageUri && route.params.imageUri !== lastProcessedImageRef.current) {
+        const imageUri = route.params.imageUri;
+        lastProcessedImageRef.current = imageUri;
+        const barcodeData = route.params.barcodeData;
+        setProcessingImage(imageUri);
+        // Resize the camera image to obtain a base64 string
+        const resizedImage = await resizeImage(imageUri);
+        setModalImageUri(resizedImage);
+  
+        // Pass the already resized image to the API
+        await sendImageToApi(resizedImage, barcodeData, false, true);
+  
+        // Clear them so they aren't re-processed if user revisits the screen
+        navigation.setParams({ imageUri: null, barcodeData: null });
+      }
+    };
+  
+    processImageFromCamera();
+  }, [route.params?.imageUri, route.params?.barcodeData]);
+
+  const getLoadingTextsByMode = (mode) => {
+    return LOADING_TEXTS[mode] || LOADING_TEXTS.fast; // Default to 'fast' if mode not found
+  };
+
+  const enqueueLoadingText = (text) => {
+    setLoadingTextQueue((prevQueue) => [...prevQueue, text]);
+  };
+
+  const [averageProcessingTimes, setAverageProcessingTimes] = useState(null);
+
+  // Add this useEffect to load processing times
+  useEffect(() => {
+    const loadTimes = async () => {
+      const times = await loadAverageProcessingTimes();
+      setAverageProcessingTimes(times);
+    };
+    loadTimes();
+  }, []);
+
+  // Update scheduleLoadingTexts to use the loaded times
+  const scheduleLoadingTexts = () => {
+    const mode = selectedMode;
+    let averageTime = 6000; // Default fallback time
+
+    // Try to get the actual average time for current provider/model
+    if (averageProcessingTimes && averageProcessingTimes[selectedProvider]) {
+      const modelTimes = averageProcessingTimes[selectedProvider][selectedModel];
+      if (modelTimes && typeof modelTimes[mode] === 'number') {
+        averageTime = modelTimes[mode];
+      }
+    }
+
+    const loadingTexts = getLoadingTextsByMode(mode);
+    const totalTexts = loadingTexts.length;
+
+    // Calculate the interval between texts
+    const interval = averageTime / totalTexts;
+
+    // Enqueue each text with a delay based on the interval
+    loadingTexts.forEach((text, index) => {
+      setTimeout(() => {
+        setLoadingTextQueue((prevQueue) => [...prevQueue, text]);
+      }, index * interval);
+    });
+
+    // Optionally, handle texts that might need to appear if processing takes longer
+    setTimeout(() => {
+      setLoadingTextQueue((prevQueue) => [...prevQueue, "Still working on it..."]);
+    }, averageTime + 2000); // 2 seconds after average time
+  };
+
+  // Update the startLoadingAnimation function
+  const startLoadingAnimation = () => {
+    if (isAnimationRunningRef.current) return;
+    isAnimationRunningRef.current = true;
+    const loadingTexts = getLoadingTextsByMode(selectedMode);
+  
+    // Reset states
+    setProcessingTime(0);
+    setShowProcessingTime(false);
+    clearInterval(processingTimeRef.current);
+    longLoadingTextAnim.setValue(0); // Reset the long loading animation
+  
+    // Immediately display the first loading text
+    setCurrentLoadingText(loadingTexts[0]);
+    loadingTextQueueRef.current = loadingTexts.slice(1);
+    isHoldingRef.current = false;
+  
+    // Fade in the parent container
+    Animated.timing(fadeAnim, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(() => {
+      // Fade in the first text
+      Animated.timing(loadingTextFadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        loadingTimeoutRef.current = setTimeout(() => {
+          updateLoadingText();
+        }, 0);
+      });
+    });
+  
+    const mode = selectedMode;
+    const averageTime = averageProcessingTimes[mode] || 8000;
+    console.log(`Predicted processing time for mode ${mode}: ${averageTime} ms`);
+  
+    // Schedule "Taking longer than usual..." with fade in
+    setTimeout(() => {
+      loadingTextQueueRef.current = ["Taking longer than usual..."];
+      isHoldingRef.current = true;
+  
+      // Fade out current text
+      Animated.timing(loadingTextFadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(() => {
+        setCurrentLoadingText("Taking longer than usual...");
+        
+        // Fade in the "taking longer" text and keep it visible
+        Animated.timing(longLoadingTextAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+      });
+  
+      // Start the processing time counter
+      setShowProcessingTime(true);
+      processingTimeRef.current = setInterval(() => {
+        setProcessingTime(prev => prev + 1);
+      }, 1000);
+  
+      // Fade in the processing time
+      Animated.timing(processingTimeFadeAnim, {
+        toValue: 1,
+        duration: 500,
+        useNativeDriver: true,
+      }).start();
+    }, averageTime + 2000);
+  };  
+
+// Corrected updateLoadingText function
+const updateLoadingText = () => {
+  if (!isAnimationRunningRef.current) return;
+
+  // If we are holding the current text, do not schedule fade out
+  if (isHoldingRef.current) {
+    return;
+  }
+
+  // Schedule fade out after display duration
+  loadingTimeoutRef.current = setTimeout(() => {
+    // Start fade out
+    Animated.timing(loadingTextFadeAnim, {
+      toValue: 0,
+      duration: 500, // Fade-out duration
+      useNativeDriver: true,
+    }).start(() => {
+      // Update the text
+      if (loadingTextQueueRef.current.length > 0) {
+        const nextText = loadingTextQueueRef.current[0];
+        setCurrentLoadingText(nextText);
+        loadingTextQueueRef.current = loadingTextQueueRef.current.slice(1);
+
+        // Start fade in
+        Animated.timing(loadingTextFadeAnim, {
+          toValue: 1,
+          duration: 500, // Fade-in duration
+          useNativeDriver: true,
+        }).start(() => {
+          // Continue updating
+          updateLoadingText();
+        });
+      } else {
+        // No more texts; if needed, handle cleanup here
+      }
+    });
+  }, 800); // Display duration
+};
+
+const stopLoadingAnimation = () => {
+  // Clear interval if it exists
+  if (loadingIntervalRef.current) {
+    clearInterval(loadingIntervalRef.current);
+    loadingIntervalRef.current = null;
+  }
+  
+  // Clear timeout if it exists
+  if (loadingTimeoutRef.current) {
+    clearTimeout(loadingTimeoutRef.current);
+    loadingTimeoutRef.current = null;
+  }
+  
+  // Clear all intervals from intervalIdsRef
+  if (intervalIdsRef.current && intervalIdsRef.current.length > 0) {
+    intervalIdsRef.current.forEach(id => clearInterval(id));
+    intervalIdsRef.current = [];
+  }
+  
+  // Reset any loading animation states
+  setIsLoading(false);
+  setCurrentLoadingText('');
+  setLoadingTextQueue([]);
+  loadingTextQueueRef.current = [];
+  isAnimationRunningRef.current = false;
+  
+  // Reset the visualization if it exists
+  if (visualizationRef.current) {
+    console.log('Resetting visualization in stopLoadingAnimation');
+    visualizationRef.current.reset();
+    setShowVisualization(false);
+  }
+  
+  // Hide processing time display
+  if (showProcessingTime) {
+    hideProcessingTime();
+  }
+};
+
+  useFocusEffect(
+    useCallback(() => {
+      const loadSettings = async () => {
+        try {
+          // Get route params if they exist
+          const params = route.params || {};
+          
+          // First set the provider
+          const provider = params.provider || await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+          setSelectedProvider(provider);
+          
+          // Then set the mode
+          let mode;
+          if (params.selectedMode) {
+            mode = params.selectedMode;
+            setSelectedMode(mode);
+            await AsyncStorage.setItem('selectedMode', mode);
+          } else {
+            mode = await AsyncStorage.getItem('selectedMode') || 'fast';
+            setSelectedMode(mode);
+          }
+
+          // Get the current model using the getModel helper
+          const currentModel = getModel(provider, {
+            selectedMode: mode,
+            selectedModel: params.selectedModel || await AsyncStorage.getItem('selectedModel'),
+            hasDrawing: false
+          });
+          
+          setSelectedModel(currentModel);
+          await AsyncStorage.setItem('selectedModel', currentModel);
+
+          // Load food selection setting
+          await loadFoodSelectionSetting();
+
+          // If we have an imageUri in the params, process it
+          if (params.imageUri) {
+            const resizedImage = await resizeImage(params.imageUri);
+            await sendImageToApi(resizedImage, params.barcodeData);
+          }
+        } catch (error) {
+          console.error("Error loading settings:", error);
+        }
+      };
+      loadSettings();
+    }, [route.params])
+  );
+
+  useEffect(() => {
+    if (isLoading) {
+      setLoadingTextQueue(getLoadingTextsByMode(selectedMode));
+    }
+  }, [selectedMode, isLoading]);
+  
+  // Add timezone context
+  const { getTodayString, getTimeUntilMidnight } = useTimeZone();
+  
+  useEffect(() => {
+    const initializeAppData = async () => {
+      try {
+        const today = getTodayString();
+  
+        // 1) Check the existing "dateLastUsed"
+        const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
+  
+        // 2) Check "firstUseDate"
+        const firstUseDate = await AsyncStorage.getItem('firstUseDate');
+        
+        // Validate firstUseDate before using it
+        const isValidFirstUseDate = firstUseDate && 
+                                   /^\d{4}-\d{2}-\d{2}$/.test(firstUseDate) && 
+                                   !isNaN(new Date(firstUseDate).getTime());
+        
+        if (!isValidFirstUseDate) {
+          // If firstUseDate is invalid or doesn't exist, set it to today
+          await AsyncStorage.setItem('firstUseDate', today);
+          setIsFirstDayUnlimited(true);
+          setScanCount(0);
+        } else {
+          setIsFirstDayUnlimited(firstUseDate === today);
+        }
+  
+        // 3) Check if date changed since last use and reset counters if needed
+        const isValidLastUsed = dateLastUsed && 
+                               /^\d{4}-\d{2}-\d{2}$/.test(dateLastUsed) && 
+                               !isNaN(new Date(dateLastUsed).getTime());
+        
+        if (!isValidLastUsed || dateLastUsed !== today) {
+          // Reset the counters for a new day or if last used date is invalid
+          await AsyncStorage.setItem('dailyScanCount', '0');
+          await AsyncStorage.setItem('dateLastUsed', today);
+          await AsyncStorage.setItem('freeAccurateScansUsed', '0');
+          await AsyncStorage.setItem('freeSearchScansUsed', '0');
+          setFreeAccurateScansUsed(0);
+          setFreeSearchScansUsed(0);
+          setScanCount(0);
+        } else {
+          // If the date is the same, load existing counters
+          const count = await AsyncStorage.getItem('dailyScanCount');
+          setScanCount(parseInt(count, 10) || 0);
+  
+          // Also load how many accurate scans used
+          const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+          setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
+          
+          // Load how many search scans used
+          const searchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+          setFreeSearchScansUsed(parseInt(searchScansUsed, 10) || 0);
+        }
+  
+        // 4) Load the user's chosen model & mode
+        const model = await AsyncStorage.getItem('selectedModel');
+        if (model) {
+          setSelectedModel(model);
+        }
+        const mode = await AsyncStorage.getItem('selectedMode');
+        if (mode) {
+          setSelectedMode(mode);
+        }
+      } catch (error) {
+        console.error("Error initializing app data:", error);
+        
+        // Set safe defaults in case of error
+        setIsFirstDayUnlimited(false);
+        setScanCount(0);
+        setFreeAccurateScansUsed(0);
+        setFreeSearchScansUsed(0);
+        
+        // Ensure dateLastUsed is set to prevent future errors
+        await AsyncStorage.setItem('dateLastUsed', getTodayString());
+      }
+    };
+  
+    initializeAppData();
+  }, [getTodayString]); // Add getTodayString to dependency array
+
+  useFocusEffect(
+    useCallback(() => {
+      // Re-initialize or perform actions when the screen is focused
+    }, [])
+  );
+
+  const initialCheckDoneRef = useRef(false);
+
+  useEffect(() => {
+    const checkSubscription = async () => {
+      try {
+        let isSubscribedUnlimited = false;
+        let isSubscribedPlus = false;
+    
+        if (isIAPEnabled) {
+          if (Platform.OS === 'ios') {
+            // Ensure initConnection is called before using getReceiptIOS
+            await RNIap.initConnection();
+            // Retrieve the receipt data
+            const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
+    
+            if (!receipt) {
+              console.error('No receipt available');
+            } else {
+              // Send the receipt data to the cloud function
+              const response = await fetch(
+                'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
+                {
+                  method: 'POST',
+                  headers: {
+                    'Content-Type': 'application/json',
+                  },
+                  body: JSON.stringify({ receiptData: receipt }),
+                }
+              );
+    
+              // Check if the response is OK
+              if (response.ok) {
+                const data = await response.json();
+                if (data.success && data.isSubscribed) {
+                  const productId = data.productId;
+                  if (
+                    ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(productId)
+                  ) {
+                    isSubscribedUnlimited = true;
+                  } else if (productId === 'macroscan_plus') {
+                    isSubscribedPlus = true;
+                  }
+                } else {
+                  console.log('Receipt validation failed:', data.message);
+                }
+              } else {
+                const responseText = await response.text();
+                console.error('Server Error:', response.status, responseText);
+              }
+            }
+          } else {
+            // Handle Android platform if necessary
+            isSubscribedUnlimited = false;
+            isSubscribedPlus = false;
+          }
+        } else {
+          // If IAP is not enabled, rely on user context
+          if (
+            user?.subscriptionStatus === 'macroscan_unlimited' ||
+            user?.subscriptionStatus === 'macroscan_plusplus'
+          ) {
+            isSubscribedUnlimited = true;
+          } else if (user?.subscriptionStatus === 'macroscan_plus') {
+            isSubscribedPlus = true;
+          }
+        }
+    
+        if (isSubscribedUnlimited) {
+          setIsSubscribed(true);
+          setIsSubscribedPlus(false);
+        } else if (isSubscribedPlus) {
+          setIsSubscribed(false);
+          setIsSubscribedPlus(true);
+        } else {
+          setIsSubscribed(false);
+          setIsSubscribedPlus(false);
+        }
+      } catch (error) {
+        console.error('Failed to check subscription status:', error);
+        setIsSubscribed(false);
+        setIsSubscribedPlus(false);
+      }
+    };
+
+    let isMounted = true;
+    let checkInterval;
+
+    // Only do initial check if we haven't done it yet
+    if (!initialCheckDoneRef.current) {
+      checkSubscription();
+      initialCheckDoneRef.current = true;
+    }
+
+    // Set up interval for periodic checks (every 5 minutes)
+    checkInterval = setInterval(() => {
+      if (isMounted) {
+        checkSubscription();
+      }
+    }, 300000); // 5 minutes
+
+    // Cleanup function
+    return () => {
+      isMounted = false;
+      if (checkInterval) {
+        clearInterval(checkInterval);
+      }
+    };
+  }, [isIAPEnabled, user]); // Only depend on isIAPEnabled and user changes
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
+        setTimeLeftForScans(getTimeUntilMidnight());
+      } else {
+        setTimeLeftForScans('');
+      }
+    }, 1000 * 60);
+
+    return () => clearInterval(intervalId);
+  }, [scanCount, isSubscribed]);
+
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      if (isSubscribedPlus && scanCount >= 20) {
+        setTimeLeftForScans(getTimeUntilMidnight());
+      } else {
+        setTimeLeftForScans('');
+      }
+    }, 1000 * 60);
+
+    return () => clearInterval(intervalId);
+  }, [scanCount, isSubscribedPlus]);
+
+  useEffect(() => {
+    if (foodData && !showTooltip) {
+      setShowTooltip(true);
+      Animated.timing(tooltipFadeAnim, {
+        toValue: 1,
+        duration: 700,
+        useNativeDriver: true,
+      }).start();
+
+      setTimeout(() => {
+        Animated.timing(tooltipFadeAnim, {
+          toValue: 0,
+          duration: 700,
+          useNativeDriver: true,
+        }).start(() => setShowTooltip(false));
+      }, 3000);
+    }
+  }, [foodData]);
+
+  // Removed the useEffect that depended on apiSuccess, modalImageUri, and foodData
+
+  useEffect(() => {
+    if (apiSuccess && modalImageUri && foodData && !noFoodFound && !ErrorOccured) {
+      console.log('Storing product to history:', { apiSuccess, modalImageUri, foodData });
+      storeProductDetails({
+        productName: foodData.name,
+        imageUri: modalImageUri,
+        nutrients: foodData,
+        date: new Date().toISOString(),
+      });
+      setApiSuccess(false);
+    }
+  }, [apiSuccess, modalImageUri, foodData, noFoodFound, ErrorOccured]);
+
+  useEffect(() => {
+    if (!modalVisible && modalImageUri) {
+      let previewUri = modalImageUri;
+      // If the string is not a file URI or already a data URI, add the prefix
+      if (
+        typeof previewUri === 'string' &&
+        !previewUri.startsWith('file://') &&
+        !previewUri.startsWith('data:image/jpeg;base64,')
+      ) {
+        previewUri = 'data:image/jpeg;base64,' + previewUri;
+      }
+      setImage(previewUri);
+    }
+  }, [modalVisible, modalImageUri]);
+
+  const incrementScanCount = useCallback(async () => {
+    if (!isFirstDayUnlimited && !isSubscribed) {
+      const newCount = scanCount + 1;
+      setScanCount(newCount);
+      await AsyncStorage.setItem('dailyScanCount', newCount.toString());
+    }
+  }, [isFirstDayUnlimited, isSubscribed, scanCount]);
+
+  const resizeImage = async (uri) => {
+    let compressQuality = 1;
+    const actions = [{ resize: { width: 1024 } }]; // Resize the image to 1024px width while preserving aspect ratio.
+    let result;
+    while (true) {
+      result = await manipulateAsync(uri, actions, { compress: compressQuality, format: SaveFormat.JPEG, base64: true });
+
+      // Calculate the approximate size in bytes.
+      const base64Str = result.base64;
+      const sizeBytes = Math.ceil(base64Str.length * 3 / 4);
+      console.log("Compression quality:", compressQuality, "Size bytes:", sizeBytes);
+
+      // If image size is within limit (<= 5MB) or quality is too low, then break.
+      if (sizeBytes <= 5000000 || compressQuality <= 0.1) {
+        break;
+      }
+
+      // Lower the compression quality for next iteration.
+      compressQuality = compressQuality - 0.1;
+    }
+    return result.base64;
+  };
+
+  const handleScroll = (event) => {
+    if (!foodData) return;  // Don't handle scroll if there's no food data
+  
+    const offsetY = event.nativeEvent.contentOffset.y;
+    const contentHeight = event.nativeEvent.contentSize.height;
+    const scrollViewHeight = event.nativeEvent.layoutMeasurement.height;
+  
+    const shouldShowIndicator = offsetY + scrollViewHeight < contentHeight - 150;
+  
+    if (shouldShowIndicator !== showScrollIndicator) {
+      setShowScrollIndicator(shouldShowIndicator);
+      Animated.timing(scrollIndicatorOpacity, {
+        toValue: shouldShowIndicator ? 1 : 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+    }
+  };
+
+  const handleContentSizeChange = (contentWidth, contentHeight) => {
+    if (!scrollViewRef.current || !foodData) return;
+  
+    scrollViewRef.current.measure((x, y, width, height, pageX, pageY) => {
+      const offsetY = 0;
+      const scrollViewHeight = height;
+  
+      const shouldShowIndicator = offsetY + scrollViewHeight < contentHeight - 20;
+  
+      if (shouldShowIndicator !== showScrollIndicator) {
+        setShowScrollIndicator(shouldShowIndicator);
+        Animated.timing(scrollIndicatorOpacity, {
+          toValue: shouldShowIndicator ? 1 : 0,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+      }
+    });
+  };
+
+  const scrollToBottom = () => {
+    if (scrollViewRef.current) {
+      // Try scrollToEnd method first
+      scrollViewRef.current.scrollToEnd({ animated: true });
+      
+      // Additional attempt for reliability - get content height and scroll there
+      scrollViewRef.current.getScrollResponder()?.scrollResponderScrollToEnd({ animated: true });
+    }
+  };
+
+  const scrollToTop = () => {
+    if (scrollViewRef.current) {
+      // First try scrollTo method
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+      
+      // Also try setNativeProps as a fallback for more reliability
+      try {
+        scrollViewRef.current.setNativeProps({ contentOffset: { y: 0, x: 0 } });
+      } catch (error) {
+        console.log('Error using setNativeProps:', error);
+      }
+    }
+  };
+
+  const storeProductDetails = async (productDetails) => {
+    try {
+      const existingHistoryJson = await AsyncStorage.getItem('@product_history');
+      let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
+      if (!Array.isArray(existingHistory)) {
+        existingHistory = [];
+      }
+
+      const productDetailsWithDate = {
+        ...productDetails,
+        date: productDetails.date || new Date().toISOString(),
+        scanMetadata: {
+          scanMode: selectedMode,
+          usedBarcode: productDetails.hadBarcode,  // Use the passed value instead of state
+          processingTime: ((Date.now() - startTimeRef.current) / 1000).toFixed(1),
+          modelUsed: productDetails.modelUsed || selectedModel,
+          usedCircleScan: productDetails.hasDrawing === true // Only true if drawing occurred
+        }
+      };
+      // Removed logging of product details to avoid logging sensitive base64 data:
+      // console.log('Storing product details:', JSON.stringify(productDetailsWithDate, null, 2));
+      
+      existingHistory.push(productDetailsWithDate);
+      const newHistoryJson = JSON.stringify(existingHistory);
+      await AsyncStorage.setItem('@product_history', newHistoryJson);
+    } catch (e) {
+      console.error("Error storing product details: ", e);
+    }
+  };
+
+  const pickImage = async () => {
+    try {
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        const selectedUri = result.assets[0].uri;
+        
+        if (foodSelectionEnabled) {
+          setSelectedImage(selectedUri);
+          setShowFoodSelectionModal(true);
+        } else {
+          const resizedImage = await resizeImage(selectedUri);
+          await sendImageToApi(resizedImage);
+        }
+      }
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image from gallery');
+    }
+  };
+
+  const takePhoto = async () => {
+    // If tooltip is showing, hide it with animation
+    if (showScanButtonTooltip && scanButtonTooltipRef.current) {
+      scanButtonTooltipRef.current.hideTooltipWithAnimation();
+      // Wait for animation before proceeding
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    if (isFirstDayUnlimited || isSubscribed) {
+      navigation.navigate('CameraScreen');
+    } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 2)) {
+      navigation.navigate('CameraScreen');
+    } else {
+      const timeLeft = getTimeUntilMidnight().formatted;
+      Alert.alert(
+        "No More Scans Left",
+        `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
+      );
+    }
+  };
+
+  const sendImageToApiWithHint = async (userHint) => {
+    setIsLoading(true);
+    startLoadingAnimation();
+    setProcessingImage(modalImageUri);
+
+    try {
+      const apiKey = await AsyncStorage.getItem('@apikey');
+
+      if (!apiKey) {
+        console.error("API key not found");
+        Alert.alert('Error', 'API key not found');
+        setIsLoading(false);
+        return;
+      }
+
+      const anthropic = new Anthropic({ apiKey });
+
+      const base64Image = await resizeImage(modalImageUri);
+
+      // Define your system prompts here
+      const systemPrompt = `...`; // Truncated for brevity
+
+      // Implement your API call logic here
+      // After receiving and parsing the response:
+      const parsedData = parseNutrientData(apiResponse);
+      setFoodData(parsedData);
+      setNoFoodFound(false);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      fadeOutTab('Nutrition');
+
+      // Directly store the product details
+      await storeProductDetails({
+        productName: parsedData.name,
+        imageUri: modalImageUri,
+        nutrients: parsedData,
+        date: new Date().toISOString(),
+      });
+
+      setApiSuccess(true);
+      setModalVisible(false);
+      setProcessingImage(null);
+    } catch (error) {
+      console.error("Error sending message to Anthropic API:", error);
+      Alert.alert("High Demand", `We're experiencing extremely high demand, try again in 1 minute.`);
+      setIsLoading(false);
+      stopLoadingAnimation();
+      setProcessingImage(null);
+      setModalVisible(false);
+    }
+  };
+
+  // Remove the useOpenAI constant at the top and replace with:
+  const [currentProvider, setCurrentProvider] = useState('anthropic');
+
+  const sendImageToApi = async (imageUri, barcodeData = null, hasDrawing = false) => {
+    console.log('Entering sendImageToApi. Mode: ', selectedMode);
+    isProcessingRef.current = true;
+    setIsLoading(true);
+    setDetectionError(null);
+    setNoFoodFound(false);
+    setLoadingTextQueue([]);
+    setHasAnimatedMacros(false);
+
+    try {
+      // Track scan start time
+      const startTime = new Date().getTime();
+      
+      // Reset detection errors
+      setDetectionError(null);
+      
+      // Process the image first
+      let base64Image;
+      if (typeof imageUri === 'string') {
+        if (imageUri.startsWith('data:image/jpeg;base64,')) {
+          base64Image = imageUri.replace('data:image/jpeg;base64,', '');
+        } else if (!imageUri.startsWith('file://')) {
+          base64Image = imageUri;
+        } else {
+          base64Image = await imageToBase64(imageUri);
+        }
+      } else {
+        base64Image = await imageToBase64(imageUri);
+      }
+      
+      base64Image = base64Image.replace(/[\n\r]/g, '').trim();
+      
+      if (!base64Image || !/^[A-Za-z0-9+/=]+$/.test(base64Image)) {
+        throw new Error('Invalid base64 string format');
+      }
+      
+      setProcessingImage(imageUri);
+      
+      // If in Search Mode, show the search visualization instead of the regular loading texts
+      if (selectedMode === SEARCH_MODE) {
+        console.log('Activating search visualization mode');
+        
+        // Clean out all previous data
+        setFoodData(null);
+        setActiveTab('Nutrition');
+        
+        // Reset search state
+        setSearchQueries([]);
+        setSearchResults([]);
+        setFoodItems([]);
+        setProcessingSteps([]);
+        setDetectedFoodItems([]);
+        setDetectedBrand('');
+        
+        // Reset visualization if it exists
+        if (visualizationRef.current && visualizationRef.current.reset) {
+          console.log('Resetting visualization component');
+          visualizationRef.current.reset();
+        }
+        
+        // Force visualization to be visible immediately
+        setShowVisualization(true);
+        
+        // Add initial loading text to processing steps
+        setProcessingSteps(LOADING_TEXTS.search.slice(0, 2));
+        
+        // Provide initial haptic feedback
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      } else {
+        // For other modes, use the regular loading animation
+        scheduleLoadingTexts();
+        startLoadingAnimation();
+      }
+
+      // Regular scan modes (fast & accurate)
+      if (selectedMode !== SEARCH_MODE) {
+        // Track initial processing time
+        startTimeRef.current = Date.now();
+        
+        // Get the provider to use
+        const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+        setSelectedProvider(provider);
+        
+        // Get appropriate model based on provider and mode
+        const currentModel = getModel(provider, { 
+          selectedMode: selectedMode,
+          selectedModel: selectedModel,
+          hasDrawing: hasDrawing 
+        });
+        setSelectedModel(currentModel);
+        
+        // Use API key from context
+        const apiKey = apiKeys?.[provider + 'ApiKey'];
+        
+        if (!apiKey) {
+          console.error(`API key not found for ${provider}`);
+          Alert.alert('Error', `API key not found for ${provider}`);
+          setIsLoading(false);
+          stopLoadingAnimation();
+          setProcessingImage(null);
+          isProcessingRef.current = false;
+          return;
+        }
+        
+        // Mark accurate scan as used for free users
+        if (selectedMode === ACCURATE_MODE && !isSubscribed && !isFirstDayUnlimited) {
+          await AsyncStorage.setItem('freeAccurateScansUsed', '1');
+        }
+        
+        // Process the image using the appropriate provider
+        const providerParams = {
+          selectedModel: currentModel,
+          selectedMode: selectedMode,
+          base64Image,
+          barcodeData,
+          hasDrawing,
+          apiKey,
+          handleSuccessfulScan,
+          handleError,
+          imageUri,
+          startTimeRef,
+          updateAverageProcessingTime,
+          isFirstDayUnlimited,
+          isSubscribed,
+          setNoFoodFound,
+          setFoodData,
+          setActiveTab,
+        };
+        
+        // Call the appropriate provider
+        let foodFound = false;
+        switch (provider) {
+          case 'openai':
+            foodFound = await handleOpenAIScan(providerParams);
+            break;
+          case 'gemini':
+            foodFound = await handleGeminiScan(providerParams);
+            break;
+          case 'anthropic':
+          default:
+            foodFound = await handleAnthropicScan(providerParams);
+            break;
+        }
+        
+        // Update UI after processing
+        setIsLoading(false);
+        stopLoadingAnimation();
+        setProcessingImage(null);
+        
+        // Only increment scan count if food was found
+        if (foodFound) {
+          await incrementScanCount();
+        }
+        
+        // Animate the title
+        fadeOutTitle(() => {
+          fadeInTitle();
+        });
+        
+        setShowPlaceholder(false);
+        
+        // Update the displayed image
+        Animated.timing(fadeAnimImage, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start(() => {
+          setImage(imageUri);
+          Animated.timing(fadeAnimImage, {
+            toValue: 1,
+            duration: 350,
+            useNativeDriver: true,
+          }).start();
+        });
+      } 
+      // Search mode - use web search functionality
+      else {
+        // Handle search mode scan
+        const searchSuccess = await handleSearchModeScan(base64Image, imageUri, barcodeData, hasDrawing);
+        
+        if (!searchSuccess) {
+          // If search failed, reset loading state
+          setIsLoading(false);
+          stopLoadingAnimation();
+          setProcessingImage(null);
+          setShowVisualization(false);
+        }
+        
+        // Don't update UI here as handleSearchModeScan will handle it on success
+        return;
+      }
+
+      console.log('Image processed successfully');
+      const endTime = new Date().getTime();
+      const processingTime = (endTime - startTime) / 1000;
+      console.log(`Total processing time: ${processingTime} seconds`);
+
+      // Update average processing time
+      updateAverageProcessingTime(selectedProvider, selectedModel, selectedMode, processingTime);
+
+    } catch (error) {
+      console.error('Error in sendImageToApi:', error);
+      handleError(error, imageUri, barcodeData);
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+  
+  const imageToBase64 = async (uri) => {
+    try {
+      console.log("Processing image URI:", uri.substring(0, 50) + "...");
+      
+      // If it's already a base64 string
+      if (uri.startsWith('data:image')) {
+        return uri.split(',')[1];
+      }
+      
+      const response = await fetch(uri);
+      const blob = await response.blob();
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const base64data = reader.result.split(',')[1];
+          resolve(base64data);
+        };
+        reader.onerror = reject;
+        reader.readAsDataURL(blob);
+      });
+    } catch (error) {
+      console.error("Error converting image to base64:", error);
+      Alert.alert(
+        "Image Processing Error", 
+        "Failed to process the image. Please try a different image or restart the app."
+      );
+      throw error;
+    }
+  };  
+
+  const fadeOutTitle = (callback) => {
+    Animated.timing(fadeAnimTitle, {
+      toValue: 0,
+      duration: 300,
+      useNativeDriver: true,
+    }).start(callback);
+  };
+
+  const fadeInTitle = () => {
+    Animated.timing(fadeAnimTitle, {
+      toValue: 1,
+      duration: 300,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const fadeOutTab = (newTab) => {
+    Animated.timing(tabFadeAnim, {
+      toValue: 0,
+      duration: 150,
+      useNativeDriver: true,
+    }).start(() => {
+      // Set the active tab first
+      setActiveTab(newTab);
+      
+      // Small delay to ensure refs are ready and content is fully unmounted
+      setTimeout(() => {
+        // Reset scroll position for all tabs after content has faded out
+        if (nutritionScrollViewRef.current) {
+          nutritionScrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        }
+        if (ingredientsScrollViewRef.current) {
+          ingredientsScrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        }
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        }
+        
+        // Now fade in the new tab content
+        fadeInTab();
+      }, 50);
+    });
+  };
+
+  const fadeInTab = () => {
+    Animated.timing(tabFadeAnim, {
+      toValue: 1,
+      duration: 350,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  // Update the handleTabPress function
+  const handleTabPress = (tab) => {
+    if (!isTabsDisabled) {
+      // Configure layout animation
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      
+      // Fade out current tab content
+      fadeOutTab(tab);
+      
+      // Scroll to the top when changing tabs with a slight delay to ensure tab content is ready
+      setTimeout(() => {
+        scrollToTop();
+      }, 50);
+      
+      // Animate the tab indicator
+      const tabIndex = ['Nutrition', 'Ingredients', 'Details'].indexOf(tab);
+      Animated.parallel([
+        Animated.spring(tabIndicatorAnim, {
+          toValue: tabIndex,
+          useNativeDriver: true,
+          friction: 24,
+          tension: 180,
+          velocity: 10
+        }),
+        Animated.spring(tabWidthAnim, {
+          toValue: tabLayout.width,
+          useNativeDriver: true,
+          friction: 24,
+          tension: 180,
+          velocity: 10
+        })
+      ]).start();
+    }
+  };
+  
+  const processLoadingQueue = () => {
+    if (!isAnimationRunningRef.current) return;
+  
+    console.log('processLoadingQueue called');
+  
+    const mode = selectedMode;
+    const averageTime = averageProcessingTimes[mode] || 5000; // Default average time
+  
+    // If the queue is empty, reset to the initial loading texts based on mode
+    if (loadingTextQueueRef.current.length === 0) {
+      const initialTexts = getLoadingTextsByMode(mode);
+      loadingTextQueueRef.current = initialTexts;
+    }};
+  
+  useEffect(() => {
+    // console.log('currentLoadingText updated:', currentLoadingText);
+  }, [currentLoadingText]);
+
+  const handleCorrectPress = () => {
+    fadeOutFeedback();
+  };
+
+  const handleIncorrectPress = () => {
+    setInputModalVisible(true);
+    fadeOutFeedback();
+    removeLatestHistoryEntry();
+  };
+
+  const submitUserInput = async () => {
+    setInputModalVisible(false);
+    if (userInput.trim()) {
+      await sendImageToApiWithHint(userInput.trim());
+    }
+    setUserInput('');
+  };
+
+  const removeLatestHistoryEntry = async () => {
+    try {
+      const existingHistoryJson = await AsyncStorage.getItem('@product_history');
+      let existingHistory = existingHistoryJson ? JSON.parse(existingHistoryJson) : [];
+      if (existingHistory.length > 0) {
+        existingHistory.pop();
+        await AsyncStorage.setItem('@product_history', JSON.stringify(existingHistory));
+        setHistory(existingHistory);
+        console.log("Latest history entry removed.");
+      } else {
+        console.log("No history to remove.");
+      }
+    } catch (e) {
+      console.error("Error removing latest history entry: ", e);
+    }
+  };
+
+  const fadeOutFeedback = () => {
+    Animated.timing(fadeAnimFeedback, {
+      toValue: 0,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const fadeInFeedback = () => {
+    Animated.timing(fadeAnimFeedback, {
+      toValue: 1,
+      duration: 1000,
+      useNativeDriver: true,
+    }).start();
+  };
+
+  const renderTooltip = () => (
+    <Animated.View style={[styles.tooltip, { opacity: tooltipFadeAnim }]}>
+      <Text style={styles.tooltipText}>Click other tabs to explore more details!</Text>
+    </Animated.View>
+  );
+
+  // Move animation values to component level
+  const nutrientFadeAnim = useRef(new Animated.Value(0)).current;
+  const nutrientScaleAnim = useRef(new Animated.Value(0.9)).current;
+  const nutrientProgressAnim = useRef(new Animated.Value(0)).current;
+  const hasAnimatedRef = useRef(false); // Add this to track if we've animated for current data
+
+  // Add new animated values for each card
+  const cardAnimations = useRef([
+    new Animated.Value(0), // calories
+    new Animated.Value(0), // proteins
+    new Animated.Value(0), // carbs
+    new Animated.Value(0), // fats
+    new Animated.Value(0), // fiber
+    new Animated.Value(0)  // sodium
+  ]).current;
+
+  // Function to trigger macro card animations
+  const triggerMacroAnimations = () => {
+    // Reset animations first
+    cardAnimations.forEach(anim => anim.setValue(0));
+    nutrientProgressAnim.setValue(0);
+
+    // Animate cards appearing with stagger
+    Animated.stagger(100, 
+      cardAnimations.map(anim =>
+        Animated.spring(anim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true
+        })
+      )
+    ).start();
+
+    // Animate progress bars
+    Animated.timing(nutrientProgressAnim, {
+      toValue: 1,
+      duration: 800,
+      delay: 200,
+      useNativeDriver: false,
+    }).start();
+
+    hasAnimatedRef.current = true;
+  };
+
+  // Add effect to handle nutrient animations
+  useEffect(() => {
+    if (foodData) {
+      // Trigger animations for the active tab
+      triggerMacroAnimations();
+    } else {
+      // Reset animations when data is cleared
+      cardAnimations.forEach(anim => anim.setValue(0));
+      nutrientProgressAnim.setValue(0);
+      hasAnimatedRef.current = false;
+    }
+  }, [foodData, activeTab]); // Depend on both foodData and activeTab changes
+
+  // Add effect to handle tab changes
+  useEffect(() => {
+    if (foodData && !hasAnimatedRef.current) {
+      triggerMacroAnimations();
+    }
+  }, [activeTab]);
+
+  const macroColors = {
+    Calories: '#FF4500',  // Orange-red
+    Proteins: '#3CB371',  // Medium sea green
+    Carbohydrates: '#FFA500',  // Orange
+    Fats: '#6495ED',  // Cornflower blue
+    Fiber: '#9370DB',  // Medium purple
+    Sodium: '#20B2AA',  // Light sea green
+  };
+
+  const macroIcons = {
+    Calories: 'flame',
+    Proteins: 'barbell-outline',
+    Carbohydrates: 'leaf-outline',
+    Fats: 'water-outline',  // Fixed key name to match the data
+    Fiber: 'nutrition-outline',
+    Sodium: 'medical-outline'  // Changed to a valid icon name
+  };
+
+  const renderSeparator = () => <View style={styles.separator} />;
+
+  // Add state for pagination
+  const [activePage, setActivePage] = useState(0);
+  const scrollX = useRef(new Animated.Value(0)).current;
+  const lastKnownPage = useRef(0); // Add this to store the last known page position
+
+  // Add this ref near other ref declarations
+  const nutritionScrollViewRef = useRef(null);
+  const ingredientsScrollViewRef = useRef(null); // Add new ref for ingredients tab
+
+  // Update the useEffect handling tab changes
+  useEffect(() => {
+    if (activeTab === 'Nutrition' && foodData) {
+      if (!hasAnimatedRef.current) {
+        triggerMacroAnimations();
+      }
+      // Restore the last known page position
+      setActivePage(lastKnownPage.current);
+      // Scroll to stored position after render
+      setTimeout(() => {
+        if (nutritionScrollViewRef.current) {
+          nutritionScrollViewRef.current.scrollTo({
+            x: lastKnownPage.current * width,
+            animated: false
+          });
+        }
+      }, 0);
+    } else if (activeTab !== 'Nutrition' && foodData) {
+      // Store current page when leaving
+      lastKnownPage.current = activePage;
+    }
+  }, [activeTab, foodData]);
+
+  const renderNutritionTab = () => {
+    if (!foodData) return null;
+    
+    // Filter out non-nutrient keys and split into two pages
+    const nutrients = Object.entries(foodData).filter(([key, data]) => {
+      return data && !['name', 'class', 'type', 'details', 'ingredients'].includes(key);
+    });
+
+    const firstHalf = nutrients.slice(0, 3);
+    const secondHalf = nutrients.slice(3);
+    const pages = [firstHalf, secondHalf];
+
+    const renderPage = (items) => (
+      <View style={styles.macroGridContainer}>
+        {items.map(([key, data], index) => {
+          const label = key.charAt(0).toUpperCase() + key.slice(1);
+          if (!macroColors[label] || !macroIcons[label]) {
+            return null;
+          }
+
+          // Calculate a darker version of the color
+          const baseColor = macroColors[label];
+          const darkerColor = baseColor + '80'; // Adding 80 for 50% opacity creates a darker shade
+
+          return (
+            <Animated.View 
+              key={key} 
+              style={[
+                styles.macroCard,
+                {
+                  opacity: cardAnimations[index],
+                  transform: [
+                    {
+                      scale: cardAnimations[index].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1],
+                      }),
+                    },
+                    {
+                      translateY: cardAnimations[index].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [50, 0],
+                      }),
+                    },
+                  ],
+                },
+              ]}
+            >
+              <View style={styles.macroHeaderContainer}>
+                <View style={styles.iconLabelContainer}>
+                  <View style={[styles.iconContainer]}>
+                    <LinearGradient
+                      colors={[baseColor, darkerColor]}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <Icon name={macroIcons[label]} size={20} color="#FFF" />
+                  </View>
+                  <Text style={styles.macroLabel}>{label}</Text>
+                </View>
+                
+                <View style={styles.macroValueContainer}>
+                  <Text style={styles.macroValue}>
+                    {data.amount}
+                    <Text style={styles.macroUnit}>
+                      {label === 'Calories' ? ' kcal' : label === 'Sodium' ? ' mg' : 'g'}
+                    </Text>
+                  </Text>
+                </View>
+              </View>
+
+              <View style={styles.errorBarContainer}>
+                <View style={[styles.errorBar, { backgroundColor: macroColors[label] + '40' }]}>
+                  <Animated.View 
+                    style={[
+                      styles.errorBarFill,
+                      { 
+                        backgroundColor: macroColors[label],
+                        width: nutrientProgressAnim.interpolate({
+                          inputRange: [0, 1],
+                          outputRange: ['0%', `${100 - (data.marginOfErrorPercent || 0)}%`],
+                        }),
+                      }
+                    ]} 
+                  />
+                </View>
+                <Animated.Text 
+                  style={[
+                    styles.errorText,
+                    {
+                      opacity: cardAnimations[index],
+                    }
+                  ]}
+                >
+                  ±{data.marginOfErrorPercent || 0}%
+                </Animated.Text>
+              </View>
+            </Animated.View>
+          );
+        })}
+      </View>
+    );
+
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          horizontal 
+          pagingEnabled
+          showsHorizontalScrollIndicator={false}
+          onScroll={(event) => {
+            const offsetX = event.nativeEvent.contentOffset.x;
+            scrollX.setValue(offsetX);
+          }}
+          onMomentumScrollEnd={(event) => {
+            const offsetX = event.nativeEvent.contentOffset.x;
+            const page = Math.round(offsetX / width);
+            setActivePage(page);
+            // Animate to exact position
+            Animated.spring(scrollX, {
+              toValue: page * width,
+              useNativeDriver: false,
+              tension: 50,
+              friction: 7
+            }).start();
+          }}
+          scrollEventThrottle={16}
+          ref={nutritionScrollViewRef}
+          key={`nutrition-scrollview-${activeTab}`}
+        >
+          {pages.map((items, index) => (
+            <View key={index} style={styles.nutrientPage}>
+              {renderPage(items)}
+            </View>
+          ))}
+        </ScrollView>
+
+        <View style={styles.paginationDots}>
+          {pages.map((_, index) => {
+            const inputRange = [
+              (index - 1) * width,
+              index * width,
+              (index + 1) * width,
+            ];
+
+            const dotWidth = scrollX.interpolate({
+              inputRange,
+              outputRange: [8, 16, 8],
+              extrapolate: 'clamp',
+            });
+
+            const opacity = scrollX.interpolate({
+              inputRange,
+              outputRange: [0.5, 1, 0.5],
+              extrapolate: 'clamp',
+            });
+
+            const backgroundColor = scrollX.interpolate({
+              inputRange,
+              outputRange: [
+                colorScheme === 'dark' ? '#444' : '#ccc',
+                colorScheme === 'dark' ? '#fff' : '#000',
+                colorScheme === 'dark' ? '#444' : '#ccc',
+              ],
+              extrapolate: 'clamp',
+            });
+
+            return (
+              <Animated.View
+                key={index}
+                style={[
+                  styles.paginationDot,
+                  {
+                    width: dotWidth,
+                    opacity,
+                    backgroundColor,
+                  },
+                ]}
+              />
+            );
+          })}
+        </View>
+      </View>
+    );
+  };
+
+  const renderIngredientsTab = () => {
+    // Check if we have any ingredients to display
+    const hasIngredients = foodData?.ingredients && foodData.ingredients.length > 0;
+
+    // If no ingredients, show empty state
+    if (!hasIngredients) {
+      return (
+        <View style={styles.tabContentContainer}>
+          <Text style={styles.noDataText}>No ingredient information available</Text>
+        </View>
+      );
+    }
+
+    // Group ingredients into smaller chunks for better visual organization (e.g., 3-4 per card)
+    const ingredientGroups = [];
+    const groupSize = 3; // Number of ingredients per card
+    
+    for (let i = 0; i < foodData.ingredients.length; i += groupSize) {
+      ingredientGroups.push(foodData.ingredients.slice(i, i + groupSize));
+    }
+
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={true} 
+          style={{flex: 1}} 
+          contentContainerStyle={{paddingBottom: activeTab === 'Nutrition' ? 16 * scale : 0}}
+          ref={ingredientsScrollViewRef}
+          key={`ingredients-scrollview-${activeTab}`}
+        >
+          <View style={styles.macroGridContainer}>
+            {/* Note Card - Instructions */}
+            <Animated.View 
+              style={[
+                styles.macroCard, 
+                { height: 'auto', minHeight: 60 * scale, marginBottom: 8 * scale },
+                {
+                  opacity: cardAnimations[0],
+                  transform: [
+                    {
+                      scale: cardAnimations[0].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1],
+                      }),
+                    },
+                    {
+                      translateY: cardAnimations[0].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [50, 0],
+                      }),
+                    },
+                  ],
+                }
+              ]}
+              entering={FadeInDown.delay(100).springify()}
+            >
+              <View style={styles.macroHeaderContainer}>
+                <View style={styles.iconLabelContainer}>
+                  <View style={[styles.iconContainer]}>
+                    <LinearGradient
+                      colors={['#3182CE', '#2B6CB0']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <Icon name="information-circle-outline" size={20} color="#FFF" />
+                  </View>
+                  <Text style={styles.macroLabel}>Ingredients</Text>
+                </View>
+              </View>
+
+              <Text style={styles.ingredientInstructions}>
+                Click on ingredient names to learn more about them
+              </Text>
+            </Animated.View>
+
+            {/* Ingredient Cards */}
+            {ingredientGroups.map((group, groupIndex) => (
+              <Animated.View 
+                key={`group-${groupIndex}`}
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto' },
+                  {
+                    opacity: cardAnimations[groupIndex + 1 > cardAnimations.length - 1 ? cardAnimations.length - 1 : groupIndex + 1],
+                    transform: [
+                      {
+                        scale: cardAnimations[groupIndex + 1 > cardAnimations.length - 1 ? cardAnimations.length - 1 : groupIndex + 1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[groupIndex + 1 > cardAnimations.length - 1 ? cardAnimations.length - 1 : groupIndex + 1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(200 + (groupIndex * 100)).springify()}
+              >
+                {group.map((ingredient, index) => (
+                  <React.Fragment key={`ingredient-${index}`}>
+                    <View style={styles.ingredientContainer}>
+                      <TouchableOpacity 
+                        style={styles.ingredientNameContainer}
+                        onPress={() => ingredient.wikipediaLink ? Linking.openURL(ingredient.wikipediaLink) : null}
+                      >
+                        <Text style={styles.ingredientName}>{ingredient.name || "Unknown ingredient"}</Text>
+                        {ingredient.wikipediaLink && (
+                          <Icon name="open-outline" size={14} color={colorScheme === 'dark' ? '#BBBBBB' : '#666666'} />
+                        )}
+                      </TouchableOpacity>
+                      <Text style={styles.ingredientDescription}>{ingredient.description || ""}</Text>
+                    </View>
+                    {index < group.length - 1 && <View style={styles.ingredientDivider} />}
+                  </React.Fragment>
+                ))}
+              </Animated.View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderDetailsTab = () => {
+    // Show search-specific content if this is a search mode scan
+    const isSearchMode = selectedMode === SEARCH_MODE;
+    const hasSearchData = searchQueries.length > 0 || searchResults.length > 0;
+    
+    // Check if we have any details to display
+    const hasDetails = foodData?.details && (
+      foodData.details.summary || 
+      foodData.details.summaryText ||
+      foodData.details.servingSize ||
+      foodData.details.prepTime ||
+      foodData.details.preparation?.steps?.length > 0 ||
+      foodData.details.wikipediaLink ||
+      foodData.details.sources?.length > 0
+    );
+
+    // If no details and no search data, show empty state
+    if (!hasDetails && !hasSearchData) {
+      return (
+        <View style={styles.tabContentContainer}>
+          <Text style={styles.noDataText}>No detailed information available for this food.</Text>
+        </View>
+      );
+    }
+
+    // If we have details or search data, render organized content
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={true} 
+          style={{flex: 1}} 
+          contentContainerStyle={{paddingBottom: activeTab === 'Nutrition' ? 16 * scale : 0}}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={handleContentSizeChange}
+          ref={scrollViewRef}
+          key={`details-scrollview-${activeTab}`}
+        >
+          <View style={styles.macroGridContainer}>
+            {/* About Card */}
+            {(foodData?.details?.summary || foodData?.details?.summaryText) && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[0],
+                    transform: [
+                      {
+                        scale: cardAnimations[0].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[0].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(100).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#5A67D8', '#4C51BF']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="information-circle-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>About</Text>
+                  </View>
+                </TouchableOpacity>
+                <Text style={styles.summaryText}>
+                  {foodData.details.summary || foodData.details.summaryText}
+                </Text>
+              </Animated.View>
+            )}
+
+            {/* Search Queries Card (only for search mode) */}
+            {isSearchMode && searchQueries.length > 0 && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[3],
+                    transform: [
+                      {
+                        scale: cardAnimations[3].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[3].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(300).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#805AD5', '#6B46C1']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="search-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Search Queries</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.searchQueriesContent}>
+                  {searchQueries.map((query, index) => (
+                    <View key={index} style={styles.searchQueryItem}>
+                      <Icon name="search-outline" size={16} color={colorScheme === 'dark' ? '#aaa' : '#666'} />
+                      <Text style={styles.searchQueryText}>{query}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+
+            {/* Sources Card (merging search results and regular sources) */}
+            {((isSearchMode && searchResults.length > 0) || foodData?.details?.sources?.length > 0) && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[4],
+                    transform: [
+                      {
+                        scale: cardAnimations[4].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[4].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(400).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#68D391', '#48BB78']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="document-text-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Sources</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={styles.sourcesContainer}>
+                  {/* Regular Sources */}
+                  {foodData?.details?.sources?.map((source, index) => (
+                    <TouchableOpacity
+                      key={`source-${index}`}
+                      style={styles.sourceItem}
+                      onPress={() => {
+                        if (source.url) {
+                          Linking.openURL(source.url);
+                        }
+                      }}
+                    >
+                      <Icon name="link-outline" size={16} color={colorScheme === 'dark' ? '#aaa' : '#666'} />
+                      <View style={styles.sourceContent}>
+                        <Text style={styles.sourceTitle}>{source.title || 'Source'}</Text>
+                        {source.url && <Text style={styles.sourceUrl}>{source.url}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+
+                  {/* Search Results as Sources */}
+                  {isSearchMode && searchResults.map((result, index) => (
+                    <TouchableOpacity
+                      key={`search-result-${index}`}
+                      style={styles.sourceItem}
+                      onPress={() => {
+                        if (result.url) {
+                          Linking.openURL(result.url);
+                        }
+                      }}
+                    >
+                      <Icon name="search-outline" size={16} color={colorScheme === 'dark' ? '#aaa' : '#666'} />
+                      <View style={styles.sourceContent}>
+                        <Text style={styles.sourceTitle}>{result.title || 'Source'}</Text>
+                        {result.url && <Text style={styles.sourceUrl}>{result.url}</Text>}
+                        {result.snippet && <Text style={styles.sourceSnippet}>{result.snippet}</Text>}
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+
+            {/* Quick Facts Card */}
+            {(foodData.details.servingSize || foodData.details.prepTime) && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[1],
+                    transform: [
+                      {
+                        scale: cardAnimations[1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(200).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#ED8936', '#DD6B20']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="stats-chart" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Quick Facts</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Facts Content */}
+                <View style={styles.factsContainer}>
+                  {foodData.details.prepTime && (
+                    <View style={styles.factRow}>
+                      <Text style={styles.factLabel}>Prep Time</Text>
+                      <Text style={styles.factValue}>{foodData.details.prepTime}</Text>
+                    </View>
+                  )}
+                  
+                  {foodData.details.servingSize && (
+                    <View style={styles.factRow}>
+                      <Text style={styles.factLabel}>Serving Size</Text>
+                      <Text style={styles.factValue} numberOfLines={3}>{foodData.details.servingSize}</Text>
+                    </View>
+                  )}
+                </View>
+              </Animated.View>
+            )}
+            
+            {/* Preparation Steps Card */}
+            {foodData.details.preparation?.steps?.length > 0 && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[2],
+                    transform: [
+                      {
+                        scale: cardAnimations[2].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[2].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(300).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#38B2AC', '#319795']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="list-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Preparation</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Preparation Steps */}
+                <View style={styles.stepsContainer}>
+                  {foodData.details.preparation.steps.map((step, index) => (
+                    <View key={index} style={styles.stepRow}>
+                      <Text style={styles.stepNumber}>{index + 1}</Text>
+                      <Text style={styles.stepText}>{step}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+            
+            {/* Wikipedia Link Card */}
+            {foodData.details.wikipediaLink && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', padding: 0, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[3],
+                    transform: [
+                      {
+                        scale: cardAnimations[3].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[3].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(400).springify()}
+              >
+                <TouchableOpacity 
+                  style={[styles.linkRow, { paddingVertical: 16 * scale, paddingHorizontal: 16 * scale }]}
+                  onPress={() => Linking.openURL(foodData.details.wikipediaLink)}
+                >
+                  <View style={styles.iconContainer}>
+                    <LinearGradient
+                      colors={['#805AD5', '#6B46C1']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <Icon name="globe-outline" size={20} color="#FFF" />
+                  </View>
+                  <Text style={styles.linkText}>Learn more on Wikipedia</Text>
+                  <Icon name="chevron-forward" size={16} color={colorScheme === 'dark' ? '#BBBBBB' : '#666666'} />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+          </View>
+        </ScrollView>
+        {activeTab === 'Details' && showScrollIndicator && (
+          <Animated.View
+            style={[styles.scrollIndicator, { opacity: scrollIndicatorOpacity }]}
+            pointerEvents={showScrollIndicator ? 'auto' : 'none'}
+          >
+            <TouchableOpacity onPress={scrollToBottom}>
+              <Entypo name="chevron-down" size={32} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+      </View>
+    );
+  };
+
+  // Add new search tab view for search mode results
+  const renderSearchTab = () => {
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={true} 
+          style={{flex: 1}} 
+          contentContainerStyle={{paddingBottom: 16 * scale}}
+          ref={scrollViewRef}
+        >
+          <View style={styles.searchContainer}>
+            <Text style={styles.searchTitle}>Web Search Results</Text>
+            
+            {searchQueries.length > 0 && (
+              <View style={styles.searchQueriesContainer}>
+                <Text style={styles.searchSubtitle}>Search Queries</Text>
+                {searchQueries.map((query, index) => (
+                  <View key={index} style={styles.searchQueryItem}>
+                    <Icon name="search-outline" size={16} color={colorScheme === 'dark' ? '#aaa' : '#666'} />
+                    <Text style={styles.searchQueryText}>{query}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
+            
+            {searchResults.length > 0 && (
+              <View style={styles.searchResultsContainer}>
+                <Text style={styles.searchSubtitle}>Results</Text>
+                {searchResults.map((result, index) => (
+                  <View key={index} style={styles.searchResultItem}>
+                    <Text style={styles.searchResultTitle}>{result.title}</Text>
+                    <Text style={styles.searchResultUrl}>{result.url}</Text>
+                    {result.snippet && (
+                      <Text style={styles.searchResultSnippet}>{result.snippet}</Text>
+                    )}
+                  </View>
+                ))}
+              </View>
+            )}
+            
+            {searchQueries.length === 0 && searchResults.length === 0 && (
+              <Text style={styles.noSearchText}>No web searches were performed for this analysis.</Text>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Add these with other animation refs at component level
+  const buttonPositionAnim = useRef(new Animated.Value(0)).current;
+  const buttonOpacityAnim = useRef(new Animated.Value(1)).current;
+  const floatingButtonOpacityAnim = useRef(new Animated.Value(0)).current;
+
+  // Add this effect to handle button animation timing
+  useEffect(() => {
+    if (foodData) {
+      // Wait 3 seconds before animating
+      const timer = setTimeout(() => {
+        Animated.parallel([
+          // Fade out original buttons
+          Animated.timing(buttonOpacityAnim, {
+        toValue: 0,
+            duration: 300,
+        useNativeDriver: true,
+          }),
+          // Fade in floating buttons
+          Animated.timing(floatingButtonOpacityAnim, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }),
+        ]).start();
+      }, 3000);
+
+      return () => clearTimeout(timer);
+    } else {
+      // Reset animations when food data is cleared
+      buttonOpacityAnim.setValue(1);
+      floatingButtonOpacityAnim.setValue(0);
+    }
+  }, [foodData]);
+
+  // Update the renderButtons function
+  const renderButtons = () => {
+    const scaleAnimScan = useRef(new Animated.Value(1)).current;
+    const scaleAnimChoose = useRef(new Animated.Value(1)).current;
+
+    const onPressInScan = () => {
+      Animated.spring(scaleAnimScan, {
+        toValue: 0.95,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    const onPressOutScan = () => {
+      Animated.spring(scaleAnimScan, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    const onPressInChoose = () => {
+      Animated.spring(scaleAnimChoose, {
+        toValue: 0.95,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    const onPressOutChoose = () => {
+      Animated.spring(scaleAnimChoose, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    return (
+      <View 
+        style={[styles.buttonContainer, !foodData && styles.buttonContainerNoFood]}
+        onLayout={(e) => {
+          buttonsYPosition.current = e.nativeEvent.layout;
+          // Trigger visibility check after layout updates
+          const show = contentHeight.current > scrollViewHeight.current;
+          setShowScrollToButtonIndicator(show);
+        }}
+      >
+        <Pressable
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            pickImage();
+          }}
+          onPressIn={onPressInChoose}
+          onPressOut={onPressOutChoose}
+          accessibilityLabel="Pick from Gallery"
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+          style={({ pressed }) => [
+            {
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: scaleAnimChoose }] }}>
+            <LinearGradient
+              colors={['#101010', '#1b1b1d']}
+              style={styles.button}
+              start={[0, 0]}
+              end={[1, 1]}
+            >
+              <View style={styles.buttonContent}>
+                <Icon name="images" size={24} color="#fff" style={styles.icon} />
+                <Text style={styles.buttonText}>Choose photo</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        </Pressable>
+
+        <Pressable
+          ref={scanButtonRef}
+          onPress={async () => {
+            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            takePhoto();
+          }}
+          onPressIn={onPressInScan}
+          onPressOut={onPressOutScan}
+          accessibilityLabel="Take Photo Now"
+          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+          style={({ pressed }) => [
+            {
+              opacity: pressed ? 0.9 : 1,
+            },
+          ]}
+        >
+          <Animated.View style={{ transform: [{ scale: scaleAnimScan }] }}>
+            <LinearGradient
+              colors={['#101010', '#555']}
+              style={styles.button}
+              start={[1, 1.3]}
+              end={[1, 0]}
+            >
+              <View style={styles.buttonContent}>
+                <Icon name="scan" size={24} color="#fff" style={styles.icon} />
+                <Text style={styles.buttonText}>Scan meal</Text>
+              </View>
+            </LinearGradient>
+          </Animated.View>
+        </Pressable>
+      </View>
+    );
+  };
+
+  // Add this new function to handle text crossfade
+  const crossfadeChipText = (newMode) => {
+    Animated.timing(chipTextOpacity, {
+      toValue: 0,
+      duration: 100,
+      useNativeDriver: true,
+    }).start(() => {
+      LayoutAnimation.easeInEaseOut();
+      setPrevMode(selectedMode);
+      setSelectedMode(newMode);
+
+      Animated.timing(chipTextOpacity, {
+        toValue: 1,
+        duration: 150,
+        useNativeDriver: true,
+      }).start();
+    });
+  };
+
+  // Add tooltipRef near other refs
+  const tooltipRef = useRef(null);
+
+  // Update the handleModeChipPress function
+  const handleModeChipPress = async () => {
+    // Hide tooltip when chip is pressed
+    if (showModeTooltip && tooltipRef.current) {
+      tooltipRef.current.hideTooltipWithAnimation();
+      // Let the tooltip animation finish before showing the mode selection alert
+      setTimeout(() => {
+        modeSelectionAlert();
+      }, 1500); // Wait for tooltip animation to complete
+    } else {
+      modeSelectionAlert();
+    }
+  };
+
+  const modeSelectionAlert = () => {
+    Alert.alert(
+      "Select Scan Mode",
+      "Choose a scan mode for your food:",
+      [
+        {
+          text: "Fast Mode",
+          onPress: () => handleModeSelection(FAST_MODE),
+        },
+        {
+          text: "Accurate Mode",
+          onPress: () => handleModeSelection(ACCURATE_MODE),
+        },
+        {
+          text: "Search Mode",
+          onPress: () => handleModeSelection(SEARCH_MODE),
+        },
+        {
+          text: "Cancel",
+          style: "cancel"
+        }
+      ]
+    );
+  };
+
+  // Add this state variable with the other state declarations
+  const [hasScannedSinceOpen, setHasScannedSinceOpen] = useState(false);
+
+  // Update the useFocusEffect to check for this new condition
+  useFocusEffect(
+    useCallback(() => {
+      const checkForRatingPrompt = async () => {
+        try {
+          const hasPrompted = await AsyncStorage.getItem('@has_prompted_for_review');
+          const accurateScans = await AsyncStorage.getItem('@accurate_scans_before_review');
+          const lastScanTime = await AsyncStorage.getItem('@last_scan_time');
+          
+          // Only show rating prompt if:
+          // 1. We haven't prompted before
+          // 2. User has completed enough accurate scans
+          // 3. Last scan was not just now (must be from a previous session)
+          // 4. User has performed a scan since opening the app
+          if (!hasPrompted && 
+              accurateScans && 
+              parseInt(accurateScans) >= 2 && 
+              lastScanTime && 
+              hasScannedSinceOpen) {
+            const now = Date.now();
+            const lastScan = parseInt(lastScanTime);
+            // Only show if last scan was more than 1 minute ago
+            if (now - lastScan > 60000) {
+              if (StoreReview.isAvailable) {
+                await AsyncStorage.setItem('@has_prompted_for_review', 'true');
+                StoreReview.requestReview();
+              }
+            }
+          }
+        } catch (error) {
+          console.error('Error checking rating prompt state:', error);
+        }
+      };
+
+      checkForRatingPrompt();
+    }, [hasScannedSinceOpen]) // Add hasScannedSinceOpen to dependencies
+  );
+
+  // Add this with other state declarations
+  const [hasScannedEver, setHasScannedEver] = useState(false);
+
+  // Update the useFocusEffect for paywall
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndShowPaywall = async () => {
+        try {
+          // Check if user has ever scanned
+          const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+          setHasScannedEver(hasEverScanned === 'true');
+
+          // Only proceed with paywall check if user has scanned before
+          if (hasEverScanned === 'true') {
+            const lastShownTime = await AsyncStorage.getItem('@paywall_last_shown');
+            const currentTime = Date.now();
+            
+            // If never shown before or 20 minutes (1200000 ms) have passed
+            if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
+              await Superwall.shared.register('onboardingV2');
+              // Update the last shown time
+              await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+            }
+          }
+        } catch (error) {
+          console.error('Error handling paywall display:', error);
+        }
+      };
+
+      checkAndShowPaywall();
+    }, [])
+  );
+
+  // Update handleSuccessfulScan to mark that user has scanned
+  const handleSuccessfulScan = async (parsedData, imageUri, barcodeData, hasDrawing = false, actualModel = null) => {
+    try {
+      console.log("Received food data:", JSON.stringify(parsedData?.food?.name));
+      
+      // Ensure parsedData has valid structure
+      if (!parsedData || !parsedData.food) {
+        console.error("Invalid parsedData structure:", parsedData);
+        setNoFoodFound(true);
+        return false;
+      }
+      
+      // First fade out existing content
+      await new Promise((resolve) => {
+        Animated.timing(tabFadeAnim, {
+          toValue: 0,
+          duration: 150,
+          useNativeDriver: true,
+        }).start(resolve);
+      });
+
+      // Then update the data
+      setFoodData(parsedData.food);
+      setNoFoodFound(false);
+      setActiveTab('Nutrition');  // or whatever default tab you want
+
+      // Finally fade in new content
+      Animated.timing(tabFadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+
+      // Check if this is the first scan ever
+      const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+      if (hasEverScanned !== 'true') {
+        // This is the first scan, show paywall and mark as scanned
+        await AsyncStorage.setItem('@has_ever_scanned', 'true');
+        setHasScannedEver(true);
+        await Superwall.shared.register('onboardingV2');
+        await AsyncStorage.setItem('@paywall_last_shown', Date.now().toString());
+      }
+
+      // Rest of your success handling code...
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      triggerMacroAnimations();
+      setActivePage(0);
+      lastKnownPage.current = 0;
+
+      await storeProductDetails({
+        productName: parsedData.food.name,
+        imageUri: imageUri,
+        nutrients: parsedData.food,
+        date: new Date().toISOString(),
+        hadBarcode: !!barcodeData,
+        hasDrawing: hasDrawing,
+        modelUsed: actualModel || selectedMode
+      });
+
+      // Add these lines to handle the visualization completion for search mode
+      if (selectedMode === SEARCH_MODE && searchVisualizationRef.current) {
+        console.log('Final data received in search mode - completing AI visualization');
+        
+        // Add processing complete flag to tell visualization this is the end
+        parsedData._isProcessingComplete = true;
+        
+        // First update with the final data
+        searchVisualizationRef.current.updateWithScanData(parsedData);
+        
+        // Then complete the visualization with a series of deliberate delays
+        // to ensure the steps complete in the right order visually
+        setTimeout(() => {
+          if (searchVisualizationRef.current && searchVisualizationRef.current.completeVisualization) {
+            console.log('Explicitly completing AI visualization - using force flag');
+            searchVisualizationRef.current.completeVisualization(true); // Use force flag to bypass timing checks
+          }
+        }, 1500);
+      }
+      
+      return true;
+    } catch (error) {
+      console.error('Error in handleSuccessfulScan:', error);
+      return false;
+    }
+  };
+
+  // UNCOMMENT THIS FOR PRODUCTION USE
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndShowPaywall = async () => {
+        try {
+          // Only check for paywall if user has scanned at least once
+          const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+          if (hasEverScanned === 'true') {
+            const lastShownTime = await AsyncStorage.getItem('@paywall_last_shown');
+            const currentTime = Date.now();
+            
+            // Show paywall if never shown before or 20 minutes (1200000 ms) have passed
+            if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
+              await Superwall.shared.register('onboardingV2');
+              // Update the last shown time
+              await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+            }
+          }
+        } catch (error) {
+          console.error('Error handling paywall display:', error);
+        }
+      };
+
+      checkAndShowPaywall();
+    }, [])
+  );
+
+  // Add new state variables at the top with other state declarations
+  const [isOverloadedError, setIsOverloadedError] = useState(false);
+  const [retryImageUri, setRetryImageUri] = useState(null);
+  const [retryBarcodeData, setRetryBarcodeData] = useState(null);
+  const [errorType, setErrorType] = useState(null);
+  const [errorFadeAnim] = useState(new Animated.Value(0));
+
+  // Add retry handler function
+  const handleRetry = async () => {
+    if (retryImageUri) {
+      Animated.timing(errorFadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }).start(async () => {
+        setIsOverloadedError(false);
+        setProcessingImage(retryImageUri);
+        setIsLoading(true);
+        startLoadingAnimation();
+        await sendImageToApi(retryImageUri, retryBarcodeData);
+      });
+    }
+  };
+
+  // Add new function for error simulation
+  const showErrorSimulationAlert = () => {
+    Alert.alert(
+      'Simulate Error',
+      'Which error would you like to simulate?',
+      [
+        {
+          text: 'High Demand',
+          onPress: () => {
+            setIsOverloadedError(true);
+            setRetryImageUri(image || 'https://example.com/test-image.jpg');
+            setRetryBarcodeData(null);
+            setErrorType('overloaded');
+            Animated.timing(errorFadeAnim, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+        {
+          text: 'Unknown Error',
+          onPress: () => {
+            setIsOverloadedError(true);
+            setRetryImageUri(image || 'https://example.com/test-image.jpg');
+            setRetryBarcodeData(null);
+            setErrorType('unknown');
+            Animated.timing(errorFadeAnim, {
+              toValue: 1,
+              duration: 300,
+              useNativeDriver: true,
+            }).start();
+          }
+        },
+        {
+          text: 'Cancel',
+          style: 'cancel'
+        }
+      ]
+    );
+  };
+
+  // Add effect to handle tab changes and pagination
+  useEffect(() => {
+    if (activeTab === 'Nutrition' && foodData) {
+      if (!hasAnimatedRef.current) {
+        triggerMacroAnimations();
+      }
+      // Restore the last known page position when returning to Nutrition tab
+      setActivePage(lastKnownPage.current);
+    } else if (activeTab !== 'Nutrition' && foodData) {
+      // Store the current page position when leaving Nutrition tab
+      lastKnownPage.current = activePage;
+    }
+  }, [activeTab]);
+
+  // Update page tracking when activePage changes
+  useEffect(() => {
+    if (activeTab === 'Nutrition') {
+      lastKnownPage.current = activePage;
+    }
+  }, [activePage]);
+
+  // Add chipAppearance based on whether foodData is non-null
+  const chipAppearance = (colorScheme === 'dark' || foodData || noFoodFound || hasScannedSinceOpen) ? 'dark' : 'light';
+
+  // Add this helper function to safely extract the JSON object from a string response
+  const safeJsonParse = (content) => {
+    try {
+      let jsonContent = content;
+      // If the content doesn't start with '{', try extracting from first '{' to last '}'
+      if (!jsonContent.trim().startsWith("{")) {
+        const startIndex = jsonContent.indexOf("{");
+        const endIndex = jsonContent.lastIndexOf("}");
+        if (startIndex !== -1 && endIndex !== -1 && endIndex > startIndex) {
+          jsonContent = jsonContent.substring(startIndex, endIndex + 1);
+        }
+      }
+      return JSON.parse(jsonContent);
+    } catch (e) {
+      throw e;
+    }
+  };
+
+  // Add this to the useEffect that calls loadSettings
+  const loadFoodSelectionSetting = async () => {
+    try {
+      const enabled = await AsyncStorage.getItem('foodSelectionEnabled');
+      setFoodSelectionEnabled(enabled === 'true');
+    } catch (error) {
+      console.error('Error loading food selection setting:', error);
+    }
+  };
+
+  // Add handler for food selection modal submission
+  const handleFoodSelectionSubmit = async (base64Data, hasDrawing) => {
+    setShowFoodSelectionModal(false);
+    try {
+      // Remove the resizeImage call since we already have base64 data
+      await sendImageToApi(base64Data, null, hasDrawing);
+    } catch (error) {
+      console.error('Error processing selected food:', error);
+      Alert.alert('Error', 'Failed to process selected food');
+    }
+  };
+
+  const [foodSelectionEnabled, setFoodSelectionEnabled] = useState(false);
+  const [showFoodSelectionModal, setShowFoodSelectionModal] = useState(false);
+  const [selectedImage, setSelectedImage] = useState(null);
+
+  // Add this effect to load and track model changes
+  useEffect(() => {
+    const loadModel = async () => {
+      try {
+        const model = await AsyncStorage.getItem('selectedModel');
+        if (model) {
+          setSelectedModel(model);
+        }
+      } catch (error) {
+        console.error('Error loading model:', error);
+      }
+    };
+    loadModel();
+  }, []);
+
+  // Add a model change listener
+  useEffect(() => {
+    const modelChangeListener = async () => {
+      try {
+        const model = await AsyncStorage.getItem('selectedModel');
+        if (model && model !== selectedModel) {
+          setSelectedModel(model);
+        }
+      } catch (error) {
+        console.error('Error in model change listener:', error);
+      }
+    };
+
+    // Set up listener
+    const interval = setInterval(modelChangeListener, 1000);
+    return () => clearInterval(interval);
+  }, [selectedModel]);
+
+  // Add this helper function after the component's state declarations but before other functions
+  const handleError = (error, imageUri = null, barcodeData = null) => {
+    console.error('Error:', error);
+    
+    setIsLoading(false);
+    stopLoadingAnimation();
+    setProcessingImage(null);
+    setShowPlaceholder(false);
+    setErrorOccured(true);
+    
+    // Determine error type based on error message
+    const isOverloaded = error.message?.toLowerCase().includes('rate') || 
+                        error.message?.toLowerCase().includes('capacity') ||
+                        error.message?.toLowerCase().includes('too many') ||
+                        error.message?.toLowerCase().includes('limit') ||
+                        error.message?.toLowerCase().includes('overloaded');
+    
+    setIsOverloadedError(true);
+    setRetryImageUri(imageUri);
+    setRetryBarcodeData(barcodeData);
+    setErrorType(isOverloaded ? 'overloaded' : 'unknown');
+    
+    // Fade out old results before showing error
+    Animated.sequence([
+      Animated.timing(tabFadeAnim, {
+        toValue: 0,
+        duration: 150,
+        useNativeDriver: true,
+      }),
+      Animated.timing(errorFadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      })
+    ]).start(() => {
+      // Only clear data after fade out
+      setFoodData(null);
+      setActiveTab('');
+    });
+    
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+    
+    if (imageUri) {
+      setImage(imageUri);
+      Animated.timing(fadeAnimImage, {
+        toValue: 1,
+        duration: 350,
+        useNativeDriver: true,
+      }).start();
+    }
+
+    fadeOutTitle(() => {
+      fadeInTitle();
+    });
+  };
+
+  // Add WhatsNew state
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
+  
+  // Add useEffect to check if WhatsNew should be shown
+  useEffect(() => {
+    // Remove this line that sets it to true by default
+    // setShowWhatsNew(true);
+    const checkWhatsNewStatus = async () => {
+      try {
+        // Always consider it as seen, effectively disabling the popup
+        await AsyncStorage.setItem('@has_seen_whats_new_1_6_0', 'true');
+        setShowWhatsNew(false);
+      } catch (error) {
+        console.error('Error checking WhatsNew status:', error);
+      }
+    };
+    
+    checkWhatsNewStatus();
+  }, []);
+
+  const handleWhatsNewClose = async () => {
+    try {
+      await AsyncStorage.setItem('@has_seen_whats_new_1_6_0', 'true');
+      setShowWhatsNew(false);
+    } catch (error) {
+      console.error('Error saving WhatsNew status:', error);
+    }
+  };
+
+  // Add this with other refs
+  const isProcessingRef = useRef(false);
+
+  // Add this helper function near the top of the component
+  const getPredictedProcessingTime = () => {
+    const mode = selectedMode;
+    if (averageProcessingTimes && averageProcessingTimes[selectedProvider]) {
+      const modelTimes = averageProcessingTimes[selectedProvider][selectedModel];
+      if (modelTimes && typeof modelTimes[mode] === 'number') {
+        return Math.round(modelTimes[mode] / 1000);
+      }
+    }
+    // Default fallback times
+    return mode === 'accurate' ? 12 : 6;
+  };
+
+  // Add this near other state declarations
+  const [useComplexProcessing, setUseComplexProcessing] = useState(false);
+
+  // Add this state near other state declarations
+  const [showModeTooltip, setShowModeTooltip] = useState(false);
+
+  // Add this with other refs near the top
+  const modeChipRef = useRef(null);
+  const [tooltipPosition, setTooltipPosition] = useState({ x: 0, y: 0 });
+
+  // Separate useEffect for tooltip that only runs after WhatsNew is closed
+  useEffect(() => {
+    let tooltipTimeout;
+    
+    const checkTooltipStatus = async () => {
+      try {
+        const hasSeenTooltip = await AsyncStorage.getItem('@has_seen_mode_tooltip');
+        if (!showWhatsNew && hasSeenTooltip !== 'true' && selectedMode === 'fast' && modeChipRef.current) {
+          tooltipTimeout = setTimeout(() => {
+            modeChipRef.current.measure((x, y, width, height, pageX, pageY) => {
+              setTooltipPosition({ x: pageX + width/2, y: pageY + height });
+              setShowModeTooltip(true);
+            });
+          }, 15000);
+        }
+      } catch (error) {
+        console.error('Error checking tooltip status:', error);
+      }
+    };
+    
+    checkTooltipStatus();
+
+    // Cleanup timeout when component unmounts or dependencies change
+    return () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+      }
+    };
+  }, [selectedMode, showWhatsNew]);
+
+  // Add these with other state declarations
+  const [showScanButtonTooltip, setShowScanButtonTooltip] = useState(false);
+  const [scanButtonTooltipPosition, setScanButtonTooltipPosition] = useState({ x: 0, y: 0 });
+  const scanButtonTooltipRef = useRef(null);
+  const scanButtonRef = useRef(null);
+
+  // Add this effect after the other tooltip effect
+  useEffect(() => {
+    let tooltipTimeout;
+    
+    const checkScanButtonTooltipStatus = async () => {
+      try {
+        const hasSeenTooltip = await AsyncStorage.getItem('@has_seen_scan_button_tooltip');
+        if (!showWhatsNew && hasSeenTooltip !== 'true' && scanButtonRef.current) {
+          tooltipTimeout = setTimeout(() => {
+            scanButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+              setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
+              setShowScanButtonTooltip(true);
+            });
+          }, 1000); // Show after mode tooltip
+        }
+      } catch (error) {
+        console.error('Error checking scan button tooltip status:', error);
+      }
+    };
+    
+    checkScanButtonTooltipStatus();
+
+    return () => {
+      if (tooltipTimeout) {
+        clearTimeout(tooltipTimeout);
+      }
+    };
+  }, [showWhatsNew]);
+
+  // const [searchQueries, setSearchQueries] = useState([]);
+  // const [searchResults, setSearchResults] = useState([]);
+  // const [currentSearchEngine, setCurrentSearchEngine] = useState('');
+  // const [visitedWebsites, setVisitedWebsites] = useState([]);
+
+  // Add new state at the top with other state declarations
+  const [showScrollToButtonIndicator, setShowScrollToButtonIndicator] = useState(false);
+  const [hasAnimatedMacros, setHasAnimatedMacros] = useState(false);
+  const mainScrollViewRef = useRef(null);
+  const buttonsYPosition = useRef(0);
+  const contentHeight = useRef(0);
+  const scrollViewHeight = useRef(0);
+
+  // Add this effect to track button visibility
+  useEffect(() => {
+    const checkButtonVisibility = () => {
+      if (contentHeight.current && scrollViewHeight.current && buttonsYPosition.current) {
+        const buttonBottom = buttonsYPosition.current.y + buttonsYPosition.current.height;
+        const isVisible = buttonBottom < scrollViewHeight.current;
+        setShowScrollToButtonIndicator(!isVisible);
+      }
+    };
+
+    // Initial check when component mounts
+    checkButtonVisibility();
+    
+    // Remove the problematic line that tries to use addListener
+    // const subscription = mainScrollViewRef.current?.addListener('onContentSizeChange', checkButtonVisibility);
+    
+    return () => {
+      // No need to clean up subscription since we're not using addListener anymore
+      // if (subscription) subscription.remove();
+    };
+  }, []);
+
+  // ... existing code ...
+  const [visualError, setVisualError] = useState(null);
+  
+  // Search mode states - using variables declared at the top
+  const [foodItems, setFoodItems] = useState([]);
+  const [processingSteps, setProcessingSteps] = useState([]);
+
+  const handleModeSelection = async (mode) => {
+    const currentMode = selectedMode;
+    
+    if (mode === currentMode) {
+      return; // No change needed
+    }
+    
+    // Check for limitations based on subscription status
+    if (mode === ACCURATE_MODE && !isSubscribed && !isFirstDayUnlimited) {
+      const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+      if (freeAccurateScansUsed === '1') {
+        Alert.alert(
+          'Daily Limit Reached',
+          'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+        );
+        return;
+      }
+      
+      Alert.alert(
+        'Heads Up!',
+        'You only get one accurate scan a day on the free plan, so make it count!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'OK',
+            onPress: async () => {
+              await AsyncStorage.setItem('selectedMode', ACCURATE_MODE);
+              crossfadeChipText(ACCURATE_MODE);
+              Haptics.selectionAsync();
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+      return;
+    }
+    
+    // Check for search mode limitations
+    if (mode === SEARCH_MODE && !isSubscribed && !isFirstDayUnlimited) {
+      const freeSearchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+      if (freeSearchScansUsed === '1') {
+        Alert.alert(
+          'Daily Limit Reached',
+          'You have already used your daily Search Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+        );
+        return;
+      }
+      
+      Alert.alert(
+        'Heads Up!',
+        'You only get one web search scan a day on the free plan, so make it count!',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'OK',
+            onPress: async () => {
+              await AsyncStorage.setItem('selectedMode', SEARCH_MODE);
+              crossfadeChipText(SEARCH_MODE);
+              Haptics.selectionAsync();
+            },
+          },
+        ],
+        { cancelable: false }
+      );
+      return;
+    }
+    
+    // If we get here, either the user is subscribed or using fast mode, so allow the change
+    await AsyncStorage.setItem('selectedMode', mode);
+    crossfadeChipText(mode);
+    Haptics.selectionAsync();
+  };
+
+  // Handle search mode scan
+  const handleSearchModeScan = async (base64Image, imageUri, barcodeData, hasDrawing) => {
+    try {
+      // Mark that we've used a search scan for free users
+      if (!isSubscribed && !isFirstDayUnlimited) {
+        await AsyncStorage.setItem('freeSearchScansUsed', '1');
+      }
+      
+      // Make sure visualization is visible
+      setShowVisualization(true);
+      
+      // Add initial food detection steps based on loading texts
+      const initialSteps = LOADING_TEXTS.search.slice(0, 2);
+      setProcessingSteps(initialSteps);
+      
+      // Reset query and result tracking
+      setSearchQueries([]);
+      setSearchResults([]);
+      setDetectedFoodItems([]);
+      setDetectedBrand('');
+      
+      const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+      setSelectedProvider(provider);
+      
+      // Get appropriate model based on provider
+      const currentModel = getModel(provider, { 
+        selectedMode: SEARCH_MODE,
+        selectedModel: selectedModel,
+        hasDrawing: hasDrawing 
+      });
+      setSelectedModel(currentModel);
+      
+      // Use API key from context
+      const apiKey = apiKeys?.[provider + 'ApiKey'];
+      
+      if (!apiKey) {
+        throw new Error(`API key not found for ${provider}`);
+      }
+      
+      startTimeRef.current = Date.now();
+      
+      // Custom search tracking handler for real-time visualization updates
+      const searchTrackingHandler = (data) => {
+        console.log('Search tracking handler received:', data);
+        
+        // Directly update visualization with any data received
+        updateSearchData({
+          ...data,
+          // Add some default step if none provided
+          step: data.step || 'Processing data...'
+        });
+        
+        // Provide haptic feedback for each update
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+      };
+      
+      // Define a function to finish the search process
+      const finishSearchProcess = async (parsedData) => {
+        console.log('Finalizing search process with data:', parsedData);
+        
+        // Make sure we have complete food data
+        if (!parsedData.food && detectedFoodItems.length > 0) {
+          parsedData.food = { name: detectedFoodItems[0] };
+        }
+        
+        // Add search info if not already present
+        if (!parsedData._searchInfo) {
+          parsedData._searchInfo = {
+            queries: searchQueries,
+            results: searchResults
+          };
+        }
+        
+        // Mark that we have complete data
+        parsedData._isProcessingComplete = true;
+        
+        // If we have the visualization ref, ensure it completes
+        if (visualizationRef.current) {
+          console.log('Completing visualization with final data');
+          
+          // First update with the final data
+          visualizationRef.current.updateWithScanData(parsedData);
+          
+          // Then complete visualization with the utility
+          setTimeout(() => {
+            legacyCompleteVisualization(visualizationRef, parsedData);
+            handleVisualizationComplete();
+          }, 800);
+        }
+        
+        return parsedData;
+      };
+      
+      // Call handleWebSearch with the provider parameters
+      await handleWebSearch({
+        provider,
+        selectedModel: currentModel,
+        selectedMode: SEARCH_MODE,
+        base64Image,
+        barcodeData,
+        hasDrawing,
+        apiKey,
+        handleSuccessfulScan: async (parsedData, imageUri, barcodeData, hasDrawing, actualModel) => {
+          try {
+            console.log('Processing successful search scan with data:', parsedData);
+            
+            // Extract search sources if available
+            if (parsedData && parsedData.details && parsedData.details.sources) {
+              const sources = parsedData.details.sources;
+              console.log('Found sources in response:', sources);
+              
+              if (Array.isArray(sources) && sources.length > 0) {
+                setSearchResults(prev => [...prev, ...sources.filter(r => 
+                  !prev.some(existing => existing.url === r.url)
+                )]);
+                
+                // Also update the search info in parsedData
+                if (!parsedData._searchInfo) {
+                  parsedData._searchInfo = {};
+                }
+                parsedData._searchInfo.results = sources;
+              }
+            }
+            
+            // Check for search information that might be stored in custom fields
+            if (parsedData._searchInfo) {
+              if (parsedData._searchInfo.queries) {
+                updateSearchQueries(parsedData._searchInfo.queries);
+              }
+              if (parsedData._searchInfo.results) {
+                updateSearchResults(parsedData._searchInfo.results);
+              }
+            }
+            
+            if (parsedData && parsedData.food) {
+              // Process and store food data
+              setFoodData(parsedData);
+              setActiveTab('Nutrition');
+              
+              // Also update detected food items
+              if (parsedData.food.name) {
+                setDetectedFoodItems(prev => {
+                  if (!prev.includes(parsedData.food.name)) {
+                    return [...prev, parsedData.food.name];
+                  }
+                  return prev;
+                });
+              }
+              
+              // Complete the visualization
+              await finishSearchProcess(parsedData);
+              
+              // Update the displayed image after successful scan
+              Animated.timing(fadeAnimImage, {
+                toValue: 0,
+                duration: 150,
+                useNativeDriver: true,
+              }).start(() => {
+                setImage(imageUri);
+                Animated.timing(fadeAnimImage, {
+                  toValue: 1,
+                  duration: 350,
+                  useNativeDriver: true,
+                }).start();
+              });
+              
+              fadeOutTitle(() => {
+                fadeInTitle();
+              });
+              
+              setShowPlaceholder(false);
+              setProcessingImage(null);
+              
+              return true;
+            } else {
+              console.log('No food data in response, finishing process anyway');
+              await finishSearchProcess(parsedData);
+              setNoFoodFound(true);
+              return false;
+            }
+          } catch (error) {
+            console.error('Error in handleSuccessfulScan:', error);
+            return false;
+          }
+        },
+        handleError,
+        handleSearchTracking: searchTrackingHandler,
+        imageUri,
+        startTimeRef,
+        updateAverageProcessingTime,
+        isFirstDayUnlimited,
+        isSubscribed,
+        setNoFoodFound,
+        setFoodData,
+        setActiveTab,
+      });
+      
+      return true;
+    } catch (error) {
+      console.error('Error in handleSearchModeScan:', error);
+      handleError(error, imageUri, barcodeData);
+      return false;
+    } finally {
+      isProcessingRef.current = false;
+    }
+  };
+
+  const updateSearchData = (data) => {
+    if (typeof data === 'object') {
+      console.log('Search tracking update received:', data);
+      
+      // Create a combined data object to ensure the visualization gets all data at once
+      const combinedData = {
+        _searchInfo: {}
+      };
+      
+      // Update individual state variables
+      if (data.queries) {
+        console.log('Received search queries:', data.queries);
+        updateSearchQueries(data.queries);
+        combinedData._searchInfo.queries = data.queries;
+      }
+      
+      if (data.results) {
+        console.log('Received search results:', data.results);
+        updateSearchResults(data.results);
+        combinedData._searchInfo.results = data.results;
+      }
+      
+      if (data.foodItems) {
+        console.log('Received food items:', data.foodItems);
+        setDetectedFoodItems(prev => {
+          // Filter out duplicates
+          const updatedItems = [...prev];
+          data.foodItems.forEach(item => {
+            if (!updatedItems.includes(item)) {
+              updatedItems.push(item);
+            }
+          });
+          return updatedItems;
+        });
+        
+        updateFoodItems(data.foodItems);
+        
+        if (data.foodItems.length > 0) {
+          combinedData.food = { name: data.foodItems[0] };
+        }
+      }
+      
+      // Update brand information if available
+      if (data.brand) {
+        console.log('Received brand information:', data.brand);
+        setDetectedBrand(data.brand);
+        combinedData.brand = data.brand;
+      }
+      
+      // If we have a processing step update
+      if (data.step) {
+        console.log('Received processing step:', data.step);
+        setProcessingSteps(prev => [...prev, data.step]);
+        combinedData.processingStep = data.step;
+      }
+      
+      // Check if this is a complete scan notification
+      if (data.isComplete) {
+        console.log('Received completion signal, finalizing visualization');
+        
+        // Mark data as complete for visualization
+        combinedData._isProcessingComplete = true;
+        
+        // Use the legacy helper to complete the visualization
+        if (visualizationRef.current) {
+          // Update with combined data first
+          visualizationRef.current.updateWithScanData(combinedData);
+          
+          // Then complete visualization after a short delay
+          setTimeout(() => {
+            legacyCompleteVisualization(visualizationRef, combinedData);
+            
+            // Hide loading state after completion (with delay)
+            setTimeout(() => {
+              setIsLoading(false);
+              setShowVisualization(false);
+            }, 2000);
+          }, 500);
+        }
+        
+        return;
+      }
+      
+      // Send the combined update to the visualization
+      if (visualizationRef.current) {
+        visualizationRef.current.updateWithScanData(combinedData);
+        if (visualizationRef.current.forceUpdateSubtitles) {
+          visualizationRef.current.forceUpdateSubtitles();
+        }
+      }
+    }
+  };
+
+  // Helper functions for updating search data
+  const updateSearchQueries = (queries) => {
+    if (!Array.isArray(queries)) return;
+    console.log('Updating search queries:', queries);
+    setSearchQueries(prev => {
+      const uniqueQueries = [...prev];
+      queries.forEach(query => {
+        if (!uniqueQueries.includes(query)) {
+          uniqueQueries.push(query);
+        }
+      });
+      return uniqueQueries;
+    });
+  };
+  
+  const updateSearchResults = (results) => {
+    if (!Array.isArray(results)) return;
+    console.log('Updating search results:', results);
+    setSearchResults(prev => {
+      return [...prev, ...results.filter(r => 
+        !prev.some(existing => existing.url === r.url)
+      )];
+    });
+  };
+
+  // Component rendering section
+  
+  // Add this renderSearchVisualization function right before the existing return statement in the main component
+  // Component rendering section
+  
+  // Add this renderSearchVisualization function right before the existing return statement in the main component
+  
+  const renderSearchVisualization = () => {
+    if (!isLoading || selectedMode !== SEARCH_MODE) {
+      return null;
+    }
+    
+    console.log('Rendering inline search visualization - state:', {
+      showVisualization,
+      queries: searchQueries.length, 
+      results: searchResults.length, 
+      foodItems: detectedFoodItems.length || foodItems.length
+    });
+    
+    return (
+      <View style={styles.visualizationContainer}>
+        <FunctionalAIVisualization
+          ref={visualizationRef}
+          isDark={colorScheme === 'dark'}
+          isVisible={showVisualization} 
+          searchQueries={searchQueries}
+          searchResults={searchResults}
+          foodItems={detectedFoodItems.length > 0 ? detectedFoodItems : foodItems}
+          processingSteps={processingSteps || []}
+          summaryText={foodData?.details?.summaryText || ''}
+          brandName={detectedBrand || ''}
+          onComplete={() => {
+            console.log('Visualization complete callback triggered from inline component');
+            setTimeout(() => {
+              setIsLoading(false);
+              setShowVisualization(false);
+            }, 2000);
+          }}
+        />
+      </View>
+    );
+  };
+
+  // Add this useEffect block after the existing useEffect blocks
+  useEffect(() => {
+    // This effect handles visualization reset when search mode is deactivated
+    if (selectedMode !== SEARCH_MODE && visualizationRef.current) {
+      console.log('Search mode deactivated - resetting visualization');
+      if (visualizationRef.current.reset) {
+        visualizationRef.current.reset();
+      }
+      setShowVisualization(false);
+    }
+    
+    // Cleanup function for when component unmounts or dependencies change
+    return () => {
+      if (visualizationRef.current && visualizationRef.current.reset) {
+        console.log('Cleaning up search visualization');
+        visualizationRef.current.reset();
+      }
+    };
+  }, [selectedMode]);
+
+  const updateFoodItems = (items) => {
+    if (!Array.isArray(items) || items.length === 0) return;
+    
+    console.log('Updating food items:', items);
+    
+    // Update the foodItems state
+    setFoodItems(items);
+    
+    // Also update detectedFoodItems for visualization
+    setDetectedFoodItems(prev => {
+      const updatedItems = [...prev];
+      items.forEach(item => {
+        if (!updatedItems.includes(item)) {
+          updatedItems.push(item);
+        }
+      });
+      return updatedItems;
+    });
+    
+    // Update the visualization with the new food items
+    if (visualizationRef.current) {
+      const updateData = { 
+        food: { name: items[0] },
+        _searchInfo: {
+          queries: searchQueries,
+          results: searchResults
+        }
+      };
+      
+      // Add detected brand if available
+      if (detectedBrand) {
+        updateData.brand = detectedBrand;
+      }
+      
+      visualizationRef.current.updateWithScanData(updateData);
+      
+      // Force subtitle updates
+      if (visualizationRef.current.forceUpdateSubtitles) {
+        visualizationRef.current.forceUpdateSubtitles();
+      }
+    }
+  };
+
+  // Add a helper function to handle visualization completion
+  const handleVisualizationComplete = () => {
+    console.log('Visualization complete callback triggered');
+    
+    // Provide success haptic feedback
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    
+    // Hide loading state after a delay
+    setTimeout(() => {
+      setIsLoading(false);
+      setShowVisualization(false);
+      
+      // Update UI to show results
+      if (foodData) {
+        // If we have food data, ensure it's visible
+        setActiveTab('Nutrition');
+        setShowPlaceholder(false);
+      }
+    }, 2000);
+  };
+

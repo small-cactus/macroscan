@@ -37,6 +37,8 @@ import { getModel } from './providers/models';
 import { updateAverageProcessingTime, loadAverageProcessingTimes } from './providers/processingTimes';  // Add loadAverageProcessingTimes
 import ModeTooltip from '../components/ModeTooltip';
 import ScanButtonTooltip from '../components/ScanButtonTooltip';
+import { useTimeZone } from '../TimeZoneContext';
+import { FadeInDown } from 'react-native-reanimated';
 
 const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
 
@@ -92,7 +94,7 @@ const isIphoneSE = () => {
 // Constants can stay outside the component
 const MODE_LABELS = {
   fast: 'Fast Mode',
-  accurate: 'Accurate Mode'
+  accurate: 'Accurate Mode',
 };
 
 const FoodScanScreen = () => {
@@ -125,7 +127,7 @@ const FoodScanScreen = () => {
   const loadingAnimationRef = useRef(null);
   const [showScrollIndicator, setShowScrollIndicator] = useState(false);
   const scrollViewRef = useRef(null);
-  const { user } = useUser();
+  const { user, apiKeys } = useUser();
   const { isIAPEnabled } = useIAP();
   const [hasPermission, setHasPermission] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
@@ -320,7 +322,6 @@ const FoodScanScreen = () => {
   
     // Schedule "Taking longer than usual..." with fade in
     setTimeout(() => {
-      // console.log(`Scheduling "Taking longer than usual..." at ${averageTime + 2000} ms`);
       loadingTextQueueRef.current = ["Taking longer than usual..."];
       isHoldingRef.current = true;
   
@@ -467,10 +468,13 @@ const stopLoadingAnimation = () => {
     }
   }, [selectedMode, isLoading]);
   
+  // Add timezone context
+  const { getTodayString, getTimeUntilMidnight } = useTimeZone();
+  
   useEffect(() => {
     const initializeAppData = async () => {
       try {
-        const today = new Date().toISOString().slice(0, 10);
+        const today = getTodayString();
   
         // 1) Check the existing "dateLastUsed"
         const dateLastUsed = await AsyncStorage.getItem('dateLastUsed');
@@ -479,8 +483,14 @@ const stopLoadingAnimation = () => {
   
         // 2) Check "firstUseDate"
         const firstUseDate = await AsyncStorage.getItem('firstUseDate');
-        if (!firstUseDate) {
-          // If no firstUseDate, set it to today
+        
+        // Validate firstUseDate before using it
+        const isValidFirstUseDate = firstUseDate && 
+                                   /^\d{4}-\d{2}-\d{2}$/.test(firstUseDate) && 
+                                   !isNaN(new Date(firstUseDate).getTime());
+        
+        if (!isValidFirstUseDate) {
+          // If firstUseDate is invalid or doesn't exist, set it to today
           await AsyncStorage.setItem('firstUseDate', today);
           setIsFirstDayUnlimited(true);
           setScanCount(0);
@@ -488,10 +498,13 @@ const stopLoadingAnimation = () => {
           setIsFirstDayUnlimited(firstUseDate === today);
         }
   
-        // 3) If the date changed since last use, reset daily counters
-        if (dateLastUsed !== today) {
-          // Removed the reset-counter log:
-          // console.log('[INIT] Resetting daily counters because date changed.');
+        // 3) Check if date changed since last use and reset counters if needed
+        const isValidLastUsed = dateLastUsed && 
+                               /^\d{4}-\d{2}-\d{2}$/.test(dateLastUsed) && 
+                               !isNaN(new Date(dateLastUsed).getTime());
+        
+        if (!isValidLastUsed || dateLastUsed !== today) {
+          // Reset the counters for a new day or if last used date is invalid
           await AsyncStorage.setItem('dailyScanCount', '0');
           await AsyncStorage.setItem('dateLastUsed', today);
           await AsyncStorage.setItem('freeAccurateScansUsed', '0');
@@ -505,8 +518,6 @@ const stopLoadingAnimation = () => {
           // Also load how many accurate scans used
           const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
           setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
-          // Removed log:
-          // console.log('[INIT] freeAccurateScansUsed =', accurateScansUsed);
         }
   
         // 4) Load the user's chosen model & mode
@@ -520,11 +531,19 @@ const stopLoadingAnimation = () => {
         }
       } catch (error) {
         console.error("Error initializing app data:", error);
+        
+        // Set safe defaults in case of error
+        setIsFirstDayUnlimited(false);
+        setScanCount(0);
+        setFreeAccurateScansUsed(0);
+        
+        // Ensure dateLastUsed is set to prevent future errors
+        await AsyncStorage.setItem('dateLastUsed', getTodayString());
       }
     };
   
     initializeAppData();
-  }, []);
+  }, [getTodayString]); // Add getTodayString to dependency array
 
   useFocusEffect(
     useCallback(() => {
@@ -714,15 +733,6 @@ const stopLoadingAnimation = () => {
     }
   }, [modalVisible, modalImageUri]);
 
-  const getTimeUntilMidnight = () => {
-    const now = new Date();
-    const midnight = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1, 0, 0, 0);
-    const millisTillMidnight = midnight.getTime() - now.getTime();
-    const hours = Math.floor(millisTillMidnight / (1000 * 60 * 60));
-    const minutes = Math.floor((millisTillMidnight % (1000 * 60 * 60)) / (1000 * 60));
-    return `${hours} hours and ${minutes} minutes`;
-  };
-
   const incrementScanCount = useCallback(async () => {
     if (!isFirstDayUnlimited && !isSubscribed) {
       const newCount = scanCount + 1;
@@ -794,7 +804,27 @@ const stopLoadingAnimation = () => {
   };
 
   const scrollToBottom = () => {
-    scrollViewRef.current?.scrollToEnd({ animated: true });
+    if (scrollViewRef.current) {
+      // Try scrollToEnd method first
+      scrollViewRef.current.scrollToEnd({ animated: true });
+      
+      // Additional attempt for reliability - get content height and scroll there
+      scrollViewRef.current.getScrollResponder()?.scrollResponderScrollToEnd({ animated: true });
+    }
+  };
+
+  const scrollToTop = () => {
+    if (scrollViewRef.current) {
+      // First try scrollTo method
+      scrollViewRef.current.scrollTo({ y: 0, animated: true });
+      
+      // Also try setNativeProps as a fallback for more reliability
+      try {
+        scrollViewRef.current.setNativeProps({ contentOffset: { y: 0, x: 0 } });
+      } catch (error) {
+        console.log('Error using setNativeProps:', error);
+      }
+    }
   };
 
   const storeProductDetails = async (productDetails) => {
@@ -827,97 +857,51 @@ const stopLoadingAnimation = () => {
     }
   };
 
-// Update handleAccurateScanUsed to persist the count
-const handleAccurateScanUsed = async () => {
-  if (!isSubscribed && !isFirstDayUnlimited && selectedMode === 'accurate') {
-    const newVal = freeAccurateScansUsed + 1;
-    setFreeAccurateScansUsed(newVal);
-    await AsyncStorage.setItem('freeAccurateScansUsed', newVal.toString());
-    if (newVal >= 1) {
-      setSelectedMode('fast');
-      await AsyncStorage.setItem('selectedMode', 'fast');
-      await AsyncStorage.getItem('selectedMode');
-      console.log('Selected Mode:', selectedMode);
-      Alert.alert(
-        'Accurate Scan Used',
-        'You have used your 1 accurate scan for today. Switching back to Fast Mode.'
-      );
-    }
-  }
-};
-
-// Modified pickImage to reflect daily accurate-scan usage
-const pickImage = async () => {
-  try {
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
-      allowsEditing: false,
-      quality: 0.8,
-    });
-
-    if (!result.canceled) {
-      const selectedUri = result.assets[0].uri;
-      
-      if (foodSelectionEnabled) {
-        setSelectedImage(selectedUri);
-        setShowFoodSelectionModal(true);
-      } else {
-        const resizedImage = await resizeImage(selectedUri);
-        await sendImageToApi(resizedImage);
-      }
-    }
-  } catch (error) {
-    console.error('Error picking image:', error);
-    Alert.alert('Error', 'Failed to pick image from gallery');
-  }
-};
-
-const takePhoto = async () => {
-  // If tooltip is showing, hide it with animation
-  if (showScanButtonTooltip && scanButtonTooltipRef.current) {
-    scanButtonTooltipRef.current.hideTooltipWithAnimation();
-    // Wait for animation before proceeding
-    await new Promise(resolve => setTimeout(resolve, 1500));
-  }
-
-  if (isFirstDayUnlimited || isSubscribed) {
-    navigation.navigate('CameraScreen');
-  } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
-    // Check if accurate scan limit is reached for free users
-    if (
-      !isSubscribed &&
-      !isFirstDayUnlimited &&
-      selectedMode === 'accurate' &&
-      freeAccurateScansUsed >= 1
-    ) {
-      Alert.alert(
-        'No Accurate Scans Left',
-        'You have used your 1 accurate scan for today. Fast mode has automatically been selected. Upgrade for more accurate scans.'
-      );
-      setSelectedMode('fast');
-      await AsyncStorage.setItem('selectedMode', 'fast');
-      await AsyncStorage.getItem('selectedMode');
-      console.log('Selected Mode:', selectedMode);
-      return;
-    }
-
-    navigation.navigate('CameraScreen');
-  } else {
-    // Show paywall when no scans left
+  const pickImage = async () => {
     try {
-      await Superwall.shared.register('no-scans');
-      console.log('Paywall shown for no scans left');
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: false,
+        quality: 0.8,
+      });
+
+      if (!result.canceled) {
+        const selectedUri = result.assets[0].uri;
+        
+        if (foodSelectionEnabled) {
+          setSelectedImage(selectedUri);
+          setShowFoodSelectionModal(true);
+        } else {
+          const resizedImage = await resizeImage(selectedUri);
+          await sendImageToApi(resizedImage);
+        }
+      }
     } catch (error) {
-      console.error('Error showing paywall:', error);
-      // Fallback to alert if paywall fails
-      const timeLeft = getTimeUntilMidnight();
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image from gallery');
+    }
+  };
+
+  const takePhoto = async () => {
+    // If tooltip is showing, hide it with animation
+    if (showScanButtonTooltip && scanButtonTooltipRef.current) {
+      scanButtonTooltipRef.current.hideTooltipWithAnimation();
+      // Wait for animation before proceeding
+      await new Promise(resolve => setTimeout(resolve, 1500));
+    }
+
+    if (isFirstDayUnlimited || isSubscribed) {
+      navigation.navigate('CameraScreen');
+    } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 2)) {
+      navigation.navigate('CameraScreen');
+    } else {
+      const timeLeft = getTimeUntilMidnight().formatted;
       Alert.alert(
         "No More Scans Left",
         `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
       );
     }
-  }
-};
+  };
 
   const sendImageToApiWithHint = async (userHint) => {
     setIsLoading(true);
@@ -981,6 +965,7 @@ const takePhoto = async () => {
 
     try {
       isProcessingRef.current = true;
+      
       const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
       setSelectedProvider(provider);
       
@@ -1037,18 +1022,18 @@ const takePhoto = async () => {
     
       let foodFound = false;
 
-      // Get the appropriate API key based on provider
-      const apiKeyMap = {
-        anthropic: '@apikey',
-        openai: '@openai_api_key',
-        gemini: '@gemini_api_key'
-      };
-
-      const apiKey = await AsyncStorage.getItem(apiKeyMap[provider]);
+      // Use API key from context
+      const apiKey = mode === 'search' 
+        ? apiKeys?.geminiApiKey // Always use geminiApiKey for search mode
+        : apiKeys?.[provider + 'ApiKey'];
+        
       if (!apiKey) {
-        console.error(`API key not found for provider: ${provider}`);
-        Alert.alert('Error', `API key not found for ${provider}`);
+        console.error(`API key not found for ${mode === 'search' ? 'gemini' : provider}`);
+        Alert.alert('Error', `API key not found for ${mode === 'search' ? 'gemini' : provider}`);
         setIsLoading(false);
+        stopLoadingAnimation();
+        setProcessingImage(null);
+        isProcessingRef.current = false;
         return;
       }
         
@@ -1064,7 +1049,6 @@ const takePhoto = async () => {
         imageUri,
         startTimeRef,
         updateAverageProcessingTime,
-        handleAccurateScanUsed,
         isFirstDayUnlimited,
         isSubscribed,
         setNoFoodFound,
@@ -1158,8 +1142,25 @@ const takePhoto = async () => {
       duration: 150,
       useNativeDriver: true,
     }).start(() => {
+      // Set the active tab first
       setActiveTab(newTab);
-      fadeInTab();
+      
+      // Small delay to ensure refs are ready and content is fully unmounted
+      setTimeout(() => {
+        // Reset scroll position for all tabs after content has faded out
+        if (nutritionScrollViewRef.current) {
+          nutritionScrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        }
+        if (ingredientsScrollViewRef.current) {
+          ingredientsScrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        }
+        if (scrollViewRef.current) {
+          scrollViewRef.current.scrollTo({ x: 0, y: 0, animated: false });
+        }
+        
+        // Now fade in the new tab content
+        fadeInTab();
+      }, 50);
     });
   };
 
@@ -1179,6 +1180,11 @@ const takePhoto = async () => {
       
       // Fade out current tab content
       fadeOutTab(tab);
+      
+      // Scroll to the top when changing tabs with a slight delay to ensure tab content is ready
+      setTimeout(() => {
+        scrollToTop();
+      }, 50);
       
       // Animate the tab indicator
       const tabIndex = ['Nutrition', 'Ingredients', 'Details'].indexOf(tab);
@@ -1324,14 +1330,8 @@ const takePhoto = async () => {
   // Add effect to handle nutrient animations
   useEffect(() => {
     if (foodData) {
-      if (activeTab === 'Nutrition') {
-        triggerMacroAnimations();
-      } else {
-        // Reset animations when switching away from nutrition tab
-        cardAnimations.forEach(anim => anim.setValue(0));
-        nutrientProgressAnim.setValue(0);
-        hasAnimatedRef.current = false;
-      }
+      // Trigger animations for the active tab
+      triggerMacroAnimations();
     } else {
       // Reset animations when data is cleared
       cardAnimations.forEach(anim => anim.setValue(0));
@@ -1342,7 +1342,7 @@ const takePhoto = async () => {
 
   // Add effect to handle tab changes
   useEffect(() => {
-    if (activeTab === 'Nutrition' && foodData && !hasAnimatedRef.current) {
+    if (foodData && !hasAnimatedRef.current) {
       triggerMacroAnimations();
     }
   }, [activeTab]);
@@ -1374,6 +1374,7 @@ const takePhoto = async () => {
 
   // Add this ref near other ref declarations
   const nutritionScrollViewRef = useRef(null);
+  const ingredientsScrollViewRef = useRef(null); // Add new ref for ingredients tab
 
   // Update the useEffect handling tab changes
   useEffect(() => {
@@ -1526,6 +1527,7 @@ const takePhoto = async () => {
           }}
           scrollEventThrottle={16}
           ref={nutritionScrollViewRef}
+          key={`nutrition-scrollview-${activeTab}`}
         >
           {pages.map((items, index) => (
             <View key={index} style={styles.nutrientPage}>
@@ -1583,36 +1585,460 @@ const takePhoto = async () => {
     );
   };
 
-  const renderIngredientsTab = () => (
-    <View style={styles.tabContentContainer}>
-      <Text style={styles.ingredientDescriptionNote}>
-        Click the name of the ingredient to learn more about it.
-      </Text>
-      {foodData.ingredients.map((ingredient, index) => (
-        <React.Fragment key={index}>
-          <View style={styles.ingredientItem}>
-            <TouchableOpacity onPress={() => Linking.openURL(ingredient.wikipediaLink)}>
-              <Text style={styles.ingredientName}>{ingredient.name}</Text>
-            </TouchableOpacity>
-            <Text style={styles.ingredientDescription}>{ingredient.description}</Text>
-          </View>
-          {index < foodData.ingredients.length - 1 && renderSeparator()}
-        </React.Fragment>
-      ))}
-    </View>
-  );
+  const renderIngredientsTab = () => {
+    // Check if we have any ingredients to display
+    const hasIngredients = foodData?.ingredients && foodData.ingredients.length > 0;
 
-  const renderDetailsTab = () => (
-    <View style={styles.tabContentContainer}>
-      <Text style={styles.detailText}>{foodData.details.summary}</Text>
-      <Text style={styles.detailPrepTime}>Prep Time: {foodData.details.prepTime}</Text>
-      <Text style={styles.detailServingSize}>Serving Size: {foodData.details.servingSize}</Text>
-      {renderSeparator()}
-      <TouchableOpacity onPress={() => Linking.openURL(foodData.details.wikipediaLink)}>
-        <Text style={styles.wikipediaLink}>Learn more on Wikipedia</Text>
-      </TouchableOpacity>
-    </View>
-  );
+    // If no ingredients, show empty state
+    if (!hasIngredients) {
+      return (
+        <View style={styles.tabContentContainer}>
+          <Text style={styles.noDataText}>No ingredient information available</Text>
+        </View>
+      );
+    }
+
+    // Group ingredients into smaller chunks for better visual organization (e.g., 3-4 per card)
+    const ingredientGroups = [];
+    const groupSize = 3; // Number of ingredients per card
+    
+    for (let i = 0; i < foodData.ingredients.length; i += groupSize) {
+      ingredientGroups.push(foodData.ingredients.slice(i, i + groupSize));
+    }
+
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={true} 
+          style={{flex: 1}} 
+          contentContainerStyle={{paddingBottom: activeTab === 'Nutrition' ? 16 * scale : 0}}
+          ref={ingredientsScrollViewRef}
+          key={`ingredients-scrollview-${activeTab}`}
+        >
+          <View style={styles.macroGridContainer}>
+            {/* Note Card - Instructions */}
+            <Animated.View 
+              style={[
+                styles.macroCard, 
+                { height: 'auto', minHeight: 60 * scale, marginBottom: 8 * scale },
+                {
+                  opacity: cardAnimations[0],
+                  transform: [
+                    {
+                      scale: cardAnimations[0].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [0.8, 1],
+                      }),
+                    },
+                    {
+                      translateY: cardAnimations[0].interpolate({
+                        inputRange: [0, 1],
+                        outputRange: [50, 0],
+                      }),
+                    },
+                  ],
+                }
+              ]}
+              entering={FadeInDown.delay(100).springify()}
+            >
+              <View style={styles.macroHeaderContainer}>
+                <View style={styles.iconLabelContainer}>
+                  <View style={[styles.iconContainer]}>
+                    <LinearGradient
+                      colors={['#3182CE', '#2B6CB0']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <Icon name="information-circle-outline" size={20} color="#FFF" />
+                  </View>
+                  <Text style={styles.macroLabel}>Ingredients</Text>
+                </View>
+              </View>
+
+              <Text style={styles.ingredientInstructions}>
+                Click on ingredient names to learn more about them
+              </Text>
+            </Animated.View>
+
+            {/* Ingredient Cards */}
+            {ingredientGroups.map((group, groupIndex) => (
+              <Animated.View 
+                key={`group-${groupIndex}`}
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto' },
+                  {
+                    opacity: cardAnimations[groupIndex + 1 > cardAnimations.length - 1 ? cardAnimations.length - 1 : groupIndex + 1],
+                    transform: [
+                      {
+                        scale: cardAnimations[groupIndex + 1 > cardAnimations.length - 1 ? cardAnimations.length - 1 : groupIndex + 1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[groupIndex + 1 > cardAnimations.length - 1 ? cardAnimations.length - 1 : groupIndex + 1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(200 + (groupIndex * 100)).springify()}
+              >
+                {group.map((ingredient, index) => (
+                  <React.Fragment key={`ingredient-${index}`}>
+                    <View style={styles.ingredientContainer}>
+                      <TouchableOpacity 
+                        style={styles.ingredientNameContainer}
+                        onPress={() => ingredient.wikipediaLink ? Linking.openURL(ingredient.wikipediaLink) : null}
+                      >
+                        <Text style={styles.ingredientName}>{ingredient.name || "Unknown ingredient"}</Text>
+                        {ingredient.wikipediaLink && (
+                          <Icon name="open-outline" size={14} color={colorScheme === 'dark' ? '#BBBBBB' : '#666666'} />
+                        )}
+                      </TouchableOpacity>
+                      <Text style={styles.ingredientDescription}>{ingredient.description || ""}</Text>
+                    </View>
+                    {index < group.length - 1 && <View style={styles.ingredientDivider} />}
+                  </React.Fragment>
+                ))}
+              </Animated.View>
+            ))}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  const renderDetailsTab = () => {
+    // Check if we have any details to display
+    const hasDetails = foodData?.details && (
+      foodData.details.summary || 
+      foodData.details.summaryText ||
+      foodData.details.servingSize ||
+      foodData.details.prepTime ||
+      foodData.details.preparation?.steps?.length > 0 ||
+      foodData.details.wikipediaLink ||
+      foodData.details.sources?.length > 0
+    );
+
+    // If no details, show empty state
+    if (!hasDetails) {
+      return (
+        <View style={styles.tabContentContainer}>
+          <Text style={styles.noDataText}>No detailed information available for this food.</Text>
+        </View>
+      );
+    }
+
+    // If we have details, render organized content
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={true} 
+          style={{flex: 1}} 
+          contentContainerStyle={{paddingBottom: activeTab === 'Nutrition' ? 16 * scale : 0}}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={handleContentSizeChange}
+          ref={scrollViewRef}
+          key={`details-scrollview-${activeTab}`}
+        >
+          <View style={styles.macroGridContainer}>
+            {/* About Card */}
+            {(foodData.details.summary || foodData.details.summaryText) && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[0],
+                    transform: [
+                      {
+                        scale: cardAnimations[0].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[0].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(100).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#5A67D8', '#4C51BF']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="information-circle-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>About</Text>
+                  </View>
+                </TouchableOpacity>
+                <Text style={styles.summaryText}>
+                  {foodData.details.summary || foodData.details.summaryText}
+                </Text>
+              </Animated.View>
+            )}
+
+            {/* Quick Facts Card */}
+            {(foodData.details.servingSize || foodData.details.prepTime) && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[1],
+                    transform: [
+                      {
+                        scale: cardAnimations[1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(200).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#ED8936', '#DD6B20']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="stats-chart" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Quick Facts</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Facts Content */}
+                <View style={styles.factsContainer}>
+                  {foodData.details.prepTime && (
+                    <View style={styles.factRow}>
+                      <Text style={styles.factLabel}>Prep Time</Text>
+                      <Text style={styles.factValue}>{foodData.details.prepTime}</Text>
+                    </View>
+                  )}
+                  
+                  {foodData.details.servingSize && (
+                    <View style={styles.factRow}>
+                      <Text style={styles.factLabel}>Serving Size</Text>
+                      <Text style={styles.factValue} numberOfLines={3}>{foodData.details.servingSize}</Text>
+                    </View>
+                  )}
+                </View>
+              </Animated.View>
+            )}
+            
+            {/* Preparation Steps Card */}
+            {foodData.details.preparation?.steps?.length > 0 && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[2],
+                    transform: [
+                      {
+                        scale: cardAnimations[2].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[2].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(300).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#38B2AC', '#319795']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="list-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Preparation</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Preparation Steps */}
+                <View style={styles.stepsContainer}>
+                  {foodData.details.preparation.steps.map((step, index) => (
+                    <View key={index} style={styles.stepRow}>
+                      <Text style={styles.stepNumber}>{index + 1}</Text>
+                      <Text style={styles.stepText}>{step}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+            
+            {/* Wikipedia Link Card */}
+            {foodData.details.wikipediaLink && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', padding: 0, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[3],
+                    transform: [
+                      {
+                        scale: cardAnimations[3].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[3].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(400).springify()}
+              >
+                <TouchableOpacity 
+                  style={[styles.linkRow, { paddingVertical: 16 * scale, paddingHorizontal: 16 * scale }]}
+                  onPress={() => Linking.openURL(foodData.details.wikipediaLink)}
+                >
+                  <View style={styles.iconContainer}>
+                    <LinearGradient
+                      colors={['#805AD5', '#6B46C1']}
+                      style={StyleSheet.absoluteFill}
+                      start={{ x: 0, y: 0 }}
+                      end={{ x: 1, y: 1 }}
+                    />
+                    <Icon name="globe-outline" size={20} color="#FFF" />
+                  </View>
+                  <Text style={styles.linkText}>Learn more on Wikipedia</Text>
+                  <Icon name="chevron-forward" size={16} color={colorScheme === 'dark' ? '#BBBBBB' : '#666666'} />
+                </TouchableOpacity>
+              </Animated.View>
+            )}
+            
+            {/* Sources Links Card */}
+            {foodData.details.sources?.length > 0 && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[4],
+                    transform: [
+                      {
+                        scale: cardAnimations[4].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[4].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(500).springify()}
+              >
+                <TouchableOpacity 
+                  style={styles.macroHeaderContainer}
+                  onPress={scrollToTop}
+                  activeOpacity={0.7}
+                >
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#9F7AEA', '#805AD5']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="document-text-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Sources</Text>
+                  </View>
+                </TouchableOpacity>
+
+                {/* Sources Links */}
+                <View style={styles.linksContainer}>
+                  {foodData.details.sources.map((source, index) => (
+                    <TouchableOpacity
+                      key={index}
+                      style={styles.linkRow}
+                      onPress={() => Linking.openURL(source.url)}
+                    >
+                      <Text style={styles.linkText}>{source.name || source.url}</Text>
+                      <Icon name="open-outline" size={16} color={colorScheme === 'dark' ? '#BBBBBB' : '#666666'} />
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+          </View>
+        </ScrollView>
+        {activeTab === 'Details' && showScrollIndicator && (
+          <Animated.View
+            style={[styles.scrollIndicator, { opacity: scrollIndicatorOpacity }]}
+            pointerEvents={showScrollIndicator ? 'auto' : 'none'}
+          >
+            <TouchableOpacity onPress={scrollToBottom}>
+              <Entypo name="chevron-down" size={32} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+            </TouchableOpacity>
+          </Animated.View>
+        )}
+      </View>
+    );
+  };
 
   // Add these with other animation refs at component level
   const buttonPositionAnim = useRef(new Animated.Value(0)).current;
@@ -1686,7 +2112,15 @@ const takePhoto = async () => {
     };
 
     return (
-      <View style={[styles.buttonContainer, !foodData && styles.buttonContainerNoFood]}>
+      <View 
+        style={[styles.buttonContainer, !foodData && styles.buttonContainerNoFood]}
+        onLayout={(e) => {
+          buttonsYPosition.current = e.nativeEvent.layout;
+          // Trigger visibility check after layout updates
+          const show = contentHeight.current > scrollViewHeight.current;
+          setShowScrollToButtonIndicator(show);
+        }}
+      >
         <Pressable
           onPress={async () => {
             await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
@@ -1780,117 +2214,77 @@ const takePhoto = async () => {
       tooltipRef.current.hideTooltipWithAnimation();
       // Let the tooltip animation finish before showing the mode selection alert
       setTimeout(() => {
-        const currentMode = selectedMode;
-        const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
-        
-        Alert.alert(
-          'Scan Mode',
-          `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
-          (currentMode === 'fast' 
-            ? 'Fast Mode provides quick results and is great for packaged foods.'
-            : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
-          [
-            { text: 'Cancel', style: 'cancel' },
-            { 
-              text: `Switch to ${MODE_LABELS[oppositeMode]}`,
-              onPress: async () => {
-                if (oppositeMode === 'accurate') {
-                  if (isSubscribed || isFirstDayUnlimited) {
-                    await AsyncStorage.setItem('selectedMode', oppositeMode);
-                    crossfadeChipText(oppositeMode);
-                    Haptics.selectionAsync();
-                  } else {
-                    const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
-                    if (freeAccurateScansUsed === '1') {
-                      Alert.alert(
-                        'Daily Limit Reached',
-                        'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
-                      );
-                      return;
-                    }
-                    Alert.alert(
-                      'Heads Up!',
-                      'You only get one accurate scan a day on the free plan, so make it count!',
-                      [
-                        { text: 'Cancel', style: 'cancel' },
-                        {
-                          text: 'OK',
-                          onPress: async () => {
-                            await AsyncStorage.setItem('selectedMode', oppositeMode);
-                            crossfadeChipText(oppositeMode);
-                            Haptics.selectionAsync();
-                          },
-                        },
-                      ],
-                      { cancelable: false }
-                    );
-                  }
-                } else {
-                  await AsyncStorage.setItem('selectedMode', oppositeMode);
-                  crossfadeChipText(oppositeMode);
-                  Haptics.selectionAsync();
-                }
-              }
-            }
-          ]
-        );
+        modeSelectionAlert();
       }, 1500); // Wait for tooltip animation to complete
     } else {
-      const currentMode = selectedMode;
-      const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
-      
-      Alert.alert(
-        'Scan Mode',
-        `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
-        (currentMode === 'fast' 
-          ? 'Fast Mode provides quick results and is great for packaged foods.'
-          : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { 
-            text: `Switch to ${MODE_LABELS[oppositeMode]}`,
-            onPress: async () => {
-              if (oppositeMode === 'accurate') {
-                if (isSubscribed || isFirstDayUnlimited) {
-                  await AsyncStorage.setItem('selectedMode', oppositeMode);
-                  crossfadeChipText(oppositeMode);
-                  Haptics.selectionAsync();
-                } else {
-                  const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
-                  if (freeAccurateScansUsed === '1') {
-                    Alert.alert(
-                      'Daily Limit Reached',
-                      'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
-                    );
-                    return;
-                  }
-                  Alert.alert(
-                    'Heads Up!',
-                    'You only get one accurate scan a day on the free plan, so make it count!',
-                    [
-                      { text: 'Cancel', style: 'cancel' },
-                      {
-                        text: 'OK',
-                        onPress: async () => {
-                          await AsyncStorage.setItem('selectedMode', oppositeMode);
-                          crossfadeChipText(oppositeMode);
-                          Haptics.selectionAsync();
-                        },
-                      },
-                    ],
-                    { cancelable: false }
-                  );
-                }
-              } else {
-                await AsyncStorage.setItem('selectedMode', oppositeMode);
-                crossfadeChipText(oppositeMode);
+      modeSelectionAlert();
+    }
+  };
+
+  const modeSelectionAlert = () => {
+    const currentMode = selectedMode;
+    
+    const modeDescriptions = {
+      fast: 'Fast Mode provides quick results and is great for packaged foods.',
+      accurate: 'Accurate Mode uses detailed analysis and is best for complex meals.',
+    };
+    
+    Alert.alert(
+      'Scan Mode',
+      `Currently using ${MODE_LABELS[currentMode]}.\n\n${modeDescriptions[currentMode]}`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        { 
+          text: `Switch to ${MODE_LABELS['fast']}`,
+          onPress: async () => {
+            if (currentMode !== 'fast') {
+              await AsyncStorage.setItem('selectedMode', 'fast');
+              crossfadeChipText('fast');
+              Haptics.selectionAsync();
+            }
+          },
+          style: currentMode === 'fast' ? 'default' : 'default'
+        },
+        { 
+          text: `Switch to ${MODE_LABELS['accurate']}`,
+          onPress: async () => {
+            if (currentMode !== 'accurate') {
+              if (isSubscribed || isFirstDayUnlimited) {
+                await AsyncStorage.setItem('selectedMode', 'accurate');
+                crossfadeChipText('accurate');
                 Haptics.selectionAsync();
+              } else {
+                const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+                if (freeAccurateScansUsed === '1') {
+                  Alert.alert(
+                    'Daily Limit Reached',
+                    'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+                  );
+                  return;
+                }
+                Alert.alert(
+                  'Heads Up!',
+                  'You only get one accurate scan a day on the free plan, so make it count!',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        await AsyncStorage.setItem('selectedMode', 'accurate');
+                        crossfadeChipText('accurate');
+                        Haptics.selectionAsync();
+                      },
+                    },
+                  ],
+                  { cancelable: false }
+                );
               }
             }
-          }
-        ]
-      );
-    }
+          },
+          style: currentMode === 'accurate' ? 'default' : 'default'
+        },
+      ]
+    );
   };
 
   // Add this state variable with the other state declarations
@@ -1970,6 +2364,15 @@ const takePhoto = async () => {
   // Update handleSuccessfulScan to mark that user has scanned
   const handleSuccessfulScan = async (parsedData, imageUri, barcodeData, hasDrawing = false, actualModel = null) => {
     try {
+      console.log("Received food data:", JSON.stringify(parsedData?.food?.name));
+      
+      // Ensure parsedData has valid structure
+      if (!parsedData || !parsedData.food) {
+        console.error("Invalid parsedData structure:", parsedData);
+        setNoFoodFound(true);
+        return false;
+      }
+      
       // First fade out existing content
       await new Promise((resolve) => {
         Animated.timing(tabFadeAnim, {
@@ -2014,7 +2417,7 @@ const takePhoto = async () => {
         date: new Date().toISOString(),
         hadBarcode: !!barcodeData,
         hasDrawing: hasDrawing,
-        modelUsed: actualModel || selectedModel
+        modelUsed: actualModel || selectedMode
       });
 
       return true;
@@ -2279,12 +2682,13 @@ const takePhoto = async () => {
   
   // Add useEffect to check if WhatsNew should be shown
   useEffect(() => {
+    // Remove this line that sets it to true by default
+    // setShowWhatsNew(true);
     const checkWhatsNewStatus = async () => {
       try {
-        const hasSeenWhatsNew = await AsyncStorage.getItem('@has_seen_whats_new_1_6_0');
-        if (hasSeenWhatsNew !== 'true') {
-          setShowWhatsNew(true);
-        }
+        // Always consider it as seen, effectively disabling the popup
+        await AsyncStorage.setItem('@has_seen_whats_new_1_6_0', 'true');
+        setShowWhatsNew(false);
       } catch (error) {
         console.error('Error checking WhatsNew status:', error);
       }
@@ -2393,28 +2797,93 @@ const takePhoto = async () => {
     };
   }, [showWhatsNew]);
 
-  return (
-    <View style={styles.container}>
+  // const [searchQueries, setSearchQueries] = useState([]);
+  // const [searchResults, setSearchResults] = useState([]);
+  // const [currentSearchEngine, setCurrentSearchEngine] = useState('');
+  // const [visitedWebsites, setVisitedWebsites] = useState([]);
 
-      <AnimatedTextFoodScan
-        text={
-          foodData
-            ? foodData.name.length > 23
-              ? foodData.name.slice(0, 23) + '...'
-              : foodData.name
-            : noFoodFound
-            ? 'No Food Found'
-            : ErrorOccured
-            ? "Couldn't Process"
-            : 'No Image Selected'
+  // Add new state at the top with other state declarations
+  const [showScrollToButtonIndicator, setShowScrollToButtonIndicator] = useState(false);
+  const mainScrollViewRef = useRef(null);
+  const buttonsYPosition = useRef(0);
+  const contentHeight = useRef(0);
+  const scrollViewHeight = useRef(0);
+
+  // Add this effect to track button visibility
+  useEffect(() => {
+    const checkButtonVisibility = () => {
+      if (contentHeight.current && scrollViewHeight.current && buttonsYPosition.current) {
+        const buttonBottom = buttonsYPosition.current.y + buttonsYPosition.current.height;
+        const isVisible = buttonBottom < scrollViewHeight.current;
+        setShowScrollToButtonIndicator(!isVisible);
+      }
+    };
+
+    // Initial check when component mounts
+    checkButtonVisibility();
+    
+    // Remove the problematic line that tries to use addListener
+    // const subscription = mainScrollViewRef.current?.addListener('onContentSizeChange', checkButtonVisibility);
+    
+    return () => {
+      // No need to clean up subscription since we're not using addListener anymore
+      // if (subscription) subscription.remove();
+    };
+  }, []);
+
+  return (
+    <ScrollView 
+      ref={mainScrollViewRef}
+      style={styles.container}
+      contentContainerStyle={styles.scrollContentContainer}
+      onContentSizeChange={(w, h) => {
+        contentHeight.current = h;
+        const show = h > scrollViewHeight.current;
+        setShowScrollToButtonIndicator(show);
+        
+        // Call the visibility check function when content size changes
+        if (contentHeight.current && scrollViewHeight.current && buttonsYPosition.current) {
+          const buttonBottom = buttonsYPosition.current.y + buttonsYPosition.current.height;
+          const isVisible = buttonBottom < scrollViewHeight.current;
+          setShowScrollToButtonIndicator(!isVisible);
         }
-        colorScheme={colorScheme}
-        style={styles.title}
-      />
+      }}
+      onLayout={(e) => {
+        scrollViewHeight.current = e.nativeEvent.layout.height;
+        const show = contentHeight.current > e.nativeEvent.layout.height;
+        setShowScrollToButtonIndicator(show);
+      }}
+      onScroll={({nativeEvent}) => {
+        const scrollPosition = nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height;
+        const show = scrollPosition < contentHeight.current - 150;
+        setShowScrollToButtonIndicator(show);
+      }}
+      scrollEventThrottle={16}
+    >
+      <View style={styles.headerContainer}>
+        <AnimatedTextFoodScan
+          text={
+            foodData
+              ? (foodData.name 
+                 ? (foodData.name.length > 23
+                    ? foodData.name.slice(0, 23) + '...'
+                    : foodData.name)
+                 : 'Unknown Food')
+              : noFoodFound
+              ? 'No Food Found'
+              : ErrorOccured
+              ? "Couldn't Process"
+              : 'No Image Selected'
+          }
+          colorScheme={colorScheme}
+          style={styles.title}
+        />
+      </View>
+      
       <AnimatedTextFoodScan
         text={
           foodData
-            ? `${foodData.class} • ${foodData.type}`
+            ? `${foodData.class || 'Unknown Class'} • ${foodData.type || 'Unknown Type'}`
             : ErrorOccured
             ? 'Something went wrong, please try again'
             : 'Take clear, centered, and level photos.'
@@ -2422,6 +2891,7 @@ const takePhoto = async () => {
         colorScheme={colorScheme}
         style={styles.subtitle}
       />
+
       <View style={styles.mainContentContainer}>
         <View style={styles.imageContainer}>
           {showPlaceholder ? (
@@ -2551,7 +3021,7 @@ const takePhoto = async () => {
                         ? Math.max(0, 1 - freeAccurateScansUsed)
                         : isSubscribedPlus
                           ? (20 - scanCount)
-                          : (5 - scanCount)}
+                          : (2 - scanCount)}
                     </Text>
                   )}
                 </View>
@@ -2587,7 +3057,7 @@ const takePhoto = async () => {
                       }
                     ]}
                   >
-                    {selectedMode === 'fast' ? 'Fast' : 'Accurate'}
+                    {selectedMode === 'fast' ? 'Fast' : selectedMode === 'accurate' ? 'Accurate' : 'Search'}
                   </Animated.Text>
                 </View>
               </BlurView>
@@ -2722,12 +3192,20 @@ const takePhoto = async () => {
       <View style={styles.modeBadgeContainer}>
         <BlurView intensity={50} style={styles.modeBadge}>
           <Icon 
-            name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
+            name={
+              selectedMode === 'fast' ? 'flash' : 
+              selectedMode === 'accurate' ? 'shield-checkmark' : 
+              'search'
+            }
             size={24} 
             color={colorScheme === 'dark' ? '#fff' : '#000'} 
           />
           <Text style={styles.modeBadgeText}>
-            {selectedMode === 'fast' ? 'Fast Scan' : 'Accurate Scan'}
+            {
+              selectedMode === 'fast' ? 'Fast Scan' : 
+              selectedMode === 'accurate' ? 'Accurate Scan' : 
+              'Search Scan'
+            }
           </Text>
         </BlurView>
       </View>
@@ -2766,10 +3244,10 @@ const takePhoto = async () => {
               'Unlimited Scans'
             ) : (
               selectedMode === 'accurate' ? 
-                `${Math.max(0, 1 - freeAccurateScansUsed - 1)} accurate scans left` :
+                `${Math.max(0, 1 - freeAccurateScansUsed - 1)} left` :
                 isSubscribedPlus ?
-                  `${20 - scanCount - 1} scans left` :
-                  `${5 - scanCount - 1} scans left`
+                  `${20 - scanCount - 1} left` :
+                  `${2 - scanCount - 1} left`
             )}
           </Text>
         </BlurView>
@@ -2806,8 +3284,8 @@ const takePhoto = async () => {
                 <Image 
                   source={{ 
                     uri: (typeof modalImageUri === 'string' && !modalImageUri.startsWith('data:image/jpeg;base64,')) 
-                      ? 'data:image/jpeg;base64,' + modalImageUri 
-                      : modalImageUri 
+                        ? 'data:image/jpeg;base64,' + modalImageUri 
+                        : modalImageUri 
                   }} 
                   style={styles.imagePreview} 
                 />
@@ -2992,7 +3470,22 @@ const takePhoto = async () => {
         position={scanButtonTooltipPosition}
         ref={scanButtonTooltipRef}
       />
-    </View>
+
+      {/* Add this at the end of the ScrollView */}
+      {showScrollToButtonIndicator && (
+        <Animated.View style={styles.scrollToButtonIndicator}>
+          <TouchableOpacity 
+            onPress={() => {
+              mainScrollViewRef.current?.scrollToEnd({ animated: true });
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            }}
+            style={styles.scrollToButton}
+          >
+            <Entypo name="chevron-down" size={28} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
+          </TouchableOpacity>
+        </Animated.View>
+      )}
+    </ScrollView>
   );
 };
 
@@ -3007,10 +3500,14 @@ const scale = Math.min(scaleWidth, scaleHeight);
     container: {
       flex: 1,
       backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
+    },
+    scrollContentContainer: {
       paddingTop: isIphoneSE() ? 20 : 30 * scale,
+      paddingBottom: 40 * scale,
     },
     mainContentContainer: {
-      flex: 1,
+      // Remove flex: 1 to allow content-based sizing
+      paddingBottom: 20 * scale,
     },
     buttonContainer: {
       flexDirection: 'row',
@@ -3079,6 +3576,10 @@ const scale = Math.min(scaleWidth, scaleHeight);
     modeChipAccurate: {
       backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
       borderColor: colorScheme === 'dark' ? '#234b6b' : '#b8d6f3',
+    },
+    modeChipSearch: {
+      backgroundColor: colorScheme === 'dark' ? '#2c1a5c' : '#f0e1ff',
+      borderColor: colorScheme === 'dark' ? '#3b236b' : '#d6b8f3',
     },
     modeChipText: {
       color: colorScheme === 'dark' ? '#e0e0e0' : '#333333',
@@ -3279,10 +3780,10 @@ const scale = Math.min(scaleWidth, scaleHeight);
       borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
     },
     separator: {
-      height: 4 * scale,
+      height: 2, // Reduced from 4
       backgroundColor: colorScheme === 'dark' ? '#333333' : '#CCCCCC',
-      marginVertical: 8 * scale,
-      marginBottom: 16 * scale,
+      marginVertical: 4, // Reduced from 8
+      marginBottom: 8, // Reduced from 16
       borderRadius: 900 * scale,
       marginHorizontal: 16 * scale,
     },
@@ -3507,7 +4008,7 @@ const scale = Math.min(scaleWidth, scaleHeight);
       position: 'absolute',
       bottom: 20,
       alignSelf: 'center',
-      backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
+      backgroundColor: colorScheme === 'dark' ? '#000' : '#eee',
       shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 1,
@@ -3658,8 +4159,8 @@ const scale = Math.min(scaleWidth, scaleHeight);
     macroGridContainer: {
       flexDirection: 'column',
       justifyContent: 'flex-start',
-      padding: 8 * scale,
-      gap: 5 * scale,
+      padding: 8 * scale, // Reduced from 12 * scale
+      gap: 4 * scale, // Reduced from 6 * scale
     },
 
     macroCard: {
@@ -3668,7 +4169,7 @@ const scale = Math.min(scaleWidth, scaleHeight);
       borderRadius: 18 * scale,
       padding: 12 * scale,
       height: 100 * scale,
-      marginBottom: 5 * scale,
+      marginBottom: 6 * scale, // Reduced from 8 * scale
       borderWidth: 1,
       borderColor: colorScheme === 'dark' ? '#2C2C2E' : '#E5E5E5',
       flexDirection: 'column',
@@ -3834,7 +4335,7 @@ const scale = Math.min(scaleWidth, scaleHeight);
       position: 'absolute',
       bottom: 20,
       alignSelf: 'center',
-      backgroundColor: colorScheme === 'dark' ? '000' : '#eee',
+      backgroundColor: colorScheme === 'dark' ? '#000' : '#eee',
       shadowColor: colorScheme === 'dark' ? '#000' : '#aaa',
       shadowOffset: { width: 0, height: 2 },
       shadowOpacity: 1,
@@ -3937,6 +4438,627 @@ const scale = Math.min(scaleWidth, scaleHeight);
     },
     errorButton: {
       flex: 1,
+    },
+    loadingText: {
+      fontSize: 16,
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      marginTop: 16,
+      textAlign: 'center',
+    },
+    loadingTextContainer: {
+      height: 80,
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    searchLoadingContainer: {
+      width: '100%',
+      paddingHorizontal: 16,
+      marginTop: 16,
+      alignItems: 'center',
+      backgroundColor: colorScheme === 'dark' ? 'rgba(30, 30, 30, 0.6)' : 'rgba(255, 255, 255, 0.7)',
+      borderRadius: 12,
+      padding: 16,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 3,
+    },
+    searchInfoItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      width: '100%',
+      marginBottom: 8,
+      paddingHorizontal: 10,
+      paddingVertical: 8,
+      borderRadius: 8,
+      backgroundColor: colorScheme === 'dark' ? 'rgba(60, 60, 60, 0.7)' : 'rgba(240, 240, 240, 0.9)',
+      borderLeftWidth: 3,
+      borderLeftColor: colorScheme === 'dark' ? '#5e72e4' : '#5e72e4',
+    },
+    searchInfoLabel: {
+      fontSize: 14,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#CCCCCC' : '#444444',
+      marginRight: 8,
+    },
+    searchInfoValue: {
+      fontSize: 14,
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontWeight: '500',
+      flex: 1,
+      textAlign: 'right',
+    },
+    processingTimeText: {
+      fontSize: 13,
+      color: colorScheme === 'dark' ? '#AAA' : '#666',
+      fontStyle: 'italic',
+    },
+    noDataText: {
+      fontSize: 16,
+      color: colorScheme === 'dark' ? '#999999' : '#666666',
+      textAlign: 'center',
+      marginTop: 20,
+      fontStyle: 'italic',
+    },
+    detailSectionTitle: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontSize: 18,
+      fontWeight: '600',
+      marginVertical: 16,
+      paddingHorizontal: 16,
+    },
+    sourceItem: {
+      padding: 16,
+      borderBottomWidth: 1,
+      borderBottomColor: colorScheme === 'dark' ? '#333' : '#EEE',
+    },
+    sourceName: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontSize: 16,
+      fontWeight: '500',
+      marginBottom: 4,
+    },
+    sourceLink: {
+      color: '#3498DB',
+      fontSize: 14,
+    },
+    searchStatusContainer: {
+      width: '100%',
+      padding: 16,
+      marginTop: 16,
+      borderRadius: 12,
+      backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+    },
+    searchStatusItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 8,
+      gap: 8,
+    },
+    searchStatusText: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontSize: 14,
+    },
+    preparationItem: {
+      paddingHorizontal: 16,
+      marginBottom: 16,
+    },
+    urlListContainer: {
+      width: '100%',
+      maxHeight: 100,
+      borderRadius: 12,
+      marginTop: 8,
+      padding: 8,
+    },
+    urlScrollView: {
+      flexGrow: 0,
+    },
+    urlItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 8,
+      paddingVertical: 4,
+    },
+    urlText: {
+      fontSize: 12,
+      flexShrink: 1,
+    },
+    detailLabel: {
+      color: colorScheme === 'dark' ? '#BBBBBB' : '#444444',
+      fontSize: 16,
+      fontWeight: '500',
+      marginBottom: 8,
+    },
+    detailValue: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontSize: 15,
+      marginBottom: 8,
+      lineHeight: 22,
+    },
+    
+    // New styles for enhanced details tab
+    detailSection: {
+      marginVertical: 8,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      backgroundColor: colorScheme === 'dark' ? '#252529' : '#F8F8F8',
+      borderRadius: 12,
+      marginHorizontal: 16,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#353535' : '#E5E5E5',
+    },
+    sectionHeader: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#222222',
+      marginTop: 10,
+      marginBottom: 6,
+      paddingBottom: 2,
+      borderBottomWidth: 1,
+      borderBottomColor: colorScheme === 'dark' ? '#333333' : '#EEEEEE',
+    },
+    sectionHeaderText: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      marginLeft: 8,
+    },
+    detailText: {
+      fontSize: 15,
+      lineHeight: 22,
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#444444',
+      paddingVertical: 4,
+    },
+    stepText: {
+      fontSize: 15,
+      lineHeight: 24,
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#333333',
+      marginBottom: 8,
+      paddingLeft: 4,
+    },
+    stepNumber: {
+      fontSize: 15,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      marginRight: 8,
+    },
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 12 * scale,
+      paddingHorizontal: 16 * scale,
+    },
+    linkTextContainer: {
+      flex: 1,
+      marginLeft: 12,
+    },
+    linkTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+    },
+    linkSubtitle: {
+      fontSize: 13,
+      color: colorScheme === 'dark' ? '#BBBBBB' : '#666666',
+      marginTop: 2,
+    },
+    sourceLinkText: {
+      fontSize: 14,
+      color: '#3498DB',
+      marginLeft: 8,
+      flex: 1,
+    },
+    emptyStateContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 32,
+      marginTop: 16,
+    },
+    detailsScrollView: {
+      flex: 1,
+    },
+    summaryText: {
+      color: '#888888',
+      fontSize: 14 * scale,
+      paddingBottom: 8 * scale,
+    },
+    infoBadgeContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: 24,
+      marginHorizontal: 16,
+      marginBottom: 16,
+    },
+    infoBadge: {
+      flexDirection: 'row',
+      alignItems: 'center',
+    },
+    infoBadgeText: {
+      fontSize: 15,
+      color: colorScheme === 'dark' ? '#AAAAAA' : '#555555',
+      marginLeft: 8,
+    },
+    sectionDivider: {
+      height: 2,
+      backgroundColor: colorScheme === 'dark' ? '#444444' : '#DDDDDD',
+      marginVertical: 12,
+      width: '100%',
+      borderRadius: 1,
+    },
+    detailSection: {
+      marginBottom: 16,
+      paddingBottom: 8,
+    },
+    sectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 12,
+      marginHorizontal: 16,
+    },
+    sectionTitle: {
+      fontSize: 16,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#333333',
+      marginLeft: 8,
+    },
+    stepRow: {
+      flexDirection: 'row',
+      paddingHorizontal: 16,
+      marginBottom: 12,
+    },
+    stepBullet: {
+      width: 24,
+      height: 24,
+      borderRadius: 12,
+      backgroundColor: colorScheme === 'dark' ? '#333333' : '#EEEEEE',
+      textAlign: 'center',
+      lineHeight: 24,
+      fontSize: 14,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#333333',
+      marginRight: 12,
+      overflow: 'hidden',
+    },
+    stepText: {
+      flex: 1,
+      fontSize: 15,
+      lineHeight: 22,
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#444444',
+    },
+    resourceLink: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginVertical: 6,
+      marginHorizontal: 16,
+      paddingVertical: 12,
+      paddingHorizontal: 16,
+      backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)',
+      borderRadius: 8,
+    },
+    resourceIconWrapper: {
+      width: 28,
+      height: 28,
+      borderRadius: 14,
+      backgroundColor: colorScheme === 'dark' ? '#333333' : '#EEEEEE',
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 12,
+    },
+    resourceText: {
+      flex: 1,
+      fontSize: 15,
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#444444',
+    },
+    emptyStateContainer: {
+      alignItems: 'center',
+      justifyContent: 'center',
+      padding: 24,
+      flex: 1,
+    },
+    noDataText: {
+      marginTop: 16,
+      fontSize: 16,
+      color: colorScheme === 'dark' ? '#999999' : '#666666',
+      textAlign: 'center',
+    },
+    
+    // New updated styles
+    tabScrollView: {
+      paddingHorizontal: 16,
+      paddingTop: 4,
+      paddingBottom: 8,
+    },
+    sectionHeader: {
+      fontSize: 17,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#222222',
+      marginTop: 10,
+      marginBottom: 6,
+      paddingBottom: 2,
+      borderBottomWidth: 1,
+      borderBottomColor: colorScheme === 'dark' ? '#333333' : '#EEEEEE',
+    },
+    summaryText: {
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#444444',
+      fontSize: 15,
+      lineHeight: 20,
+      marginBottom: 8,
+    },
+    infoLabel: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+      fontSize: 16 * scale,
+      fontWeight: 'bold',
+      marginBottom: 4 * scale,
+    },
+    infoValue: {
+      color: '#888888',
+      fontSize: 14 * scale,
+      paddingBottom: 4 * scale,
+    },
+    stepNumber: {
+      fontSize: 16 * scale,
+      fontWeight: 'bold',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000',
+      marginRight: 6,
+      width: 18,
+    },
+    stepText: {
+      color: '#888888',
+      fontSize: 14 * scale,
+      lineHeight: 18,
+      flex: 1,
+      paddingBottom: 4 * scale,
+    },
+    visibleDivider: {
+      height: 2,
+      backgroundColor: colorScheme === 'dark' ? '#444444' : '#DDDDDD',
+      marginVertical: 6,
+      marginHorizontal: 0,
+      width: '100%',
+    },
+    wikiButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colorScheme === 'dark' ? '#242424' : '#FFFFFF',
+      paddingVertical: 8,
+      paddingHorizontal: 16,
+      borderRadius: 50,
+      marginVertical: 5,
+      marginHorizontal: 8,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.15,
+      shadowRadius: 3,
+      elevation: 3,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#3a3a3a' : '#EEEEEE',
+    },
+    wikiButtonText: {
+      flex: 1,
+      fontSize: 15,
+      fontWeight: '500',
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#333333',
+      marginRight: 8,
+    },
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 4,
+      marginBottom: 3,
+    },
+    linkIcon: {
+      marginRight: 6,
+    },
+    linkText: {
+      flex: 1,
+      fontSize: 15,
+      color: '#3498DB',
+      marginRight: 6,
+    },
+    noDataText: {
+      fontSize: 16,
+      color: colorScheme === 'dark' ? '#999999' : '#666666',
+      textAlign: 'center',
+      marginTop: 32,
+      marginHorizontal: 24,
+    },
+    visibleDivider: {
+      height: 2,
+      backgroundColor: colorScheme === 'dark' ? '#444444' : '#DDDDDD',
+      marginVertical: 6,
+      marginHorizontal: 0,
+      width: '100%',
+    },
+    infoRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4,
+    },
+    infoIcon: {
+      marginRight: 6,
+    },
+    stepRow: {
+      flexDirection: 'row',
+      paddingRight: 8,
+      marginBottom: 4,
+    },
+    // Updated styles for both tabs
+    factsContainer: {
+      paddingHorizontal: 10 * scale,
+      paddingTop: 10 * scale,
+    },
+    
+    factRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'flex-start',
+      paddingVertical: 6 * scale,
+      marginBottom: 10 * scale,
+      flexWrap: 'wrap',
+    },
+    
+    factLabel: {
+      color: colorScheme === 'dark' ? '#BBBBBB' : '#666666',
+      fontSize: 15 * scale,
+      fontWeight: '500',
+      width: 100 * scale,
+      marginRight: 8 * scale,
+    },
+    
+    factValue: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontSize: 16 * scale,
+      fontWeight: '600',
+      flex: 1,
+      flexWrap: 'wrap',
+    },
+    
+    stepRow: {
+      flexDirection: 'row',
+      paddingVertical: 8 * scale,
+      paddingHorizontal: 10 * scale,
+    },
+    
+    stepNumber: {
+      width: 24 * scale,
+      height: 24 * scale,
+      borderRadius: 12 * scale,
+      backgroundColor: colorScheme === 'dark' ? '#333333' : '#F0F0F0',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      textAlign: 'center',
+      lineHeight: 24 * scale,
+      fontSize: 14 * scale,
+      fontWeight: '600',
+      marginRight: 10 * scale,
+      overflow: 'hidden',
+    },
+    
+    stepText: {
+      flex: 1,
+      fontSize: 15 * scale,
+      lineHeight: 22 * scale,
+      color: colorScheme === 'dark' ? '#DDDDDD' : '#444444',
+    },
+    
+    stepsContainer: {
+      paddingVertical: 6 * scale,
+    },
+    
+    linksContainer: {
+      paddingHorizontal: 10 * scale,
+      paddingVertical: 6 * scale,
+    },
+    
+    linkRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 10 * scale,
+      paddingHorizontal: 10 * scale,
+    },
+    
+    linkText: {
+      flex: 1,
+      fontSize: 15 * scale,
+      color: colorScheme === 'dark' ? '#64B5F6' : '#1976D2',
+      marginLeft: 10 * scale,
+      marginRight: 10 * scale,
+    },
+    
+    summaryText: {
+      color: '#888888', 
+      fontSize: 14 * scale,
+      paddingBottom: 8 * scale,
+      paddingHorizontal: 16 * scale,
+      lineHeight: 20 * scale,
+    },
+    
+    ingredientInstructions: {
+      color: colorScheme === 'dark' ? '#BBBBBB' : '#666666',
+      fontSize: 14 * scale,
+      fontStyle: 'italic',
+      paddingHorizontal: 16 * scale,
+      paddingVertical: 8 * scale,
+    },
+    
+    ingredientContainer: {
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 8 * scale,
+    },
+    
+    ingredientNameContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: 4 * scale,
+    },
+    
+    ingredientIconContainer: {
+      width: 22 * scale,
+      height: 22 * scale,
+      borderRadius: 11 * scale,
+      justifyContent: 'center',
+      alignItems: 'center',
+      marginRight: 8 * scale,
+      overflow: 'hidden',
+    },
+    
+    ingredientDivider: {
+      height: 1 * scale,
+      backgroundColor: colorScheme === 'dark' ? '#333333' : '#EEEEEE',
+      marginHorizontal: 12 * scale,
+    },
+    
+    noDataText: {
+      marginTop: 16 * scale,
+      marginBottom: 16 * scale,
+      fontSize: 16 * scale,
+      color: colorScheme === 'dark' ? '#999999' : '#666666',
+      textAlign: 'center',
+      paddingHorizontal: 20 * scale,
+    },
+    
+    scrollToButtonIndicator: {
+      position: 'absolute',
+      bottom: 30,
+      right: 20,
+      zIndex: 1000,
+    },
+    scrollToButton: {
+      backgroundColor: colorScheme === 'dark' ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.05)',
+      borderRadius: 30,
+      padding: 12,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: 2 },
+      shadowOpacity: 0.25,
+      shadowRadius: 3.84,
+      elevation: 5,
+    },
+    
+    headerContainer: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%',
+      paddingHorizontal: 20 * scale,
+    },
+    
+    multiScanButton: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F5F5F5',
+      paddingHorizontal: 12 * scale,
+      paddingVertical: 6 * scale,
+      borderRadius: 16 * scale,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+    },
+    
+    multiScanText: {
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      fontSize: 14 * scale,
+      fontWeight: '500',
+      marginLeft: 6 * scale,
     },
   });
 
