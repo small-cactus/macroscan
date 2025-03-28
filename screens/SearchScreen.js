@@ -32,6 +32,32 @@ const LOADING_TEXTS = [
   "Almost there...",
 ];
 
+const SEARCH_QUERIES_KEY = '@nutrilens:search_queries';
+const SEARCH_RESULTS_KEY = '@nutrilens:search_results';
+const API_FINISHED_KEY = '@nutrilens:api_finished';
+const DETECTED_FOOD_KEY = '@nutrilens:detected_food';
+
+// Add missing step state keys to match WebSearchProvider.js
+const PROCESSING_STEP_KEY = '@nutrilens:processing_step';
+const STEP_TIMESTAMP_KEY = '@nutrilens:step_timestamp';
+
+// Step-specific storage keys
+const RECOGNIZE_STEP_ACTIVE_KEY = '@nutrilens:recognize_step_active';
+const SEARCH_STEP_ACTIVE_KEY = '@nutrilens:search_step_active';
+const PROCESS_STEP_ACTIVE_KEY = '@nutrilens:process_step_active';
+const RESULT_STEP_ACTIVE_KEY = '@nutrilens:result_step_active';
+
+const RECOGNIZE_STEP_COMPLETED_KEY = '@nutrilens:recognize_step_completed';
+const SEARCH_STEP_COMPLETED_KEY = '@nutrilens:search_step_completed';
+const PROCESS_STEP_COMPLETED_KEY = '@nutrilens:process_step_completed';
+const RESULT_STEP_COMPLETED_KEY = '@nutrilens:result_step_completed';
+
+// Step constants
+const STEP_RECOGNIZE = 'recognize';
+const STEP_SEARCH = 'search';
+const STEP_PROCESS = 'process';
+const STEP_RESULT = 'result';
+
 const SearchScreen = () => {
   // Core state
   const [image, setImage] = useState(null);
@@ -320,12 +346,72 @@ const SearchScreen = () => {
     // Instead, use Animated.timing to change values safely
   };
   
+  // Add this function to force cleanup after a timeout
+  const forceCleanupVisualization = () => {
+    console.log('Force cleanup visualization due to timeout');
+    
+    // Clear all timers first to prevent any pending actions
+    clearAllTimers();
+    
+    // Make sure visualization is marked as API finished
+    if (visualizationRef.current && visualizationRef.current.setAPIFinished) {
+      visualizationRef.current.setAPIFinished(true);
+    }
+    
+    // Force completion of visualization
+    if (visualizationRef.current && visualizationRef.current.completeVisualization) {
+      visualizationRef.current.completeVisualization(true);
+    }
+    
+    // After a short delay, force hide and reset the visualization
+    setTimeout(() => {
+      // Directly reset state without animations
+      setShowVisualization(false);
+      setIsLoading(false);
+      
+      // Do a final reset of the visualization component
+      if (visualizationRef.current && visualizationRef.current.reset) {
+        visualizationRef.current.reset();
+      }
+      
+      // Force update UI
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+    }, 1000);
+  };
+  
   // Update fadeOutVisualization to use resetVisualization
   const fadeOutVisualization = (callback) => {
+    // Check if visualization can be safely hidden first
+    if (visualizationRef.current && visualizationRef.current.canBeHidden) {
+      const canHide = visualizationRef.current.canBeHidden();
+      if (!canHide) {
+        console.log('Visualization not ready to be hidden yet, waiting for animations to complete');
+        // Set a delay and try again if API is finished but animation isn't
+        if (visualizationRef.current.setAPIFinished) {
+          visualizationRef.current.setAPIFinished(true); // Mark that API processing is done
+        }
+        
+        // Try again in a second
+        const retryTimeout = setTimeout(() => {
+          fadeOutVisualization(callback);
+        }, 1500); // Increased from 1000ms to 1500ms
+        
+        // Add a safety timeout in case the visualization gets stuck
+        const safetyTimeout = setTimeout(() => {
+          forceCleanupVisualization();
+          if (callback) callback();
+        }, 10000); // Increased from 8000ms to 10000ms
+        
+        addTimer('fadeOutRetry', retryTimeout);
+        addTimer('safetyTimeout', safetyTimeout);
+        return;
+      }
+    }
+    
     // Fade out smoothly
     Animated.timing(visualizationFadeAnim, {
       toValue: 0,
-      duration: 500, // 500ms fade out
+      duration: 800, // Increased from 500ms to 800ms for clearer fade out
       useNativeDriver: true,
     }).start(() => {
       // After fade completes, update state
@@ -352,7 +438,7 @@ const SearchScreen = () => {
           // Call the reset method directly instead of through resetVisualization
           visualizationRef.current.reset();
         }
-      }, 100);
+      }, 200); // Increased from 100ms to 200ms
       
       // Reset search tracking states if not needed in results
       if (foodData) {
@@ -450,6 +536,9 @@ const SearchScreen = () => {
       
       // Reset states from any previous scan
       clearAllTimers(); 
+      
+      // Initialize step states in AsyncStorage
+      await initializeStepStates();
       
       // Explicitly reset the visualization component itself *before* showing it
       if (visualizationRef.current && visualizationRef.current.reset) {
@@ -579,34 +668,20 @@ const SearchScreen = () => {
               }
             }
             
+            // Add a flag to indicate this is the final processing step
+            parsedData._isProcessingComplete = true;
+            
+            // Also add a flag to indicate this is a new scan
+            parsedData._isNewScan = true;
+            
+            // MARK API AS FINISHED - This must happen before updating visualization
+            await markAPIFinished();
+            
             // If we got food data, save it and set the active tab
             if (parsedData && parsedData.food) {
               setFoodData(parsedData);
               setActiveTab('nutrition');
               Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-              
-              // Check for search information that might be stored in custom fields
-              if (parsedData._searchInfo) {
-                if (parsedData._searchInfo.queries) {
-                  setSearchQueries(parsedData._searchInfo.queries);
-                }
-                if (parsedData._searchInfo.results) {
-                  setSearchResults(prev => 
-                    [...prev, ...parsedData._searchInfo.results.filter(r => 
-                      !prev.some(existing => existing.url === r.url)
-                    )]
-                  );
-                }
-                
-                // Clean up the custom field to avoid storing it
-                delete parsedData._searchInfo;
-              }
-              
-              // Add a flag to indicate this is the final processing step
-              parsedData._isProcessingComplete = true;
-              
-              // Also add a flag to indicate this is a new scan
-              parsedData._isNewScan = true;
               
               // If we have the AI visualization ref, force all steps to complete in sequence
               if (visualizationRef.current) {
@@ -622,7 +697,7 @@ const SearchScreen = () => {
                     console.log('Explicitly completing AI visualization - using force flag');
                     visualizationRef.current.completeVisualization(true); // Use force flag to bypass timing checks
                     
-                    // Increase the delay before hiding the visualization (from 2000ms to 4000ms)
+                    // Increase the delay before hiding the visualization
                     // This gives users more time to see the completed visualization
                     if (!isLoading) {
                       const fadeOutTimer = setTimeout(() => { // Track this timer
@@ -630,6 +705,9 @@ const SearchScreen = () => {
                           fadeOutVisualization(() => {
                             // After fade completes, update state and refresh UI
                             setShowVisualization(false);
+                            
+                            // Clear search storage when visualization is hidden
+                            clearSearchStorage();
                             
                             // Force active tab to refresh by briefly toggling animation
                             if (activeTab === 'nutrition' && foodData) {
@@ -648,11 +726,13 @@ const SearchScreen = () => {
                             }
                           });
                         }
-                      }, 2000); // Reduced from 4000ms to 2000ms
+                      }, 2000);
                       addTimer('fadeOutVizSuccess', fadeOutTimer); // Track timer
                     }
                   }
                 }, 1500);
+                // Track the timeout
+                const completeVizDelayTimer = setTimeout(() => {}, 1); // Placeholder timer
                 addTimer('completeVizDelay', completeVizDelayTimer); // Track timer
               }
               
@@ -688,187 +768,112 @@ const SearchScreen = () => {
           Alert.alert('Error', 'An error occurred during web search. Please try again.');
         },
         // Add a specific handler for tracking search queries and results
-        handleSearchTracking: (queries, results) => {
+        handleSearchTracking: async (queries, results) => {
           try {
-            // Store reference to base64Image to use in this scope
-            const hasValidImage = !!base64Image;
+            // First check if API is finished by reading from AsyncStorage
+            const apiFinishedValue = await AsyncStorage.getItem(API_FINISHED_KEY);
+            const apiFinished = apiFinishedValue === 'true';
             
-            if (Array.isArray(queries) && queries.length > 0) {
-              console.log('Received search queries:', queries);
-              setSearchQueries(prev => {
-                // Filter out duplicates
-                const uniqueQueries = [...prev];
-                queries.forEach(query => {
-                  if (!uniqueQueries.includes(query)) {
-                    uniqueQueries.push(query);
-                  }
-                });
-                return uniqueQueries;
+            // EXTREME CHECK: If API is already finished, block all updates
+            if (apiFinished || global.FUNCTIONAL_AI_VISUALIZATION_BLOCK_ALL_UPDATES) {
+              console.log('BLOCKED search tracking update - API is already finished or global blocker active');
+              // SET THE GLOBAL FLAG to make sure everything is blocked
+              global.FUNCTIONAL_AI_VISUALIZATION_BLOCK_ALL_UPDATES = true;
+              return;
+            }
+            
+            // Process and store queries if provided
+            if (queries && queries.length > 0) {
+              console.log('Processing search queries in tracking function:', queries);
+              
+              // Get existing queries from storage
+              const existingQueriesJson = await AsyncStorage.getItem(SEARCH_QUERIES_KEY);
+              let existingQueries = [];
+              if (existingQueriesJson) {
+                try {
+                  existingQueries = JSON.parse(existingQueriesJson);
+                } catch (e) {
+                  console.error('Error parsing existing queries:', e);
+                }
+              }
+              
+              // Filter out duplicates and add new queries
+              const newQueries = [...existingQueries];
+              queries.forEach(query => {
+                if (!newQueries.includes(query)) {
+                  newQueries.push(query);
+                }
               });
               
-              // Try to extract food items from queries
-              const foodKeywords = ['nutrition', 'calories', 'food', 'recipe', 'dish', 'meal', 'facts for'];
-              const possibleFoodItems = [];
+              // Save updated queries to AsyncStorage
+              await AsyncStorage.setItem(SEARCH_QUERIES_KEY, JSON.stringify(newQueries));
               
-              queries.forEach(query => {
-                // Look for "nutrition facts for X" pattern first (most reliable)
-                const factsForMatch = query.match(/(?:nutrition|nutrient)\s+facts\s+for\s+(.+?)(?:$|\.|,)/i);
-                if (factsForMatch && factsForMatch[1] && factsForMatch[1].length > 2) {
-                  const foodItem = factsForMatch[1].trim();
-                  if (!possibleFoodItems.includes(foodItem)) {
-                    possibleFoodItems.push(foodItem);
-                  }
-                  return; // Skip additional processing for this query
-                }
-                
-                // If query contains food-related keywords, extract potential food name
-                const containsFoodKeyword = foodKeywords.some(keyword => 
-                  query.toLowerCase().includes(keyword.toLowerCase())
+              // Update local state with new queries
+              setSearchQueries(newQueries);
+              
+              // Try to extract food items from queries for accurate recognition
+              if (queries.length > 0) {
+                const foodNameMatch = queries.find(q => 
+                  q.toLowerCase().includes('nutrition facts for') || 
+                  q.toLowerCase().includes('calories in')
                 );
                 
-                if (containsFoodKeyword) {
-                  const words = query.split(' ');
-                  if (words.length > 2) {
-                    // Find the keyword in the query
-                    const keywordIndex = words.findIndex(word => 
-                      foodKeywords.some(keyword => word.toLowerCase().includes(keyword.toLowerCase()))
-                    );
-                    
-                    if (keywordIndex > 0) {
-                      // Take words before the keyword as potential food name
-                      const foodPart = words.slice(0, keywordIndex).join(' ');
-                      if (foodPart && foodPart.length > 2 && !possibleFoodItems.includes(foodPart)) {
-                        possibleFoodItems.push(foodPart);
-                      }
-                    } else if (keywordIndex === 0 && words.length > 2) {
-                      // If keyword is first, try taking words after it (e.g., "nutrition for avocado toast")
-                      if (words[1].toLowerCase() === 'for' || words[1].toLowerCase() === 'of') {
-                        const foodPart = words.slice(2).join(' ');
-                        if (foodPart && foodPart.length > 2 && !possibleFoodItems.includes(foodPart)) {
-                          possibleFoodItems.push(foodPart);
-                        }
-                      }
-                    }
-                  }
-                }
-              });
-              
-              if (possibleFoodItems.length > 0) {
-                setDetectedFoodItems(prev => {
-                  const newItems = [...prev];
-                  possibleFoodItems.forEach(item => {
-                    if (!newItems.includes(item)) {
-                      newItems.push(item);
-                    }
-                  });
-                  return newItems;
-                });
-                
-                // Extract brand/restaurant information from query if available
-                const brandQuery = queries.find(q => q.toLowerCase().includes('mcdonald') || 
-                                                    q.toLowerCase().includes('burger king') ||
-                                                    q.toLowerCase().includes('wendy') ||
-                                                    q.toLowerCase().includes('taco bell') ||
-                                                    q.toLowerCase().includes('subway') ||
-                                                    q.toLowerCase().includes('starbucks'));
-                
-                if (brandQuery && !detectedBrand) {
-                  // Try to extract brand name from the query
-                  const brands = ['McDonald\'s', 'Burger King', 'Wendy\'s', 'Taco Bell', 'Subway', 'Starbucks', 
-                                  'Chipotle', 'Panera', 'KFC', 'Dunkin\'', 'Domino\'s', 'Pizza Hut'];
-                  
-                  for (const brand of brands) {
-                    if (brandQuery.includes(brand)) {
-                      setDetectedBrand(brand);
-                      break;
+                if (foodNameMatch) {
+                  // Extract food name using regex
+                  const match = foodNameMatch.match(/(?:nutrition facts for|calories in)\s+(.+?)(?:$|\.|,)/i);
+                  if (match && match[1]) {
+                    const foodName = match[1].trim();
+                    if (foodName.length > 2) {
+                      // Save detected food to AsyncStorage
+                      await AsyncStorage.setItem(DETECTED_FOOD_KEY, foodName);
+                      // Update local state
+                      setDetectedFoodItems([foodName]);
                     }
                   }
                 }
               }
               
-              // Force update visualization with new queries
-              if (visualizationRef.current && visualizationRef.current.forceUpdateSubtitles) {
-                console.log('Forcing visualization update for new queries');
-                visualizationRef.current.forceUpdateSubtitles();
-              }
-            }
-            if (Array.isArray(results) && results.length > 0) {
-              console.log('Received search results:', results);
-              setSearchResults(prev => {
-                // Filter out duplicates by URL
-                return [...prev, ...results.filter(r => 
-                  !prev.some(existing => existing.url === r.url)
-                )];
-              });
-              
-              // Try to extract food items from search result titles and snippets
-              const possibleFoodItems = [];
-              
-              results.forEach(result => {
-                if (result.title) {
-                  // Check if title contains food terms
-                  const foodTerms = ['nutrition', 'calories', 'food', 'recipe', 'nutritional', 
-                                    'diet', 'protein', 'carbs', 'fat', 'serving'];
-                  
-                  const hasFoodTerm = foodTerms.some(term => 
-                    result.title.toLowerCase().includes(term.toLowerCase())
-                  );
-                  
-                  if (hasFoodTerm) {
-                    // Extract first part of title as potential food
-                    const parts = result.title.split(/\s+[\-–—:|\(]/);
-                    if (parts[0] && parts[0].length > 2 && 
-                        !possibleFoodItems.includes(parts[0]) && 
-                        !foodTerms.some(term => parts[0].toLowerCase().includes(term.toLowerCase()))) {
-                      possibleFoodItems.push(parts[0].trim());
-                    }
-                  }
-                }
-                
-                // Also check snippet for food mentions
-                if (result.snippet) {
-                  // Look for phrases like "nutrition facts for X" or "calories in X"
-                  const nutritionRegex = /(?:nutrition|calories|nutrients|facts|information)\s+(?:for|in|of)\s+([a-zA-Z0-9\s]+?)(?:\.|,|\s+\(|\s+\[|\s+is|\s+are|\s+contains|\s+per)/i;
-                  const match = result.snippet.match(nutritionRegex);
-                  
-                  if (match && match[1] && match[1].length > 2 && !possibleFoodItems.includes(match[1])) {
-                    possibleFoodItems.push(match[1].trim());
-                  }
-                }
-              });
-              
-              if (possibleFoodItems.length > 0) {
-                setDetectedFoodItems(prev => {
-                  const newItems = [...prev];
-                  possibleFoodItems.forEach(item => {
-                    if (!newItems.includes(item)) {
-                      newItems.push(item);
-                    }
-                  });
-                  return newItems;
-                });
-              }
-              
-              // Force update visualization with new results
-              if (visualizationRef.current && visualizationRef.current.forceUpdateSubtitles) {
-                console.log('Forcing visualization update for new results');
-                visualizationRef.current.forceUpdateSubtitles();
+              // Update visualization with latest queries from storage
+              if (visualizationRef.current) {
+                visualizationRef.current.updateWithSearchQueries(newQueries);
               }
             }
             
-            // Try to analyze the image content to get food name if we don't have it yet
-            if (detectedFoodItems.length === 0 && hasValidImage) {
-              // Set a placeholder item based on the search query
-              const initialQueries = ['food image', 'meal image', 'dish image'];
-              const hasDetailedQuery = initialQueries.every(query => !query.startsWith(query));
+            // Process and store results if provided
+            if (results && results.length > 0) {
+              console.log('Processing search results in tracking function:', results.length);
               
-              if (hasDetailedQuery && queries.length > 0) {
-                // Use the first query as a hint about the food type
-                setDetectedFoodItems(['food']);
+              // Get existing results from storage
+              const existingResultsJson = await AsyncStorage.getItem(SEARCH_RESULTS_KEY);
+              let existingResults = [];
+              if (existingResultsJson) {
+                try {
+                  existingResults = JSON.parse(existingResultsJson);
+                } catch (e) {
+                  console.error('Error parsing existing results:', e);
+                }
+              }
+              
+              // Filter out duplicates by URL and add new results
+              const newResults = [...existingResults];
+              results.forEach(result => {
+                if (!newResults.some(existing => existing.url === result.url)) {
+                  newResults.push(result);
+                }
+              });
+              
+              // Save updated results to AsyncStorage
+              await AsyncStorage.setItem(SEARCH_RESULTS_KEY, JSON.stringify(newResults));
+              
+              // Update local state with new results
+              setSearchResults(newResults);
+              
+              // Update visualization with latest results from storage
+              if (visualizationRef.current) {
+                visualizationRef.current.updateWithSearchResults(newResults);
               }
             }
           } catch (error) {
-            // Prevent errors in handleSearchTracking from crashing the app
             console.error('Error in handleSearchTracking:', error);
           }
         },
@@ -889,29 +894,45 @@ const SearchScreen = () => {
       stopLoadingAnimation();
       setProcessingImage(null);
       
+      // Mark that API processing is complete
+      if (visualizationRef.current && visualizationRef.current.setAPIFinished) {
+        visualizationRef.current.setAPIFinished(true);
+      }
+      
       // Allow visualization to complete before hiding it
       setTimeout(() => {
-        fadeOutVisualization(() => {
-          // After fade completes, update state and refresh UI
-          setShowVisualization(false);
-          
-          // Force active tab to refresh by briefly toggling animation
-          if (activeTab === 'nutrition' && foodData) {
-            // Force re-render of nutrition tab content by toggling animation
-            Animated.timing(tabFadeAnim, {
-              toValue: 0,
-              duration: 50,
-              useNativeDriver: true,
-            }).start(() => {
-              Animated.timing(tabFadeAnim, {
-                toValue: 1,
-                duration: 50,
-                useNativeDriver: true,
-              }).start();
-            });
+        // Only try to fade out if the visualization isn't already hidden
+        if (showVisualization) {
+          // First, ensure the visualization has completely finished its animations
+          if (visualizationRef.current && visualizationRef.current.completeVisualization) {
+            visualizationRef.current.completeVisualization(true);
           }
-        });
-      }, 2000); // Reduced from 4000ms to 2000ms
+          
+          // Give more time before fading out
+          setTimeout(() => {
+            console.log('Starting fade-out animation for visualization...');
+            // Try to fade out with native animation
+            Animated.timing(visualizationFadeAnim, {
+              toValue: 0,
+              duration: 800,
+              useNativeDriver: true
+            }).start(({finished}) => {
+              console.log('Fade-out animation complete, finished:', finished);
+              
+              // After fade completes, reset state
+              if (finished) {
+                setShowVisualization(false);
+                resetVisualization();
+              } else {
+                // If for some reason the animation didn't finish, force hide
+                console.log('Animation did not finish naturally, forcing reset');
+                setShowVisualization(false);
+                resetVisualization();
+              }
+            });
+          }, 3000); // Give 3 seconds to view the completed animation
+        }
+      }, 2500); // Increased to 2.5 seconds to give time for visualization to complete
       
       fadeOutTitle(() => {
         fadeInTitle();
@@ -1151,12 +1172,15 @@ const SearchScreen = () => {
               // but only if we have food data successfully processed
               if (!isLoading && foodData) {
                 console.log('Setting timer to hide visualization');
-                setTimeout(() => {
+                const visHideTimeout = setTimeout(() => {
                   console.log('Hiding visualization with fade');
                   if (isProcessingRef.current) {
                     fadeOutVisualization();
                   }
-                }, 2000); // Reduced from 4000ms to 2000ms
+                }, 2000);
+                
+                // Track the timeout
+                addTimer('visHideTimeout', visHideTimeout);
               } else {
                 console.log('Keeping visualization visible - still loading or no food data');
               }
@@ -1292,18 +1316,97 @@ const SearchScreen = () => {
     return items;
   };
   
+  // Add a function to mark API as finished
+  const markAPIFinished = async () => {
+    console.log('Marking API as finished in AsyncStorage');
+    try {
+      // Store flag in AsyncStorage
+      await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
+      
+      // Update global blockers
+      global.FUNCTIONAL_AI_VISUALIZATION_BLOCK_ALL_UPDATES = true;
+      
+      // Set the visualization as finished
+      if (visualizationRef.current && visualizationRef.current.setAPIFinished) {
+        visualizationRef.current.setAPIFinished(true);
+      }
+    } catch (error) {
+      console.error('Error marking API as finished:', error);
+    }
+  };
+  
+  // Update the clearSearchStorage function to clear all step state keys
+  const clearSearchStorage = async () => {
+    console.log('Clearing all search and step state storage');
+    try {
+      // Clear search data
+      await AsyncStorage.removeItem(SEARCH_QUERIES_KEY);
+      await AsyncStorage.removeItem(SEARCH_RESULTS_KEY);
+      await AsyncStorage.removeItem(API_FINISHED_KEY);
+      await AsyncStorage.removeItem(DETECTED_FOOD_KEY);
+      
+      // Clear processing step data
+      await AsyncStorage.removeItem(PROCESSING_STEP_KEY);
+      await AsyncStorage.removeItem(STEP_TIMESTAMP_KEY);
+      
+      // Clear step active states
+      await AsyncStorage.removeItem(RECOGNIZE_STEP_ACTIVE_KEY);
+      await AsyncStorage.removeItem(SEARCH_STEP_ACTIVE_KEY);
+      await AsyncStorage.removeItem(PROCESS_STEP_ACTIVE_KEY);
+      await AsyncStorage.removeItem(RESULT_STEP_ACTIVE_KEY);
+      
+      // Clear step completed states
+      await AsyncStorage.removeItem(RECOGNIZE_STEP_COMPLETED_KEY);
+      await AsyncStorage.removeItem(SEARCH_STEP_COMPLETED_KEY);
+      await AsyncStorage.removeItem(PROCESS_STEP_COMPLETED_KEY);
+      await AsyncStorage.removeItem(RESULT_STEP_COMPLETED_KEY);
+      
+      console.log('All search and step state storage cleared successfully');
+    } catch (error) {
+      console.error('Error clearing search and step storage:', error);
+    }
+  };
+  
+  // Add a function to initialize step states at the start of a search
+  const initializeStepStates = async () => {
+    console.log('Initializing step states in AsyncStorage');
+    try {
+      // Clear any previous step states first
+      await clearSearchStorage();
+      
+      // Initialize with recognize step active
+      await AsyncStorage.setItem(RECOGNIZE_STEP_ACTIVE_KEY, 'true');
+      await AsyncStorage.setItem(PROCESSING_STEP_KEY, STEP_RECOGNIZE);
+      await AsyncStorage.setItem(STEP_TIMESTAMP_KEY, Date.now().toString());
+      
+      // Initialize all other steps as inactive
+      await AsyncStorage.setItem(SEARCH_STEP_ACTIVE_KEY, 'false');
+      await AsyncStorage.setItem(PROCESS_STEP_ACTIVE_KEY, 'false');
+      await AsyncStorage.setItem(RESULT_STEP_ACTIVE_KEY, 'false');
+      
+      // Initialize all completion states as false
+      await AsyncStorage.setItem(RECOGNIZE_STEP_COMPLETED_KEY, 'false');
+      await AsyncStorage.setItem(SEARCH_STEP_COMPLETED_KEY, 'false');
+      await AsyncStorage.setItem(PROCESS_STEP_COMPLETED_KEY, 'false');
+      await AsyncStorage.setItem(RESULT_STEP_COMPLETED_KEY, 'false');
+      
+      // Initialize API finished state as false
+      await AsyncStorage.setItem(API_FINISHED_KEY, 'false');
+      
+      console.log('Step states initialized successfully');
+    } catch (error) {
+      console.error('Error initializing step states:', error);
+    }
+  };
+  
   // Add cleanup effect when component unmounts
   useEffect(() => {
     return () => {
-      // Cleanup all timeouts and intervals when component unmounts
-      // if (loadingAnimationRef.current) { // No longer needed with clearAllTimers
-      //   clearTimeout(loadingAnimationRef.current);
-      //   loadingAnimationRef.current = null;
-      // }
+      // Clear all timeouts and intervals when component unmounts
+      clearAllTimers();
       
-      // Reset any running intervals/timeouts
-      clearAllTimers(); // Use the new helper
-      // clearAllIntervals(); // Remove old call
+      // Clear search storage on unmount
+      clearSearchStorage();
       
       // Reset all states
       setIsLoading(false);
@@ -1311,8 +1414,6 @@ const SearchScreen = () => {
       setProcessingImage(null);
       setCurrentLoadingText('');
       isAnimationRunningRef.current = false;
-      
-      // Don't try to modify animation values on unmount
     };
   }, []);
   
