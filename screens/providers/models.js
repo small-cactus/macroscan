@@ -45,7 +45,12 @@ export const getModel = (
     return MODELS[provider].complex;
   }
 
-  // Case 3: Fast mode - can use either model based on user preference
+  // Case 3: Search mode
+  if (selectedMode === 'search') {
+    return MODELS[provider].regular;
+  }
+
+  // Case 4: Fast mode - can use either model based on user preference
   if (selectedMode === 'fast') {
     // If user explicitly selected complex model, honor that choice
     if (selectedModel === MODELS[provider].complex) {

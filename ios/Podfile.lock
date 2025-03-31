@@ -1676,7 +1676,7 @@ PODS:
     - Yoga
   - RNStoreReview (0.4.3):
     - React-Core
-  - RNSVG (15.11.2):
+  - RNSVG (15.3.0):
     - React-Core
   - RNVectorIcons (10.1.0):
     - DoubleConversion
@@ -2217,7 +2217,7 @@ SPEC CHECKSUMS:
   RNReanimated: def444e044c354f38bb0a5926a8583ba19d944c1
   RNScreens: a2d8a2555b4653d7a19706eb172f855657ac30d7
   RNStoreReview: 613c43e9132998ed41a65946e20c223c91b36464
-  RNSVG: 2df577ee9762d1b6deef820173b59b064c2570fe
+  RNSVG: e77adf5edb2302f0f10dd03a09e92bb9420d914e
   RNVectorIcons: f733cb2133a8e1f7dc723b97a1d70dad681124c3
   SDWebImage: 73c6079366fea25fa4bb9640d5fb58f0893facd8
   SDWebImageWebPCoder: e38c0a70396191361d60c092933e22c20d5b1380

@@ -19,11 +19,8 @@ import {
   TextInput,
   Alert,
   Easing,
-  Image,
-  Switch,
-  Modal,
 } from 'react-native';
-import { useNavigation, useIsFocused } from '@react-navigation/native';
+import { useNavigation } from '@react-navigation/native';
 import * as Haptics from 'expo-haptics';
 import AnimatedTextOnboarding from './AnimatedTextOnboarding.js';
 import AnimatedTextLoading from './AnimatedTextLoading';
@@ -31,12 +28,6 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import FoodCarousel from './FoodCarousel.js';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { BlurView } from 'expo-blur';
-import Superwall from '@superwall/react-native-superwall';
-import ProgressVisualization from './ProgressVisualization';
-import AIVisualization from './AIVisualization';
-import Svg, { Circle } from 'react-native-svg';
-import DatePicker from '@react-native-community/datetimepicker';
 
 const { width, height } = Dimensions.get('window');
 
@@ -86,37 +77,6 @@ const ONBOARDING_STEPS = [
     ]
   },
   {
-    id: '4',
-    title: 'Better Search, Better Results',
-    description: "This is how we get you the most accurate results, every. single. time.",
-    features: [
-      {
-        id: '4-1',
-        title: 'Real-Time Web Search',
-        description: 'Our AI actively searches the web to identify any food, even unique creations',
-        icon: '🌐'
-      },
-      {
-        id: '4-2',
-        title: 'Global Database Access',
-        description: 'Connects to multiple food databases worldwide for accurate nutrition data',
-        icon: '🔍'
-      },
-      {
-        id: '4-3',
-        title: 'Smart Learning',
-        description: 'Improves accuracy with each scan across our entire user base',
-        icon: '🧠'
-      },
-      {
-        id: '4-4',
-        title: 'Context Understanding',
-        description: 'Recognizes cooking methods, portions, and mixed ingredients',
-        icon: '🍽️'
-      }
-    ]
-  },
-  {
     id: '2',
     title: 'Quick & Easy Scanning',
     description: 'Two simple ways to log your meals',
@@ -137,57 +97,52 @@ const ONBOARDING_STEPS = [
   },
   {
     id: '3',
-    title: 'Progress Takes Time',
-    description: "Our data shows most users see significant results after 30 days",
-    features: []
-  },
-  {
-    id: '3.5',
-    title: "Let's Create Your Personalized Plan",
-    description: "We'll ask you a few questions to craft nutrition goals tailored just for you",
-    isIntermediate: true,
+    title: 'Get Personalized Goals',
+    description: "Let's make your journey truly personal. We'll create custom nutrition goals that fit your lifestyle.",
     features: [
       {
-        id: '3.5-1',
-        title: 'Personalized Macros',
-        description: 'Get precise protein, carb, and fat targets based on your body',
-        icon: '⚖️'
+        id: '3-1',
+        title: 'Smart Calculations',
+        description: 'Based on scientific research and real data',
+        icon: '🧮'
       },
       {
-        id: '3.5-2',
-        title: 'Science-Backed Goals',
-        description: 'Calculations based on proven nutritional formulas',
-        icon: '🧪'
+        id: '3-2',
+        title: 'Tailored Goals',
+        description: 'Perfectly matched to your body and lifestyle',
+        icon: '🎯'
       },
       {
-        id: '3.5-3',
-        title: 'Adaptive Tracking',
-        description: 'Goals that adjust as your journey progresses',
-        icon: '📈'
+        id: '3-3',
+        title: 'Privacy First',
+        description: 'Your data stays on your device, always',
+        icon: '🔒'
       }
     ]
   },
   {
-    id: '8',
-    title: "What's your gender?",
-    field: 'gender',
-    description: 'This helps us calculate your metabolic rate more accurately.',
-    icon: 'gender-male-female',
-    iconType: 'material',
-    options: ['Male', 'Female', 'Other']
-  },
-  {
-    id: '7',
-    title: "How old are you?",
-    field: 'age',
-    description: 'Age plays a key role in calculating your metabolic rate.',
-    icon: 'calendar',
-    iconType: 'ionicon',
-    useDatePicker: true
+    id: '4',
+    title: "Let's Get Started",
+    description: "First, we'll need a few details to calculate your perfect nutrition goals. This helps us provide the most accurate recommendations.",
+    preInput: true,
+    features: [
+      {
+        id: '4-1',
+        title: 'Quick Setup',
+        description: 'Takes less than 2 minutes',
+        icon: '⚡'
+      },
+      {
+        id: '4-2',
+        title: 'Accurate Goals',
+        description: 'Based on your unique profile',
+        icon: '📊'
+      }
+    ]
   },
   {
     id: '5',
-    title: "How tall are you?",
+    title: "What's your height?",
     field: 'height',
     description: 'This helps us calculate your base metabolic rate (BMR) for accurate nutrition goals.',
     showUnitToggle: true,
@@ -200,7 +155,7 @@ const ONBOARDING_STEPS = [
   },
   {
     id: '6',
-    title: "How much do you weigh?",
+    title: 'What is your weight?',
     field: 'weight',
     description: 'Your weight helps us determine your daily energy needs.',
     showUnitToggle: true,
@@ -212,8 +167,26 @@ const ONBOARDING_STEPS = [
     ]
   },
   {
+    id: '7',
+    title: 'What is your age?',
+    field: 'age',
+    description: 'Age plays a key role in calculating your metabolic rate.',
+    icon: 'calendar',
+    iconType: 'ionicon',
+    useDatePicker: true
+  },
+  {
+    id: '8',
+    title: 'What is your gender?',
+    field: 'gender',
+    description: 'This helps us calculate your metabolic rate more accurately.',
+    icon: 'gender-male-female',
+    iconType: 'material',
+    options: ['Male', 'Female', 'Other']
+  },
+  {
     id: '9',
-    title: "How active are you?",
+    title: 'How active are you?',
     field: 'activityLevel',
     description: 'Your activity level helps us determine your daily calorie needs.',
     icon: 'run',
@@ -265,33 +238,6 @@ const ONBOARDING_STEPS = [
     iconType: 'material',
     showWeightChangeOptions: true,
     dependsOnGoal: true
-  },
-  {
-    id: '10c',
-    title: "Ready to Generate Your Plan!",
-    description: "We have all the information we need to create your personalized nutrition plan.",
-    isPreCalculation: true,
-    isLoading: true,
-    features: [
-      {
-        id: '10c-1',
-        title: 'Profile Complete',
-        description: 'Your personal information has been collected successfully',
-        icon: '✅'
-      },
-      {
-        id: '10c-2',
-        title: 'Science-Based Calculation',
-        description: 'We use proven formulas to determine your optimal nutrition needs',
-        icon: '🧪'
-      },
-      {
-        id: '10c-3',
-        title: 'Personalized Results',
-        description: 'Your plan will be tailored specifically to your body and goals',
-        icon: '🎯'
-      }
-    ]
   },
   {
     id: '11',
@@ -358,11 +304,7 @@ const scale = Math.min(scaleWidth, scaleHeight);
 const getBaseStyles = (isDark) => StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: 'transparent', // Changed from solid color to transparent
-  },
-  backgroundImage: {
-    width: '100%',
-    height: '100%',
+    backgroundColor: isDark ? '#000' : '#FFF',
   },
   slide: {
     flex: 1,
@@ -370,7 +312,6 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 20 * scale,
     paddingTop: isSmallDevice ? '5%' : '5%',
-    backgroundColor: 'transparent', // Make slide background transparent
   },
   headerContainer: {
     flexDirection: 'row',
@@ -400,9 +341,6 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     color: isDark ? '#FFF' : '#000',
     textAlign: 'center',
     marginBottom: 12 * scale,
-    textShadowColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.75)', // Add text shadow
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   description: {
     fontSize: (isSmallDevice ? 16 : 18) * scale,
@@ -410,9 +348,6 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     textAlign: 'center',
     marginBottom: 24 * scale,
     lineHeight: (isSmallDevice ? 22 : 24) * scale,
-    textShadowColor: isDark ? 'rgba(0, 0, 0, 0.75)' : 'rgba(255, 255, 255, 0.75)', // Add text shadow
-    textShadowOffset: { width: 0, height: 1 },
-    textShadowRadius: 3,
   },
   bottomDescription: {
     fontSize: (isSmallDevice ? 16 : 18) * scale,
@@ -424,8 +359,6 @@ const getBaseStyles = (isDark) => StyleSheet.create({
   bottomContainer: {
     padding: 10 * scale,
     paddingBottom: Platform.OS === 'ios' ? 20 * scale : 40 * scale,
-    borderTopWidth: 1,
-    borderTopColor: isDark ? 'rgba(51, 51, 51, 0.5)' : 'rgba(224, 224, 224, 0.5)',
   },
   progressContainer: {
     marginHorizontal: 20 * scale,
@@ -455,13 +388,9 @@ const getBaseStyles = (isDark) => StyleSheet.create({
   },
   primaryButton: {
     backgroundColor: isDark ? '#FFF' : '#000',
-    borderWidth: isDark ? 1 : 0,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0)',
   },
   secondaryButton: {
     backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
-    borderWidth: isDark ? 1 : 0,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0)',
   },
   actionButtonText: {
     fontSize: 16 * scale,
@@ -491,7 +420,7 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16 * scale,
-    backgroundColor: 'transparent',
+    backgroundColor: isDark ? '#1C1C1E' : '#F8F8F8',
     padding: 16 * scale,
     borderRadius: 25 * scale,
     shadowColor: isDark ? '#000' : '#666',
@@ -499,23 +428,12 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     shadowOpacity: 0.2,
     shadowRadius: 2 * scale,
     elevation: 0,
-    overflow: 'hidden',
-    borderWidth: isDark ? 1 : 0,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(255, 255, 255, 0)',
-  },
-  featureItemBackground: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.5)',
   },
   featureIconContainer: {
     width: 50 * scale,
     height: 50 * scale,
     borderRadius: 15 * scale,
-    backgroundColor: isDark ? 'rgba(44, 44, 46, 0.8)' : 'rgba(245, 245, 245, 0.9)', // Add opacity
+    backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: 12 * scale,
@@ -548,13 +466,13 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     paddingVertical: 12 * scale,
     paddingHorizontal: 20 * scale,
     borderRadius: 16 * scale,
-    backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(245, 245, 245, 0.9)',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : 'rgba(224, 224, 224, 0.5)',
+    borderColor: isDark ? '#333' : '#E0E0E0',
   },
   unitToggleSelected: {
-    backgroundColor: isDark ? '#FFFFFF' : '#000000',
-    borderColor: isDark ? '#FFFFFF' : '#000000',
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderColor: isDark ? '#FFF' : '#000',
   },
   unitToggleText: {
     fontSize: 16 * scale,
@@ -573,26 +491,26 @@ const getBaseStyles = (isDark) => StyleSheet.create({
   input: {
     width: '80%',
     height: 56 * scale,
-    backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(245, 245, 245, 0.9)',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
     borderRadius: 16 * scale,
     paddingHorizontal: 20 * scale,
     fontSize: 18 * scale,
     color: isDark ? '#FFF' : '#000',
     textAlign: 'center',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : 'rgba(224, 224, 224, 0.5)',
+    borderColor: isDark ? '#333' : '#E0E0E0',
   },
   inputSmall: {
     width: '38%',
     height: 56 * scale,
-    backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(245, 245, 245, 0.9)',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
     borderRadius: 16 * scale,
     paddingHorizontal: 20 * scale,
     fontSize: 18 * scale,
     color: isDark ? '#FFF' : '#000',
     textAlign: 'center',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : 'rgba(224, 224, 224, 0.5)',
+    borderColor: isDark ? '#333' : '#E0E0E0',
   },
   optionsContainer: {
     width: '100%',
@@ -605,16 +523,14 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     paddingVertical: 16 * scale,
     paddingHorizontal: 24 * scale,
     borderRadius: 16 * scale,
-    backgroundColor: 'transparent',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+    borderColor: isDark ? '#333' : '#E0E0E0',
     alignItems: 'center',
-    overflow: 'hidden',
   },
   optionSelected: {
-    backgroundColor: isDark ? '#FFFFFF' : '#000000',
-    borderColor: isDark ? '#FFFFFF' : '#000000',
-    overflow: 'hidden',
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderColor: isDark ? '#FFF' : '#000',
   },
   optionText: {
     fontSize: 18 * scale,
@@ -622,7 +538,7 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     color: isDark ? '#FFF' : '#000',
   },
   optionTextSelected: {
-    color: isDark ? '#000000' : '#FFFFFF',
+    color: isDark ? '#000' : '#FFF',
   },
   activityOptionsContainer: {
     width: '100%',
@@ -634,24 +550,23 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     width: '90%',
     padding: 20 * scale,
     borderRadius: 16 * scale,
-    backgroundColor: 'transparent',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-    overflow: 'hidden',
+    borderColor: isDark ? '#333' : '#E0E0E0',
   },
   activityOptionLargeSelected: {
-    backgroundColor: isDark ? '#FFFFFF' : '#000000',
-    borderColor: isDark ? '#FFFFFF' : '#000000',
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderColor: isDark ? '#FFF' : '#000',
   },
   activityOptionText: {
-    textAlign: 'center',
-    justifyContent: 'center',
     fontSize: 18 * scale,
     fontWeight: '600',
     color: isDark ? '#FFF' : '#000',
+    marginBottom: 4 * scale,
+    textAlign: 'center',
   },
   activityOptionTextSelected: {
-    color: isDark ? '#000000' : '#FFFFFF',
+    color: isDark ? '#000' : '#FFF',
   },
   activityOptionDescription: {
     fontSize: 14 * scale,
@@ -659,7 +574,7 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     textAlign: 'center',
   },
   activityOptionDescriptionSelected: {
-    color: isDark ? '#000000' : '#FFFFFF',
+    color: isDark ? '#666' : '#CCC',
   },
   goalsContainer: {
     width: '100%',
@@ -672,13 +587,13 @@ const getBaseStyles = (isDark) => StyleSheet.create({
   goalCard: {
     width: '45%',
     aspectRatio: 1,
-    backgroundColor: isDark ? 'rgba(28, 28, 30, 0.8)' : 'rgba(245, 245, 245, 0.9)',
+    backgroundColor: isDark ? '#1C1C1E' : '#F5F5F5',
     borderRadius: 20 * scale,
     padding: 16 * scale,
     alignItems: 'center',
     justifyContent: 'center',
     borderWidth: 1,
-    borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : 'rgba(224, 224, 224, 0.5)',
+    borderColor: isDark ? '#333' : '#E0E0E0',
   },
   goalCardIcon: {
     width: 48 * scale,
@@ -783,21 +698,16 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 4 * scale,
-    backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+    backgroundColor: isDark ? '#2C2C2E' : '#EAEAEA',
     paddingHorizontal: 8 * scale,
     paddingVertical: 4 * scale,
     borderRadius: 12 * scale,
     position: 'absolute',
     right: 0,
     top: 0,
-    borderWidth: 1,
-    borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
-    overflow: 'hidden',
   },
   timeEstimateSelected: {
-    backgroundColor: isDark ? '#000000' : '#FFFFFF',
-    borderColor: isDark ? '#000000' : '#FFFFFF',
-    color: isDark ? '#ccc' : '#666',
+    backgroundColor: '#1C1C1E',
   },
   timeEstimateText: {
     fontSize: 12 * scale,
@@ -805,7 +715,7 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     color: isDark ? '#CCC' : '#666',
   },
   timeEstimateTextSelected: {
-    color: isDark ? '#ccc' : '#666',
+    color: '#FFF',
   },
   weightChangeText: {
     fontSize: 16 * scale,
@@ -824,18 +734,55 @@ const getBaseStyles = (isDark) => StyleSheet.create({
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
-    paddingHorizontal: 20 * scale,
-  },
-  loadingIconContainer: {
-    width: 60,
-    height: 60,
-    marginBottom: 20 * scale,
-    justifyContent: 'center',
-    alignItems: 'center',
+    position: 'absolute',
+    top: 80 * scale,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    paddingHorizontal: 24 * scale,
   },
   loadingText: {
+    fontSize: 20 * scale,
+    color: isDark ? '#FFF' : '#000',
+    marginTop: 40 * scale,
     textAlign: 'center',
-    marginHorizontal: 20 * scale,
+    fontWeight: '600',
+    letterSpacing: -0.5 * scale,
+    opacity: 0.9,
+  },
+  loadingIconContainer: {
+    width: 100 * scale,
+    height: 100 * scale,
+    borderRadius: 30 * scale,
+    backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 24 * scale,
+    borderWidth: 1,
+    borderColor: isDark ? '#333' : '#E0E0E0',
+  },
+  loadingProgressContainer: {
+    width: '100%',
+    maxWidth: 300 * scale,
+    marginTop: 32 * scale,
+  },
+  loadingProgressBackground: {
+    height: 15 * scale,
+    backgroundColor: isDark ? '#2C2C2E' : '#F5F5F5',
+    borderRadius: 100 * scale,
+    overflow: 'hidden',
+  },
+  loadingProgressBar: {
+    height: '100%',
+    backgroundColor: isDark ? '#FFF' : '#000',
+    borderRadius: 100 * scale,
+  },
+  loadingStepCount: {
+    fontSize: 14 * scale,
+    color: isDark ? '#999' : '#666',
+    marginTop: 16 * scale,
+    textAlign: 'center',
+    fontWeight: '500',
   },
   goalsContent: {
     width: '100%',
@@ -867,8 +814,8 @@ const getBaseStyles = (isDark) => StyleSheet.create({
   },
 });
 
-// Update the FeatureItem component definition
-const FeatureItem = React.memo(({ item, showAnimation, animValue, styles, isDark }) => {
+// Memoized feature item component
+const FeatureItem = React.memo(({ item, showAnimation, animValue, styles }) => {
   const animatedStyle = showAnimation && animValue
     ? {
         opacity: animValue,
@@ -891,12 +838,6 @@ const FeatureItem = React.memo(({ item, showAnimation, animValue, styles, isDark
 
   return (
     <Animated.View style={[styles.featureItem, animatedStyle]}>
-      <BlurView
-        style={StyleSheet.absoluteFill}
-        intensity={100}
-        tint={isDark ? 'dark' : 'light'}
-      />
-      <View style={styles.featureItemBackground} />
       <View style={styles.featureIconContainer}>
         <Text style={styles.featureIcon}>{item.icon}</Text>
       </View>
@@ -948,12 +889,6 @@ const OnboardingScreen = () => {
   const flatListRef = useRef(null);
   const colorScheme = Appearance.getColorScheme();
   const isDark = colorScheme === 'dark';
-  
-  // Add new animated value for background fade
-  const backgroundFadeOpacity = useRef(new Animated.Value(0)).current;
-  
-  // Add state to track if the continue button is disabled
-  const [isContinueDisabled, setIsContinueDisabled] = useState(false);
   
   // Memoize styles
   const styles = useMemo(() => getBaseStyles(isDark), [isDark]);
@@ -1059,8 +994,18 @@ const OnboardingScreen = () => {
   const loadingTextOpacity = useRef(new Animated.Value(1)).current;
   const loadingIconOpacity = useRef(new Animated.Value(1)).current;
 
+  // Add this array of loading states
+  const loadingStates = [
+    { text: "Analyzing your profile", icon: "account-search" },
+    { text: "Calculating your metabolism", icon: "calculator-variant" },
+    { text: "Optimizing protein intake", icon: "food-steak" },
+    { text: "Balancing your macros", icon: "chart-pie" },
+    { text: "Finding your best path", icon: "compass" },
+    { text: "Finalizing your plan", icon: "check-circle" }
+  ];
+
   // Add state for current loading state
-  const [currentLoadingState, setCurrentLoadingState] = useState(null);
+  const [currentLoadingState, setCurrentLoadingState] = useState(loadingStates[0]);
 
   // Add state for feature animations
   const [featureAnimations, setFeatureAnimations] = useState({});
@@ -1072,27 +1017,6 @@ const OnboardingScreen = () => {
   // Add this with the other animated values at the top of the component
   const loadingTextPulse = useRef(new Animated.Value(0.4)).current;
   
-  // Add this with other animated values near the top of the component
-  const intermediatePulse = useRef(new Animated.Value(0)).current;
-
-  // Add new animated value for circle rotation
-  const rotationAnim = useRef(new Animated.Value(0)).current;
-
-  // Add loading text messages array
-  const LOADING_MESSAGES = [
-    { text: "Analyzing your profile data...", duration: 2500 },
-    { text: "Running metabolic calculations...", duration: 1800 },
-    { text: "Processing nutritional algorithms...", duration: 2800 },
-    { text: "Finalizing personalized plan...", duration: 2200 }
-  ];
-
-  // Add state for current loading message
-  const [currentLoadingMessage, setCurrentLoadingMessage] = useState(LOADING_MESSAGES[0].text);
-  const loadingMessageOpacity = useRef(new Animated.Value(1)).current;
-
-  const [loadingBetterSearch, setLoadingBetterSearch] = useState(false);
-  const betterSearchLoadingAnim = useRef(new Animated.Value(0)).current;
-
   // Effect to initialize feature animations for each step
   useEffect(() => {
     const animations = {};
@@ -1108,108 +1032,18 @@ const OnboardingScreen = () => {
   useEffect(() => {
     const currentStep = ONBOARDING_STEPS[currentIndex];
     if (['1', '2', '3', '4'].includes(currentStep?.id) && featureAnimations[currentStep.id]) {
-      if (currentStep.id === '4') {
-        // For "Better Search, Better Results" step, show loading first
-        setLoadingBetterSearch(true);
-        Animated.timing(betterSearchLoadingAnim, {
-          toValue: 1,
-          duration: 300,
-          useNativeDriver: true
-        }).start();
-
-        // After a shorter delay, start the feature animations
-        setTimeout(() => {
-          setLoadingBetterSearch(false);
-          Animated.timing(betterSearchLoadingAnim, {
-            toValue: 0,
-            duration: 200,
-            useNativeDriver: true
-          }).start();
-
-          Animated.stagger(100, 
-            featureAnimations[currentStep.id].map(anim =>
-              Animated.spring(anim, {
-                toValue: 1,
-                tension: 50,
-                friction: 7,
-                useNativeDriver: true
-              })
-            )
-          ).start();
-        }, 800); // Reduced delay
-      } else {
-        // For other steps, animate normally
-        Animated.stagger(100, 
-          featureAnimations[currentStep.id].map((anim, index) => {
-            // Add timeout to trigger haptic for each feature item
-            const animDuration = 100 * index;
-            setTimeout(() => {
-              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            }, animDuration);
-            
-            return Animated.spring(anim, {
-              toValue: 1,
-              tension: 50,
-              friction: 7,
-              useNativeDriver: true
-            });
-          })
-        ).start();
-      }
-    }
-    
-    // Special animation for intermediate step
-    if (currentStep?.id === '3.5' && featureAnimations[currentStep.id]) {
-      // First reset all animations to 0
-      featureAnimations[currentStep.id].forEach(anim => anim.setValue(0));
-      
-      // Create a more dramatic entrance animation with longer delay
-      Animated.stagger(400, 
-        featureAnimations[currentStep.id].map((anim, index) => {
-          // Add timeout to trigger haptic for each feature item
-          const animDuration = 400 * index;
-          setTimeout(() => {
-            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-          }, animDuration);
-          
-          return Animated.spring(anim, {
+      Animated.stagger(100, 
+        featureAnimations[currentStep.id].map(anim =>
+          Animated.spring(anim, {
             toValue: 1,
-            tension: 30,
-            friction: 8,
+            tension: 50,
+            friction: 7,
             useNativeDriver: true
-          });
-        })
+          })
+        )
       ).start();
     }
   }, [currentIndex, featureAnimations]);
-
-  // Add animation for intermediate step background
-  useEffect(() => {
-    const currentStep = ONBOARDING_STEPS[currentIndex];
-    if (currentStep?.id === '3.5') {
-      // Create a pulsing animation for background elements
-      Animated.loop(
-        Animated.sequence([
-          Animated.timing(intermediatePulse, {
-            toValue: 1,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true
-          }),
-          Animated.timing(intermediatePulse, {
-            toValue: 0,
-            duration: 2000,
-            easing: Easing.inOut(Easing.ease),
-            useNativeDriver: true
-          })
-        ])
-      ).start();
-    } else {
-      // Stop the animation when leaving the step
-      intermediatePulse.stopAnimation();
-      intermediatePulse.setValue(0);
-    }
-  }, [currentIndex]);
 
   // Function to save visited steps
   const saveVisitedStep = async (stepId) => {
@@ -1297,9 +1131,6 @@ const OnboardingScreen = () => {
           useNativeDriver: true,
         }).start();
       }
-      
-      // Save the step ID to visited steps
-      await saveVisitedStep(currentStep.id);
     };
 
     handleStepChange();
@@ -1365,33 +1196,6 @@ const OnboardingScreen = () => {
     }).start();
   }, [currentIndex]);
 
-  useEffect(() => {
-    const isLastStep = filteredSteps && currentIndex === filteredSteps.length - 1;
-    
-    if (filteredSteps) {
-      Animated.timing(backgroundFadeOpacity, {
-        toValue: isLastStep ? 1 : 0,
-        duration: 400,
-        useNativeDriver: false,
-      }).start();
-    }
-  }, [currentIndex, filteredSteps]);
-
-  useEffect(() => {
-    if (isCalculatingGoals) {
-      Animated.loop(
-        Animated.timing(rotationAnim, {
-          toValue: 1,
-          duration: 1500,
-          easing: Easing.linear,
-          useNativeDriver: true,
-        })
-      ).start();
-    } else {
-      rotationAnim.setValue(0);
-    }
-  }, [isCalculatingGoals]);
-
   const navigateHome = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
     navigation.navigate('HomeTabs', { screen: 'Home' });
@@ -1401,9 +1205,8 @@ const OnboardingScreen = () => {
     });
   };
 
-  const showPaywall = async () => {
+  const showPaywall = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await Superwall.shared.register('onboardingV2');
     navigation.navigate('SignUp');
   };
 
@@ -1443,20 +1246,20 @@ const OnboardingScreen = () => {
 
   const handleNext = async () => {
     if (!isCurrentStepValid()) {
-      const currentStep = filteredSteps[currentIndex]; // <-- changed from ONBOARDING_STEPS
+      const currentStep = ONBOARDING_STEPS[currentIndex];
       let message = '';
       
-      if (currentStep?.field === 'height') {
+      if (currentStep.field === 'height') {
         message = 'Please enter a valid height';
-      } else if (currentStep?.field === 'weight') {
+      } else if (currentStep.field === 'weight') {
         message = 'Please enter a valid weight';
-      } else if (currentStep?.field === 'age') {
+      } else if (currentStep.field === 'age') {
         message = 'Please enter a valid age';
-      } else if (currentStep?.field === 'gender') {
+      } else if (currentStep.field === 'gender') {
         message = 'Please select your gender';
-      } else if (currentStep?.field === 'activityLevel') {
+      } else if (currentStep.field === 'activityLevel') {
         message = 'Please select your activity level';
-      } else if (currentStep?.field === 'goal') {
+      } else if (currentStep.field === 'goal') {
         message = 'Please select your goal';
       }
       
@@ -1466,34 +1269,20 @@ const OnboardingScreen = () => {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    // If the current step has ID '8', save the goals
-    if (filteredSteps[currentIndex]?.id === '11') {
+    if (currentIndex === 8) {
       try {
-        console.log('[OnBoardingScreen] Attempting to save goals to AsyncStorage...');
-        
-        if (!calculatedGoals) {
-          console.error('[OnBoardingScreen] Cannot save goals: calculatedGoals is null');
-          throw new Error('Goals not calculated yet');
-        }
-        
-        console.log('[OnBoardingScreen] Goals to save:', calculatedGoals);
         await AsyncStorage.setItem('@user_goals', JSON.stringify(calculatedGoals));
-        console.log('[OnBoardingScreen] Successfully saved goals to AsyncStorage');
       } catch (error) {
-        console.error('[OnBoardingScreen] Error saving goals:', error);
-        // Show an error message to the user
-        Alert.alert(
-          'Error',
-          'There was a problem saving your goals. Please try again.',
-          [{ text: 'OK' }]
-        );
-        return; // Don't proceed if we couldn't save the goals
+        console.error('Error saving goals:', error);
       }
     }
 
-    if (currentIndex < filteredSteps.length - 1) {
+    if (currentIndex < ONBOARDING_STEPS.length - 1) {
+      flatListRef.current?.scrollToIndex({
+        index: currentIndex + 1,
+        animated: true,
+      });
       setCurrentIndex(currentIndex + 1);
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
     } else {
       showPaywall();
     }
@@ -1502,17 +1291,27 @@ const OnboardingScreen = () => {
   const handlePrevious = () => {
     if (currentIndex > 0) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setCurrentIndex(currentIndex - 1);
-      flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true });
+      // Find the previous valid step
+      let prevIndex = currentIndex - 1;
+      // If the previous step is a weight change step and we're maintaining weight,
+      // skip it and go to the step before
+      const prevStep = ONBOARDING_STEPS[prevIndex];
+      if (prevStep?.showWeightChangeOptions && userData.goal === 'Maintain Weight') {
+        prevIndex--;
+      }
+      setCurrentIndex(prevIndex);
+      flatListRef.current?.scrollToIndex({
+        index: prevIndex,
+        animated: true,
+      });
     }
   };
 
   const timers = useRef([]);
 
-  // Instead, check the step ID to decide if it's step "3"
+  // Adjusted useEffect for currentIndex === 2
   useEffect(() => {
-    const currentStep = filteredSteps[currentIndex];
-    if (currentStep?.id === '3' && !step3Loaded) {
+    if (currentIndex === 2 && !step3Loaded) {
       setLoadingStep3(true);
       loadingOpacity.setValue(0);
       Animated.timing(loadingOpacity, {
@@ -1567,7 +1366,7 @@ const OnboardingScreen = () => {
         timers.current = [];
       }
     };
-  }, [currentIndex, step3Loaded, filteredSteps]);
+  }, [currentIndex, step3Loaded, blurOpacity, replayButtonOpacity, loadingOpacity]);
 
   const renderFeature = useCallback(({ item, index }, showAnimation = false, animValue) => (
     <FeatureItem 
@@ -1576,9 +1375,8 @@ const OnboardingScreen = () => {
       showAnimation={showAnimation}
       animValue={animValue}
       styles={styles}
-      isDark={isDark}
     />
-  ), [styles, isDark]);
+  ), [styles]);
 
   // handleReplayAnimation Function
   const handleReplayAnimation = () => {
@@ -1653,26 +1451,8 @@ const OnboardingScreen = () => {
         userData.age && 
         userData.gender && 
         userData.activityLevel) {
-      
-      console.log('[OnBoardingScreen] Triggering goal calculation with userData:', userData);
-      
       const goals = calculateGoals(userData);
-      if (goals) {
-        console.log('[OnBoardingScreen] Setting new calculated goals:', goals);
-        setCalculatedGoals(goals);
-      } else {
-        console.error('[OnBoardingScreen] Goal calculation returned null. Current userData:', userData);
-      }
-    } else {
-      console.log('[OnBoardingScreen] Skipping goal calculation - missing required data:', {
-        hasWeight: !!userData.weight,
-        hasHeight: userData.unit === 'imperial' ? 
-          !!(userData.heightFeet && userData.heightInches) : 
-          !!userData.height,
-        hasAge: !!userData.age,
-        hasGender: !!userData.gender,
-        hasActivityLevel: !!userData.activityLevel
-      });
+      setCalculatedGoals(goals);
     }
   }, [userData]); // Run whenever userData changes
 
@@ -1720,7 +1500,8 @@ const deleteSavedInputs = async () => {
 };
 
 const calculateGoals = (data) => {
-  console.log('[OnBoardingScreen] Starting goals calculation with data:', data);
+  // For debug:
+  console.log('DEBUG => calculateGoals called with:', data);
 
   let weightKg, heightCm;
 
@@ -1736,7 +1517,7 @@ const calculateGoals = (data) => {
       isNaN(parsedFeet)   || parsedFeet < 0 ||
       isNaN(parsedInches) || parsedInches < 0
     ) {
-      console.warn('[OnBoardingScreen] Invalid imperial weight/height data:', {
+      console.warn('calculateGoals => Invalid imperial weight/height data:', {
         weight: data.weight, heightFeet: data.heightFeet, heightInches: data.heightInches
       });
       return null;
@@ -1753,7 +1534,7 @@ const calculateGoals = (data) => {
       isNaN(parsedWeight) || parsedWeight <= 0 ||
       isNaN(parsedHeight) || parsedHeight <= 0
     ) {
-      console.warn('[OnBoardingScreen] Invalid metric weight/height data:', {
+      console.warn('calculateGoals => Invalid metric weight/height data:', {
         weight: data.weight, height: data.height
       });
       return null;
@@ -1763,17 +1544,15 @@ const calculateGoals = (data) => {
     heightCm = parsedHeight;
   }
 
-  console.log('[OnBoardingScreen] Converted measurements - Weight (kg):', weightKg, 'Height (cm):', heightCm);
-
   // Age & Gender checks
   const age = parseInt(data.age, 10);
   if (isNaN(age) || age <= 0 || age >= 120) {
-    console.warn('[OnBoardingScreen] Invalid age:', data.age);
+    console.warn('calculateGoals => Invalid age:', data.age);
     return null;
   }
   const gender = data.gender;
   if (!gender) {
-    console.warn('[OnBoardingScreen] No gender set');
+    console.warn('calculateGoals => No gender set');
     return null;
   }
 
@@ -1784,8 +1563,6 @@ const calculateGoals = (data) => {
   } else {
     BMR = (10 * weightKg) + (6.25 * heightCm) - (5 * age) - 161;
   }
-
-  console.log('[OnBoardingScreen] Calculated BMR:', BMR);
 
   // Activity factor
   let activityFactor;
@@ -1805,20 +1582,12 @@ const calculateGoals = (data) => {
 
   let TDEE = BMR * activityFactor;
 
-  console.log('[OnBoardingScreen] Initial TDEE:', TDEE, 'with activity factor:', activityFactor);
-
   // If user wants to lose/gain weight at a certain weekly rate
+  // (and that rate is > 0)
   if (data.goal !== 'Maintain Weight' && data.weightChangeRate > 0) {
     const adjustmentFactor = Math.min(1.2, Math.max(0.8, weightKg / 70));
     const baseAdjustment   = (data.weightChangeRate * 3500) / 7;
     const calorieAdjustment = baseAdjustment * adjustmentFactor;
-
-    console.log('[OnBoardingScreen] Weight change adjustments:', {
-      adjustmentFactor,
-      baseAdjustment,
-      calorieAdjustment,
-      goal: data.goal
-    });
 
     if (data.goal === 'Lose Weight') {
       TDEE -= calorieAdjustment;
@@ -1848,26 +1617,26 @@ const calculateGoals = (data) => {
     fatsPercent   = 0.30;
   }
 
-  console.log('[OnBoardingScreen] Macro splits:', {
-    proteinPerKg,
-    carbsPercent,
-    fatsPercent
-  });
-
   const calories       = Math.round(TDEE);
   const proteins       = Math.round(weightKg * proteinPerKg);          // grams
   const fats           = Math.round((calories * fatsPercent) / 9);     // grams
   const carbohydrates  = Math.round((calories - proteins * 4 - fats * 9) / 4);
 
-  const goals = {
+  // Final debug logging
+  console.log('calculateGoals => BMR:', BMR, 
+    'calories:', calories, 
+    'protein(g):', proteins, 
+    'carbs(g):', carbohydrates, 
+    'fats(g):', fats
+  );
+
+  // Return the final goals
+  return {
     calories,
     proteins,
     carbohydrates,
     fats
   };
-
-  console.log('[OnBoardingScreen] Final calculated goals:', goals);
-  return goals;
 };
 
   // Function to validate current step
@@ -1918,44 +1687,190 @@ const calculateGoals = (data) => {
     return true;
   };
 
+  // Update the useEffect to handle all step skipping logic
+  useEffect(() => {
+    const currentStep = ONBOARDING_STEPS[currentIndex];
+    if (userData.goal === 'Maintain Weight') {
+      if (currentStep?.showWeightChangeOptions || currentStep?.field === 'targetWeight') {
+        // Use a timeout to avoid immediate state updates
+        const timer = setTimeout(() => {
+          // Find the index of the next valid step
+          const nextStepIndex = ONBOARDING_STEPS.findIndex((step, idx) => 
+            idx > currentIndex && 
+            !step.showWeightChangeOptions && 
+            step.field !== 'targetWeight'
+          );
+          if (nextStepIndex !== -1) {
+            setCurrentIndex(nextStepIndex);
+            flatListRef.current?.scrollToIndex({
+              index: nextStepIndex,
+              animated: true,
+            });
+          }
+        }, 0);
+        return () => clearTimeout(timer);
+      }
+    }
+  }, [currentIndex, userData.goal]);
+
   // Modify the animateGoalCards function to chain the affirmation animation
   const animateGoalCards = () => {
-    Animated.stagger(150, goalCardAnimations.map((anim, index) => {
-      // Add timeout to trigger haptic for each goal card
-      const animDuration = 150 * index;
-      setTimeout(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }, animDuration);
-      
-      return Animated.spring(anim, {
+    Animated.stagger(150, goalCardAnimations.map(anim => 
+      Animated.spring(anim, {
         toValue: 1,
         tension: 50,
         friction: 7,
         useNativeDriver: true
-      });
-    })).start(() => {
+      })
+    )).start(() => {
       // After all goal cards are animated, fade in the affirmation
       Animated.timing(affirmationOpacity, {
         toValue: 1,
         duration: 500,
         useNativeDriver: true,
-      }).start(() => {
-        // Add success haptic when affirmation appears
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-      });
+      }).start();
     });
   };
 
-  // Update the useEffect for calculated goals with new timing and text animations
+  // Add this function to generate random duration within a range
+  const getRandomDuration = (min, max) => {
+    return Math.floor(Math.random() * (max - min + 1)) + min;
+  };
+
+  // Update the animateLoading function
+  const animateLoading = () => {
+    let currentIndex = 0;
+
+    // Create a pulsing animation for the loading text
+    const pulseAnimation = Animated.sequence([
+      Animated.timing(loadingTextPulse, {
+        toValue: 1,
+        duration: 1200,
+        useNativeDriver: true,
+      }),
+      Animated.timing(loadingTextPulse, {
+        toValue: 0.4,
+        duration: 800,
+        useNativeDriver: true,
+      })
+    ]);
+
+    // Loop the pulse animation
+    Animated.loop(pulseAnimation).start();
+
+    // Function to animate state changes
+    const animateState = () => {
+      // Only fade the icon, not the container
+      Animated.timing(loadingIconOpacity, {
+        toValue: 0,
+        duration: 400, // Increased duration for smoother fade
+        easing: Easing.inOut(Easing.ease), // Added easing for smooth transition
+        useNativeDriver: true,
+      }).start(() => {
+        currentIndex = (currentIndex + 1) % loadingStates.length;
+        setCurrentLoadingState(loadingStates[currentIndex]);
+
+        Animated.timing(loadingIconOpacity, {
+          toValue: 1,
+          duration: 400, // Increased duration for smoother fade
+          easing: Easing.inOut(Easing.ease), // Added easing for smooth transition
+          useNativeDriver: true,
+        }).start();
+      });
+    };
+
+    // Create a progress animation that pauses at macros balancing
+    const totalDuration = 9000; // Increased from 8000
+    const pauseAt = 3 / loadingStates.length;
+    const pauseDuration = getRandomDuration(2200, 2800); // Increased pause duration
+
+    // Calculate timing segments with more variance
+    const firstSegmentDuration = totalDuration * pauseAt;
+    const secondSegmentDuration = totalDuration * (1 - pauseAt);
+    
+    const stepsBeforePause = 3;
+    const stepsAfterPause = loadingStates.length - stepsBeforePause;
+
+    // More variable step durations
+    const baseStepDurationBefore = firstSegmentDuration / stepsBeforePause;
+    const baseStepDurationAfter = secondSegmentDuration / stepsAfterPause;
+
+    // Set initial state
+    setCurrentLoadingState(loadingStates[0]);
+
+    // Animate progress bar with natural easing
+    Animated.sequence([
+      Animated.timing(circleProgress, {
+        toValue: pauseAt,
+        duration: firstSegmentDuration,
+        useNativeDriver: false,
+        easing: Easing.inOut(Easing.ease), // Add natural easing
+      }),
+      Animated.delay(pauseDuration),
+      Animated.timing(circleProgress, {
+        toValue: 1,
+        duration: secondSegmentDuration,
+        useNativeDriver: false,
+        easing: Easing.inOut(Easing.ease), // Add natural easing
+      })
+    ]).start();
+
+    // Schedule states with more natural timing
+    let timeoutIds = [];
+    let accumulatedTime = getRandomDuration(800, 1200); // Initial delay
+
+    // Schedule first 3 states (before pause) with more variance
+    for (let i = 0; i < stepsBeforePause - 1; i++) {
+      const variance = getRandomDuration(-300, 300);
+      const duration = baseStepDurationBefore + variance;
+      
+      // Add small random delays between state changes
+      const stateChangeDelay = getRandomDuration(100, 300);
+      
+      timeoutIds.push(setTimeout(() => {
+        animateState();
+      }, accumulatedTime + stateChangeDelay));
+      
+      accumulatedTime += duration;
+    }
+
+    // Add pause with slight variance
+    accumulatedTime += pauseDuration + getRandomDuration(-200, 200);
+
+    // Schedule remaining states with increasing durations
+    for (let i = stepsBeforePause - 1; i < loadingStates.length - 2; i++) {
+      // Gradually increase duration for later steps
+      const progressFactor = (i - stepsBeforePause + 1) / stepsAfterPause;
+      const variance = getRandomDuration(-200, 400);
+      const duration = baseStepDurationAfter * (1 + progressFactor * 0.3) + variance;
+      
+      // Add variable delays between states
+      const stateChangeDelay = getRandomDuration(150, 400);
+      
+      timeoutIds.push(setTimeout(() => {
+        animateState();
+      }, accumulatedTime + stateChangeDelay));
+      
+      accumulatedTime += duration;
+    }
+
+    // Final state change
+    timeoutIds.push(setTimeout(() => {
+      animateState();
+    }, accumulatedTime + getRandomDuration(200, 400)));
+
+    return () => timeoutIds.forEach(id => clearTimeout(id));
+  };
+
+  // Update the useEffect for calculated goals
   useEffect(() => {
-    const step = filteredSteps[currentIndex];
-    if (step?.showCalculatedGoals && !hasCalculatedGoals) {
+    if (ONBOARDING_STEPS[currentIndex]?.showCalculatedGoals && !hasCalculatedGoals) {
       setIsCalculatingGoals(true);
       contentOpacity.setValue(0);
       loadingOpacity.setValue(1);
+      circleProgress.setValue(0);
       titleOpacity.setValue(0);
       descriptionOpacity.setValue(0);
-      setCurrentLoadingMessage(LOADING_MESSAGES[0].text);
       
       Animated.timing(buttonContainerOpacity, {
         toValue: 0,
@@ -1963,100 +1878,48 @@ const calculateGoals = (data) => {
         useNativeDriver: true,
       }).start();
 
-      // Function to animate text change with precise timing
-      const animateTextChange = (index, remainingTime) => {
-        if (index >= LOADING_MESSAGES.length) return;
-        
-        const currentMessage = LOADING_MESSAGES[index];
-        const fadeOutDuration = 300;
-        const fadeInDuration = 300;
-        const pauseDuration = 200; // Pause between fade out and fade in
+      const cleanup = animateLoading();
 
-        // First fade out the current text
-        Animated.timing(loadingMessageOpacity, {
-          toValue: 0,
-          duration: fadeOutDuration,
-          useNativeDriver: true,
-        }).start(() => {
-          // After fade out completes, wait a bit then change text and fade in
-          setTimeout(() => {
-            if (index + 1 < LOADING_MESSAGES.length) {
-              setCurrentLoadingMessage(LOADING_MESSAGES[index + 1].text);
-              
-              // Fade in the new text
-              Animated.timing(loadingMessageOpacity, {
-                toValue: 1,
-                duration: fadeInDuration,
-                useNativeDriver: true,
-              }).start();
+      // Wait for total animation duration plus a small buffer
+      const totalWaitTime = 8000 + getRandomDuration(1800, 2200) + 1000;
 
-              // Schedule next message change
-              const totalTransitionTime = fadeOutDuration + pauseDuration + fadeInDuration;
-              const nextMessageDelay = currentMessage.duration - totalTransitionTime;
-              
-              setTimeout(() => {
-                animateTextChange(index + 1, remainingTime - currentMessage.duration);
-              }, nextMessageDelay);
-            }
-          }, pauseDuration);
-        });
-      };
-
-      // Calculate total duration
-      const totalDuration = LOADING_MESSAGES.reduce((sum, msg) => sum + msg.duration, 0);
-
-      // Start text animation sequence with total duration tracking
-      animateTextChange(0, totalDuration);
-
-      // Update the final animation timing
       setTimeout(() => {
-        // First fade out the loading elements
+        // Animate all elements simultaneously
         Animated.parallel([
           Animated.timing(loadingOpacity, {
             toValue: 0,
             duration: 500,
             useNativeDriver: true,
           }),
-          Animated.timing(loadingMessageOpacity, {
-            toValue: 0,
+          Animated.timing(titleOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(descriptionOpacity, {
+            toValue: 1,
+            duration: 500,
+            useNativeDriver: true,
+          }),
+          Animated.timing(contentOpacity, {
+            toValue: 1,
             duration: 500,
             useNativeDriver: true,
           })
         ]).start(() => {
-          // Wait for 1 second after fade out
-          setTimeout(() => {
-            // Then animate in the content
-            Animated.parallel([
-              Animated.timing(titleOpacity, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-              }),
-              Animated.timing(descriptionOpacity, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-              }),
-              Animated.timing(contentOpacity, {
-                toValue: 1,
-                duration: 500,
-                useNativeDriver: true,
-              })
-            ]).start(() => {
-              setIsCalculatingGoals(false);
-              setHasCalculatedGoals(true);
-              animateGoalCards();
-              Animated.timing(buttonContainerOpacity, {
-                toValue: 1,
-                duration: 300,
-                useNativeDriver: true,
-              }).start();
-            });
-          }, 1000); // 1 second pause after fade out
+          setIsCalculatingGoals(false);
+          setHasCalculatedGoals(true);
+          animateGoalCards();
+          Animated.timing(buttonContainerOpacity, {
+            toValue: 1,
+            duration: 300,
+            useNativeDriver: true,
+          }).start();
         });
-      }, totalDuration + 300); // Add a small buffer to the total duration
+      }, totalWaitTime);
 
-    } else if (step?.showCalculatedGoals && hasCalculatedGoals) {
+      return cleanup;
+    } else if (ONBOARDING_STEPS[currentIndex]?.showCalculatedGoals && hasCalculatedGoals) {
       // If goals were already calculated, show content immediately
       contentOpacity.setValue(1);
       titleOpacity.setValue(1);
@@ -2065,230 +1928,9 @@ const calculateGoals = (data) => {
       setIsCalculatingGoals(false);
       animateGoalCards();
     }
-  }, [currentIndex, filteredSteps]);
+  }, [currentIndex]);
 
   const renderItem = ({ item, index }) => {
-    // Special handling for progress visualization step
-    if (item.id === '3') {
-      return (
-        <View style={styles.slide}>
-          <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.description}>{item.description}</Text>
-          <ProgressVisualization 
-            isDark={isDark} 
-            isVisible={currentIndex === index}
-          />
-        </View>
-      );
-    }
-
-    // Special handling for the intermediate step
-    if (item.id === '3.5') {
-      return (
-        <View style={[styles.slide, { justifyContent: 'center' }]}>
-          <Animated.View 
-            style={{
-              position: 'absolute',
-              top: 0,
-              left: 0,
-              right: 0,
-              bottom: 0,
-              opacity: intermediatePulse.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0.05, 0.15]
-              })
-            }}
-          >
-            <Animated.View style={{
-              position: 'absolute',
-              top: '5%',
-              left: '5%',
-              right: '5%',
-              bottom: '5%',
-              borderRadius: 30 * scale,
-              backgroundColor: isDark ? '#ffffff20' : '#00000015',
-              transform: [
-                { rotate: '10deg' },
-                { 
-                  scale: intermediatePulse.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.95, 1.05]
-                  }) 
-                }
-              ]
-            }} />
-            <Animated.View style={{
-              position: 'absolute',
-              top: '8%',
-              left: '8%',
-              right: '8%',
-              bottom: '8%',
-              borderRadius: 30 * scale,
-              backgroundColor: isDark ? '#ffffff15' : '#00000010',
-              transform: [
-                { rotate: '-5deg' },
-                { 
-                  scale: intermediatePulse.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [1.05, 0.95]
-                  }) 
-                }
-              ]
-            }} />
-          </Animated.View>
-
-          <AnimatedTextOnboarding
-            text={item.title}
-            colorScheme={isDark ? 'dark' : 'light'}
-            style={[styles.title, { 
-              fontSize: (isSmallDevice ? 32 : 38) * scale, 
-              marginBottom: 24 * scale,
-              textAlign: 'center' 
-            }]}
-          />
-          
-          <AnimatedTextOnboarding
-            text={item.description}
-            colorScheme={isDark ? 'dark' : 'light'}
-            style={[styles.description, { 
-              fontSize: (isSmallDevice ? 18 : 22) * scale,
-              marginBottom: 40 * scale,
-              textAlign: 'center'
-            }]}
-          />
-
-          <View style={{
-            width: '100%',
-            alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: 20 * scale
-          }}>
-            {item.features.map((feature, idx) => {
-              const animValue = featureAnimations[item.id]?.[idx] || new Animated.Value(0);
-              return (
-                <Animated.View 
-                  key={feature.id}
-                  style={{
-                    flexDirection: 'row',
-                    alignItems: 'center',
-                    marginBottom: 24 * scale,
-                    opacity: animValue,
-                    transform: [
-                      {
-                        translateY: animValue.interpolate({
-                          inputRange: [0, 1],
-                          outputRange: [50, 0],
-                        }),
-                      },
-                      {
-                        scale: animValue.interpolate({
-                          inputRange: [0, 0.5, 0.8, 1],
-                          outputRange: [0.3, 1.1, 0.9, 1],
-                        }),
-                      }
-                    ],
-                  }}
-                >
-                  <Animated.View style={{
-                    width: 60 * scale,
-                    height: 60 * scale,
-                    borderRadius: 30 * scale,
-                    backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)',
-                    justifyContent: 'center',
-                    alignItems: 'center',
-                    marginRight: 16 * scale,
-                    transform: [{ 
-                      scale: animValue.interpolate({
-                        inputRange: [0, 0.5, 0.8, 1],
-                        outputRange: [0.2, 1.2, 0.9, 1],
-                      }) 
-                    }]
-                  }}>
-                    <Text style={{ fontSize: 30 * scale }}>{feature.icon}</Text>
-                  </Animated.View>
-                  <Animated.View style={{ 
-                    flex: 1,
-                    transform: [{
-                      translateX: animValue.interpolate({
-                        inputRange: [0, 0.5, 0.8, 1],
-                        outputRange: [20, -10, 5, 0],
-                      })
-                    }]
-                  }}>
-                    <Text style={{
-                      fontSize: 20 * scale,
-                      fontWeight: '700',
-                      color: isDark ? '#FFF' : '#000',
-                      marginBottom: 4 * scale,
-                    }}>
-                      {feature.title}
-                    </Text>
-                    <Text style={{
-                      fontSize: 16 * scale,
-                      color: isDark ? '#CCC' : '#666',
-                    }}>
-                      {feature.description}
-                    </Text>
-                  </Animated.View>
-                </Animated.View>
-              );
-            })}
-          </View>
-
-          <Animated.View style={{
-            opacity: featureAnimations[item.id]?.[item.features.length - 1] || new Animated.Value(0),
-            transform: [{
-              translateY: (featureAnimations[item.id]?.[item.features.length - 1] || new Animated.Value(0)).interpolate({
-                inputRange: [0, 1],
-                outputRange: [50, 0],
-              })
-            }]
-          }}>
-            <TouchableOpacity
-              style={{
-                backgroundColor: isDark ? '#FFF' : '#000',
-                paddingVertical: 16 * scale,
-                paddingHorizontal: 32 * scale,
-                borderRadius: 25 * scale,
-                marginTop: 40 * scale,
-                alignSelf: 'center',
-                shadowColor: isDark ? '#000' : '#666',
-                shadowOffset: { width: 0, height: 4 },
-                shadowOpacity: 0.3,
-                shadowRadius: 6,
-                elevation: 8,
-              }}
-              onPress={() => {
-                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                handleNext();
-              }}
-            >
-              <Text style={{
-                color: isDark ? '#000' : '#FFF',
-                fontSize: 22 * scale,
-                fontWeight: '600',
-                textAlign: 'center',
-              }}>
-                Start
-              </Text>
-            </TouchableOpacity>
-          </Animated.View>
-        </View>
-      );
-    }
-
-    // Special handling for AI visualization step
-    if (item.id === '4') {
-      return (
-        <View style={styles.slide}>
-          <Text style={styles.title}>{item.title}</Text>
-          <Text style={styles.description}>{item.description}</Text>
-          <AIVisualization isDark={isDark} isVisible={currentIndex === index} />
-        </View>
-      );
-    }
-
-    // Skip conditional steps for maintain weight
     if ((item.field === 'targetWeight' || item.showWeightChangeOptions) && userData.goal === 'Maintain Weight') {
       return null;
     }
@@ -2298,56 +1940,13 @@ const calculateGoals = (data) => {
       return (
         <View style={styles.slide}>
           {item.id === '4' ? (
-            <>
-              <TouchableOpacity onPress={deleteSavedInputs}>
-                <AnimatedTextOnboarding
-                  text={item.title}
-                  colorScheme={isDark ? 'dark' : 'light'}
-                  style={styles.title}
-                />
-              </TouchableOpacity>
+            <TouchableOpacity onPress={deleteSavedInputs}>
               <AnimatedTextOnboarding
-                text={item.description}
+                text={item.title}
                 colorScheme={isDark ? 'dark' : 'light'}
-                style={styles.description}
+                style={styles.title}
               />
-
-              {loadingBetterSearch ? (
-                <Animated.View style={{
-                  opacity: betterSearchLoadingAnim,
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  marginTop: 20 * scale
-                }}>
-                  <ActivityIndicator size="large" color={isDark ? '#FFF' : '#000'} />
-                  <Text style={{
-                    marginTop: 12 * scale,
-                    fontSize: 16 * scale,
-                    color: isDark ? '#CCC' : '#666',
-                    textAlign: 'center'
-                  }}>
-                    Preparing search capabilities...
-                  </Text>
-                </Animated.View>
-              ) : (
-                <View style={styles.featuresContainer}>
-                  <ScrollView
-                    nestedScrollEnabled={true}
-                    contentContainerStyle={styles.scrollViewContent}
-                    style={styles.scrollView}
-                    showsVerticalScrollIndicator={true}
-                  >
-                    {item.features.map((feature, idx) =>
-                      renderFeature(
-                        { item: feature, index: idx },
-                        true,
-                        featureAnimations[item.id]?.[idx]
-                      )
-                    )}
-                  </ScrollView>
-                </View>
-              )}
-            </>
+            </TouchableOpacity>
           ) : (
             <AnimatedTextOnboarding
               text={item.title}
@@ -2387,7 +1986,6 @@ const calculateGoals = (data) => {
       );
     }
 
-    // Paywall step
     if (item.showPaywall) {
       return (
         <View style={styles.slide}>
@@ -2401,135 +1999,6 @@ const calculateGoals = (data) => {
       );
     }
 
-    // Show calculated goals
-    if (item.showCalculatedGoals && calculatedGoals) {
-      const goalData = [
-        { 
-          value: calculatedGoals.calories,
-          label: 'Calories',
-          unit: 'kcal',
-          icon: 'fire',
-          color: '#FF6B6B'
-        },
-        { 
-          value: calculatedGoals.proteins,
-          label: 'Proteins',
-          unit: 'g',
-          icon: 'egg',
-          color: '#4ECDC4'
-        },
-        { 
-          value: calculatedGoals.carbohydrates,
-          label: 'Carbs',
-          unit: 'g',
-          icon: 'bread-slice',
-          color: '#FFD93D'
-        },
-        { 
-          value: calculatedGoals.fats,
-          label: 'Fats',
-          unit: 'g',
-          icon: 'oil',
-          color: '#95A5A6'
-        }
-      ];
-
-      return (
-        <View style={styles.slide}>
-          <Animated.Text style={[styles.title, { opacity: titleOpacity }]}>
-            {item.title}
-          </Animated.Text>
-          <Animated.Text style={[styles.description, { opacity: descriptionOpacity }]}>
-            {item.description}
-          </Animated.Text>
-          
-          {/* Loading Animation */}
-          <Animated.View style={[styles.loadingContainer, { opacity: loadingOpacity }]}>
-            <View style={styles.loadingIconContainer}>
-              <Animated.View style={{
-                transform: [{
-                  rotate: rotationAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '360deg']
-                  })
-                }]
-              }}>
-                <Svg width={60} height={60} viewBox="0 0 60 60">
-                  <Circle
-                    cx="30"
-                    cy="30"
-                    r="25"
-                    stroke={isDark ? "#FFF" : "#000"}
-                    strokeWidth="5"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray="120,180"
-                  />
-                </Svg>
-              </Animated.View>
-            </View>
-            <Animated.Text style={[
-              styles.loadingText, 
-              { 
-                opacity: loadingMessageOpacity,
-                color: isDark ? '#FFF' : '#000',
-                fontSize: 20 * scale,
-                fontWeight: '600',
-                textAlign: 'center',
-                marginTop: 20 * scale
-              }
-            ]}>
-              {currentLoadingMessage}
-            </Animated.Text>
-          </Animated.View>
-
-          {/* Goals Content */}
-          <Animated.View style={[styles.goalsContent, { opacity: contentOpacity }]}>
-            <View style={styles.goalsContainer}>
-              {goalData.map((goal, index) => (
-                <GoalCard 
-                  key={goal.label}
-                  goal={goal}
-                  animation={goalCardAnimations[index]}
-                  styles={styles}
-                />
-              ))}
-            </View>
-            
-            {calculatedGoals.calories !== (userData.gender === 'Male' ? 1500 : 1200) && (
-              <Animated.View style={[
-                styles.affirmationContainer,
-                { opacity: affirmationOpacity }
-              ]}>
-                <MaterialCommunityIcons 
-                  name="check-circle-outline" 
-                  size={20} 
-                  color={isDark ? '#4ECDC4' : '#2ecc71'} 
-                />
-                <Text style={styles.affirmationText}>
-                  These goals are reasonable for you
-                </Text>
-              </Animated.View>
-            )}
-
-            {calculatedGoals.calories === (userData.gender === 'Male' ? 1500 : 1200) && (
-              <View style={styles.disclaimerContainer}>
-                <MaterialCommunityIcons 
-                  name="alert-circle-outline" 
-                  size={20} 
-                  color={isDark ? '#FF6961' : '#D32F2F'} 
-                />
-                <Text style={styles.disclaimerText}>
-                  Your selected weight loss rate sets calories at the minimum safe level. Consider choosing a more moderate, sustainable rate to protect your health.
-                </Text>
-              </View>
-            )}
-          </Animated.View>
-        </View>
-      );
-    }
-
-    // Target weight step
     if (item.field === 'targetWeight') {
       return (
         <View style={styles.slide}>
@@ -2588,7 +2057,6 @@ const calculateGoals = (data) => {
       );
     }
 
-    // Weight change options step
     if (item.showWeightChangeOptions) {
       // If user wants to maintain weight, skip
       if (userData.goal === 'Maintain Weight') {
@@ -2817,16 +2285,6 @@ const calculateGoals = (data) => {
                     isSelected && styles.activityOptionLargeSelected
                   ]}
                 >
-                  {!isSelected && (
-                    <>
-                      <BlurView
-                        style={StyleSheet.absoluteFill}
-                        intensity={100}
-                        tint={isDark ? 'dark' : 'light'}
-                      />
-                      <View style={styles.featureItemBackground} />
-                    </>
-                  )}
                   <View style={styles.optionHeader}>
                     <Text
                       style={[
@@ -2848,7 +2306,7 @@ const calculateGoals = (data) => {
                           size={14}
                           color={
                             isSelected
-                              ? (isDark ? '#ccc' : '#666')
+                              ? '#FFF'
                               : isDark
                                 ? '#CCC'
                                 : '#666'
@@ -2894,7 +2352,7 @@ const calculateGoals = (data) => {
                           size={14}
                           color={
                             isSelected
-                              ? (isDark ? '#ccc' : '#666')
+                              ? '#FFF'
                               : isDark
                                 ? '#CCC'
                                 : '#666'
@@ -2918,7 +2376,6 @@ const calculateGoals = (data) => {
       );
     }
 
-    // Default case for user data input fields
     if (item.field) {
       return (
         <View style={styles.slide}>
@@ -3019,39 +2476,26 @@ const calculateGoals = (data) => {
 
           {item.options && !item.options[0]?.name && (
             <View style={styles.optionsContainer}>
-              {item.options.map((option) => {
-                const isSelected = userData[item.field] === option;
-                return (
-                  <TouchableOpacity
-                    key={option}
-                    onPress={() => {
-                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                      updateUserData({ [item.field]: option });
-                    }}
-                    style={[
-                      styles.option,
-                      isSelected && styles.optionSelected
-                    ]}
-                  >
-                    {!isSelected && (
-                      <>
-                        <BlurView
-                          style={StyleSheet.absoluteFill}
-                          intensity={100}
-                          tint={isDark ? 'dark' : 'light'}
-                        />
-                        <View style={styles.featureItemBackground} />
-                      </>
-                    )}
-                    <Text style={[
-                      styles.optionText,
-                      isSelected && styles.optionTextSelected
-                    ]}>
-                      {option}
-                    </Text>
-                  </TouchableOpacity>
-                );
-              })}
+              {item.options.map((option) => (
+                <TouchableOpacity
+                  key={option}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    updateUserData({ [item.field]: option });
+                  }}
+                  style={[
+                    styles.option,
+                    userData[item.field] === option && styles.optionSelected
+                  ]}
+                >
+                  <Text style={[
+                    styles.optionText,
+                    userData[item.field] === option && styles.optionTextSelected
+                  ]}>
+                    {option}
+                  </Text>
+                </TouchableOpacity>
+              ))}
             </View>
           )}
 
@@ -3071,16 +2515,6 @@ const calculateGoals = (data) => {
                       isSelected && styles.activityOptionLargeSelected
                     ]}
                   >
-                    {!isSelected && (
-                      <>
-                        <BlurView
-                          style={StyleSheet.absoluteFill}
-                          intensity={100}
-                          tint={isDark ? 'dark' : 'light'}
-                        />
-                        <View style={styles.featureItemBackground} />
-                      </>
-                    )}
                     <Text style={[
                       styles.activityOptionText,
                       isSelected && styles.activityOptionTextSelected
@@ -3126,322 +2560,146 @@ const calculateGoals = (data) => {
       );
     }
 
-    // Add new rendering logic for step 10c
-    if (item.id === '10c') {
+    if (item.showCalculatedGoals && calculatedGoals) {
+      const goalData = [
+        { 
+          value: calculatedGoals.calories,
+          label: 'Calories',
+          unit: 'kcal',
+          icon: 'fire',
+          color: '#FF6B6B'
+        },
+        { 
+          value: calculatedGoals.proteins,
+          label: 'Proteins',
+          unit: 'g',
+          icon: 'egg',
+          color: '#4ECDC4'
+        },
+        { 
+          value: calculatedGoals.carbohydrates,
+          label: 'Carbs',
+          unit: 'g',
+          icon: 'bread-slice',
+          color: '#FFD93D'
+        },
+        { 
+          value: calculatedGoals.fats,
+          label: 'Fats',
+          unit: 'g',
+          icon: 'oil',
+          color: '#95A5A6'
+        }
+      ];
+
+      // Add these debug logs
+      // console.log('Debug - Calculated Goals:', calculatedGoals);
+      // console.log('Debug - Gender:', userData.gender);
+      // console.log('Debug - Calories:', calculatedGoals.calories);
+      // console.log('Debug - Min Calories:', userData.gender === 'Male' ? 1500 : 1200);
+      // console.log('Debug - Condition:', !(calculatedGoals.calories === (userData.gender === 'Male' ? 1500 : 1200)));
+
       return (
-        <View style={[styles.slide, { justifyContent: 'center' }]}>
-          {isCalculatingGoals ? (
-            // Loading Animation
-            <Animated.View style={[styles.loadingContainer, { opacity: loadingOpacity }]}>
-              <View style={styles.loadingIconContainer}>
-                <Animated.View style={{
-                  transform: [{
-                    rotate: rotationAnim.interpolate({
-                      inputRange: [0, 1],
-                      outputRange: ['0deg', '360deg']
-                    })
-                  }]
-                }}>
-                  <Svg width={60} height={60} viewBox="0 0 60 60">
-                    <Circle
-                      cx="30"
-                      cy="30"
-                      r="25"
-                      stroke={isDark ? "#FFF" : "#000"}
-                      strokeWidth="5"
-                      fill="none"
-                      strokeLinecap="round"
-                      strokeDasharray="120,180"
-                    />
-                  </Svg>
-                </Animated.View>
-              </View>
-              <Animated.Text style={[
-                styles.loadingText, 
-                { 
-                  opacity: loadingMessageOpacity,
-                  color: isDark ? '#FFF' : '#000',
-                  fontSize: 20 * scale,
-                  fontWeight: '600',
-                  textAlign: 'center',
-                  marginTop: 20 * scale
-                }
-              ]}>
-                {currentLoadingMessage}
-              </Animated.Text>
-            </Animated.View>
-          ) : (
-            <>
-              <Animated.View 
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  bottom: 0,
-                  opacity: intermediatePulse.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [0.05, 0.15]
-                  })
-                }}
-              >
-                <Animated.View style={{
-                  position: 'absolute',
-                  top: '5%',
-                  left: '5%',
-                  right: '5%',
-                  bottom: '5%',
-                  borderRadius: 30 * scale,
-                  backgroundColor: isDark ? '#ffffff20' : '#00000015',
-                  transform: [
-                    { rotate: '10deg' },
-                    { 
-                      scale: intermediatePulse.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [0.95, 1.05]
-                      }) 
-                    }
-                  ]
-                }} />
-                <Animated.View style={{
-                  position: 'absolute',
-                  top: '8%',
-                  left: '8%',
-                  right: '8%',
-                  bottom: '8%',
-                  borderRadius: 30 * scale,
-                  backgroundColor: isDark ? '#ffffff15' : '#00000010',
-                  transform: [
-                    { rotate: '-5deg' },
-                    { 
-                      scale: intermediatePulse.interpolate({
-                        inputRange: [0, 1],
-                        outputRange: [1.05, 0.95]
-                      }) 
-                    }
-                  ]
-                }} />
+        <View style={styles.slide}>
+          <Animated.Text style={[styles.title, { opacity: titleOpacity }]}>
+            {item.title}
+          </Animated.Text>
+          <Animated.Text style={[styles.description, { opacity: descriptionOpacity }]}>
+            {item.description}
+          </Animated.Text>
+          
+          {/* Loading Animation */}
+          <Animated.View style={[styles.loadingContainer, { opacity: loadingOpacity }]}>
+            <View style={styles.loadingIconContainer}>
+              <Animated.View style={{ opacity: loadingIconOpacity }}>
+                <MaterialCommunityIcons
+                  name={currentLoadingState.icon}
+                  size={45}
+                  color={isDark ? '#FFF' : '#000'}
+                />
               </Animated.View>
+            </View>
+            
+            <Animated.Text style={[styles.loadingText, { opacity: loadingTextPulse }]}>
+              {currentLoadingState.text}
+            </Animated.Text>
 
-              <AnimatedTextOnboarding
-                text={item.title}
-                colorScheme={isDark ? 'dark' : 'light'}
-                style={[styles.title, { 
-                  fontSize: (isSmallDevice ? 32 : 38) * scale, 
-                  marginBottom: 24 * scale,
-                  textAlign: 'center' 
-                }]}
-              />
-              
-              <AnimatedTextOnboarding
-                text={item.description}
-                colorScheme={isDark ? 'dark' : 'light'}
-                style={[styles.description, { 
-                  fontSize: (isSmallDevice ? 18 : 22) * scale,
-                  marginBottom: 40 * scale,
-                  textAlign: 'center'
-                }]}
-              />
-
-              <View style={{
-                width: '100%',
-                alignItems: 'center',
-                justifyContent: 'center',
-                paddingHorizontal: 20 * scale
-              }}>
-                {item.features.map((feature, idx) => {
-                  const animValue = featureAnimations[item.id]?.[idx] || new Animated.Value(0);
-                  return (
-                    <Animated.View 
-                      key={feature.id}
-                      style={{
-                        flexDirection: 'row',
-                        alignItems: 'center',
-                        marginBottom: 24 * scale,
-                        opacity: animValue,
-                        transform: [
-                          {
-                            translateY: animValue.interpolate({
-                              inputRange: [0, 1],
-                              outputRange: [50, 0],
-                            }),
-                          },
-                          {
-                            scale: animValue.interpolate({
-                              inputRange: [0, 0.5, 0.8, 1],
-                              outputRange: [0.3, 1.1, 0.9, 1],
-                            }),
-                          }
-                        ],
-                      }}
-                    >
-                      <Animated.View style={{
-                        width: 60 * scale,
-                        height: 60 * scale,
-                        borderRadius: 30 * scale,
-                        backgroundColor: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.05)',
-                        justifyContent: 'center',
-                        alignItems: 'center',
-                        marginRight: 16 * scale,
-                        transform: [{ 
-                          scale: animValue.interpolate({
-                            inputRange: [0, 0.5, 0.8, 1],
-                            outputRange: [0.2, 1.2, 0.9, 1],
-                          }) 
-                        }]
-                      }}>
-                        <Text style={{ fontSize: 30 * scale }}>{feature.icon}</Text>
-                      </Animated.View>
-                      <Animated.View style={{ 
-                        flex: 1,
-                        transform: [{
-                          translateX: animValue.interpolate({
-                            inputRange: [0, 0.5, 0.8, 1],
-                            outputRange: [20, -10, 5, 0],
-                          })
-                        }]
-                      }}>
-                        <Text style={{
-                          fontSize: 20 * scale,
-                          fontWeight: '700',
-                          color: isDark ? '#FFF' : '#000',
-                          marginBottom: 4 * scale,
-                        }}>
-                          {feature.title}
-                        </Text>
-                        <Text style={{
-                          fontSize: 16 * scale,
-                          color: isDark ? '#CCC' : '#666',
-                        }}>
-                          {feature.description}
-                        </Text>
-                      </Animated.View>
-                    </Animated.View>
-                  );
-                })}
-              </View>
-
-              <Animated.View style={{
-                opacity: featureAnimations[item.id]?.[item.features.length - 1] || new Animated.Value(0),
-                transform: [{
-                  translateY: (featureAnimations[item.id]?.[item.features.length - 1] || new Animated.Value(0)).interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [50, 0],
-                  })
-                }]
-              }}>
-                <TouchableOpacity
-                  style={{
-                    backgroundColor: isDark ? '#FFF' : '#000',
-                    paddingVertical: 16 * scale,
-                    paddingHorizontal: 32 * scale,
-                    borderRadius: 25 * scale,
-                    marginTop: 40 * scale,
-                    alignSelf: 'center',
-                    shadowColor: isDark ? '#000' : '#666',
-                    shadowOffset: { width: 0, height: 4 },
-                    shadowOpacity: 0.3,
-                    shadowRadius: 6,
-                    elevation: 8,
-                  }}
-                  onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    // Start the loading process and animations
-                    setCurrentLoadingMessage(LOADING_MESSAGES[0].text);
-                    setIsCalculatingGoals(true);
-                    loadingOpacity.setValue(1);
-                    loadingMessageOpacity.setValue(1);
-                    
-                    // Start rotation animation for the loading icon
-                    Animated.loop(
-                      Animated.timing(rotationAnim, {
-                        toValue: 1,
-                        duration: 1500,
-                        useNativeDriver: true,
+            <View style={styles.loadingProgressContainer}>
+              <Animated.View style={styles.loadingProgressBackground}>
+                <Animated.View 
+                  style={[
+                    styles.loadingProgressBar,
+                    {
+                      width: circleProgress.interpolate({
+                        inputRange: [0, 1],
+                        outputRange: ['0%', '100%']
                       })
-                    ).start();
-                    
-                    // Start the text animation sequence
-                    const animateTextChange = (index, remainingTime) => {
-                      if (index >= LOADING_MESSAGES.length) return;
-                      
-                      const currentMessage = LOADING_MESSAGES[index];
-                      const fadeOutDuration = 300;
-                      const fadeInDuration = 300;
-                      const pauseDuration = 200; // Pause between fade out and fade in
-                    
-                      // First fade out the current text
-                      Animated.timing(loadingMessageOpacity, {
-                        toValue: 0,
-                        duration: fadeOutDuration,
-                        useNativeDriver: true,
-                      }).start(() => {
-                        // After fade out completes, wait a bit then change text and fade in
-                        setTimeout(() => {
-                          if (index + 1 < LOADING_MESSAGES.length) {
-                            setCurrentLoadingMessage(LOADING_MESSAGES[index + 1].text);
-                            
-                            // Fade in the new text
-                            Animated.timing(loadingMessageOpacity, {
-                              toValue: 1,
-                              duration: fadeInDuration,
-                              useNativeDriver: true,
-                            }).start();
-                    
-                            // Schedule next message change
-                            const totalTransitionTime = fadeOutDuration + pauseDuration + fadeInDuration;
-                            const nextMessageDelay = currentMessage.duration - totalTransitionTime;
-                            
-                            setTimeout(() => {
-                              animateTextChange(index + 1, remainingTime - currentMessage.duration);
-                            }, nextMessageDelay);
-                          }
-                        }, pauseDuration);
-                      });
-                    };
-                    
-                    // Calculate total duration and start the animation sequence
-                    const totalDuration = LOADING_MESSAGES.reduce((sum, msg) => sum + msg.duration, 0);
-                    animateTextChange(0, totalDuration);
-                    
-                    // After the animation sequence, calculate goals and proceed
-                    setTimeout(() => {
-                      // First fade out loading animation
-                      Animated.timing(loadingOpacity, {
-                        toValue: 0,
-                        duration: 500,
-                        useNativeDriver: true,
-                      }).start(() => {
-                        // Calculate goals and move to next step
-                        const goals = calculateGoals(userData);
-                        setCalculatedGoals(goals);
-                        setHasCalculatedGoals(true);
-                        setIsCalculatingGoals(false);
-                        handleNext();
-                      });
-                    }, totalDuration + 500);
-                  }}
-                >
-                  <Text style={{
-                    color: isDark ? '#000' : '#FFF',
-                    fontSize: 22 * scale,
-                    fontWeight: '600',
-                    textAlign: 'center',
-                  }}>
-                    Generate Plan
-                  </Text>
-                </TouchableOpacity>
+                    }
+                  ]} 
+                />
               </Animated.View>
-            </>
-          )}
+              <Text style={styles.loadingStepCount}>
+                {`Step ${loadingStates.findIndex(state => state.text === currentLoadingState.text) + 1} of ${loadingStates.length}`}
+              </Text>
+            </View>
+          </Animated.View>
+
+          {/* Goals Content */}
+          <Animated.View style={[styles.goalsContent, { opacity: contentOpacity }]}>
+            <View style={styles.goalsContainer}>
+              {goalData.map((goal, index) => (
+                <GoalCard 
+                  key={goal.label}
+                  goal={goal}
+                  animation={goalCardAnimations[index]}
+                  styles={styles}
+                />
+              ))}
+            </View>
+            
+            {calculatedGoals.calories !== (userData.gender === 'Male' ? 1500 : 1200) && (
+              <Animated.View style={[
+                styles.affirmationContainer,
+                { opacity: affirmationOpacity }
+              ]}>
+                <MaterialCommunityIcons 
+                  name="check-circle-outline" 
+                  size={20} 
+                  color={isDark ? '#4ECDC4' : '#2ecc71'} 
+                />
+                <Text style={styles.affirmationText}>
+                  These goals are reasonable for you
+                </Text>
+              </Animated.View>
+            )}
+
+            {calculatedGoals.calories === (userData.gender === 'Male' ? 1500 : 1200) && (
+              <View style={styles.disclaimerContainer}>
+                <MaterialCommunityIcons 
+                  name="alert-circle-outline" 
+                  size={20} 
+                  color={isDark ? '#FF6961' : '#D32F2F'} 
+                />
+                <Text style={styles.disclaimerText}>
+                  Your selected weight loss rate sets calories at the minimum safe level. Consider choosing a more moderate, sustainable rate to protect your health.
+                </Text>
+              </View>
+            )}
+          </Animated.View>
         </View>
       );
     }
 
-    // Default fallback case
+    // Default case for welcome and scanning steps
     return (
       <View style={styles.slide}>
-        <Text style={styles.title}>{item.title}</Text>
+        {item.id === '4' ? (
+          <TouchableOpacity onPress={deleteSavedInputs}>
+            <Text style={styles.title}>{item.title}</Text>
+          </TouchableOpacity>
+        ) : (
+          <Text style={styles.title}>{item.title}</Text>
+        )}
         <Text style={styles.description}>{item.description}</Text>
 
         {item.features && (
@@ -3455,12 +2713,16 @@ const calculateGoals = (data) => {
               {item.features.map((feature, idx) =>
                 renderFeature(
                   { item: feature, index: idx },
-                  true,
-                  featureAnimations[item.id]?.[idx]
+                  currentIndex === 0 && index === 0,
+                  currentIndex === 0 && index === 0 ? featureAnimValues[idx] : null
                 )
               )}
             </ScrollView>
           </View>
+        )}
+
+        {item.bottomDescription && (
+          <Text style={styles.bottomDescription}>{item.bottomDescription}</Text>
         )}
       </View>
     );
@@ -3570,191 +2832,57 @@ const calculateGoals = (data) => {
     </Text>
   );
 
-  // Helper function to filter steps based on userData
-  function getFilteredSteps(userData) {
-    // Always clone the original steps
-    let steps = [...ONBOARDING_STEPS];
-
-    // If the user's goal is "Maintain Weight", filter out steps 10a and 10b
-    if (userData.goal === 'Maintain Weight') {
-      steps = steps.filter(step => step.id !== '10a' && step.id !== '10b');
-    }
-
-    return steps;
-  }
-
-  // NEW: A memoized filtered list of steps for FlatList
-  const filteredSteps = useMemo(() => {
-    return getFilteredSteps(userData);
-  }, [userData]);
-
-  // Initialize or update feature animations when needed
-  useEffect(() => {
-    const step = filteredSteps[currentIndex];
-    if (!step?.features?.length) return;
-
-    // If the animations haven't been created for this step yet
-    if (!featureAnimations[step.id]) {
-      featureAnimations[step.id] = step.features.map(() => new Animated.Value(0));
-      setFeatureAnimations({ ...featureAnimations });
-    }
-
-    // Handle intermediate step animations
-    if (step.id === '3.5' || step.id === '10c') {
-      // Reset animations to 0 when step first appears
-      featureAnimations[step.id].forEach(anim => anim.setValue(0));
-      
-      // Stagger animations for features with haptic feedback
-      const animations = featureAnimations[step.id].map((anim, idx) => {
-        const delay = 400 + (idx * 150);
-        
-        // Schedule haptic feedback to match animation timing
-        setTimeout(() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }, delay);
-        
-        return Animated.spring(anim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          delay: delay,
-          useNativeDriver: true
-        });
-      });
-      
-      Animated.parallel(animations).start();
-    }
-    // ... existing code for other steps ...
-  }, [currentIndex, filteredSteps, featureAnimations]);
-
-  // Add effect to handle the delay on the second step
-  useEffect(() => {
-    const currentStep = filteredSteps?.[currentIndex];
-    
-    // Check if current step is the second step (id = '4')
-    if (currentStep?.id === '4') {
-      // Disable the continue button
-      setIsContinueDisabled(true);
-      
-      // Enable it after 2 seconds
-      const timer = setTimeout(() => {
-        setIsContinueDisabled(false);
-      }, 2000);
-      
-      // Clean up timer
-      return () => clearTimeout(timer);
-    }
-  }, [currentIndex, filteredSteps]);
-
-  // Special handling for step 10c - ensure animations play
-  useEffect(() => {
-    const currentStep = filteredSteps[currentIndex];
-    if (currentStep?.id === '10c' && !isCalculatingGoals && featureAnimations[currentStep.id]) {
-      // Reset animations to 0
-      featureAnimations[currentStep.id].forEach(anim => anim.setValue(0));
-      
-      // Stagger animations for features with haptic feedback
-      const animations = featureAnimations[currentStep.id].map((anim, idx) => {
-        const delay = 400 + (idx * 150);
-        
-        // Schedule haptic feedback to match animation timing
-        setTimeout(() => {
-          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-        }, delay);
-        
-        return Animated.spring(anim, {
-          toValue: 1,
-          tension: 50,
-          friction: 7,
-          delay: delay,
-          useNativeDriver: true
-        });
-      });
-      
-      Animated.parallel(animations).start();
-    }
-  }, [currentIndex, filteredSteps, isCalculatingGoals, featureAnimations]);
-
   return (
     <SafeAreaView style={styles.safeArea}>
-      <View style={StyleSheet.absoluteFill}>
-        <Animated.View style={[
-          StyleSheet.absoluteFill,
-          { backgroundColor: isDark ? '#000000' : '#FFFFFF', opacity: backgroundFadeOpacity }
-        ]} />
-        <Animated.View style={[
-          StyleSheet.absoluteFill,
-          { opacity: backgroundFadeOpacity.interpolate({
-            inputRange: [0, 1],
-            outputRange: [1, 0],
-          }) }
-        ]}>
-          <Image
-            source={require('../assets/foodwelcome.jpg')}
-            style={styles.backgroundImage}
-            resizeMode='cover'
-          />
-          <BlurView
-            style={StyleSheet.absoluteFill}
-            intensity={100}
-            tint={colorScheme}
-          />
-          <View style={[
-            StyleSheet.absoluteFill,
-            { backgroundColor: isDark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.75)' }
-          ]} />
-        </Animated.View>
-      </View>
-
-      {filteredSteps && (
-        <FlatList
-          ref={flatListRef}
-          data={filteredSteps}
-          renderItem={renderItem}
-          horizontal
-          pagingEnabled
-          scrollEnabled={!isCalculatingGoals}
-          showsHorizontalScrollIndicator={false}
-          keyExtractor={(item) => item.id}
-          getItemLayout={getItemLayout}
-          windowSize={3}
-          maxToRenderPerBatch={1}
-          initialNumToRender={1}
-          onMomentumScrollEnd={(event) => {
-            const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-            const safeIndex = Math.min(newIndex, filteredSteps.length - 1);
-            setCurrentIndex(safeIndex);
-          }}
-          onScrollBeginDrag={(event) => {
-            // Prevent scrolling forward if current step is invalid
-            const xOffset = event.nativeEvent.contentOffset.x;
-            if (xOffset < currentIndex * width && !isCurrentStepValid()) {
-              flatListRef.current?.scrollToIndex({
-                index: currentIndex,
-                animated: true
-              });
-              showValidation('Please complete this step first');
-            }
-          }}
-          onScrollToIndexFailed={(info) => {
-            const wait = new Promise((resolve) => setTimeout(resolve, 500));
-            wait.then(() => {
-              flatListRef.current?.scrollToIndex({
-                index: info.index,
-                animated: true,
-              });
+      <FlatList
+        ref={flatListRef}
+        data={ONBOARDING_STEPS}
+        renderItem={renderItem}
+        horizontal
+        pagingEnabled
+        scrollEnabled={!isCalculatingGoals}
+        showsHorizontalScrollIndicator={false}
+        keyExtractor={(item) => item.id}
+        getItemLayout={getItemLayout}
+        windowSize={3}
+        maxToRenderPerBatch={1}
+        initialNumToRender={1}
+        onMomentumScrollEnd={(event) => {
+          const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
+          // If trying to scroll forward and validation fails, scroll back
+          if (newIndex > currentIndex && !isCurrentStepValid()) {
+            flatListRef.current?.scrollToIndex({
+              index: currentIndex,
+              animated: true
             });
-          }}
-        />
-      )}
+            showValidation('Please complete this step first');
+            return;
+          }
+          setCurrentIndex(newIndex);
+        }}
+        onScrollBeginDrag={(event) => {
+          // Prevent scrolling forward if current step is invalid
+          const xOffset = event.nativeEvent.contentOffset.x;
+          if (xOffset < currentIndex * width && !isCurrentStepValid()) {
+            flatListRef.current?.scrollToIndex({
+              index: currentIndex,
+              animated: true
+            });
+            showValidation('Please complete this step first');
+          }
+        }}
+        onScrollToIndexFailed={(info) => {
+          const wait = new Promise((resolve) => setTimeout(resolve, 500));
+          wait.then(() => {
+            flatListRef.current?.scrollToIndex({
+              index: info.index,
+              animated: true,
+            });
+          });
+        }}
+      />
 
-      <Animated.View style={[
-        styles.bottomContainer, 
-        { 
-          opacity: buttonContainerOpacity,
-          display: (ONBOARDING_STEPS[currentIndex]?.id === '3.5' || ONBOARDING_STEPS[currentIndex]?.id === '10c') ? 'none' : 'flex'
-        }
-      ]}>
+      <Animated.View style={[styles.bottomContainer, { opacity: buttonContainerOpacity }]}>
         {showValidationMessage && (
           <Animated.View style={[styles.validationContainer, { opacity: validationOpacity }]}>
             <AnimatedTextLoading
@@ -3795,13 +2923,12 @@ const calculateGoals = (data) => {
             style={[
               styles.actionButton,
               styles.primaryButton,
-              (!isCurrentStepValid() || isContinueDisabled) && styles.disabledButton,
+              !isCurrentStepValid() && styles.disabledButton,
             ]}
-            onPress={isContinueDisabled ? null : handleValidationAndNext}
-            disabled={isContinueDisabled}
+            onPress={handleValidationAndNext}
           >
             <Text style={styles.actionButtonText}>
-              {currentIndex === filteredSteps.length - 1 ? 'Get Started' : 'Continue'}
+              {currentIndex === ONBOARDING_STEPS.length - 1 ? 'Get Started' : 'Continue'}
             </Text>
           </TouchableOpacity>
         </View>

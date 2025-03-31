@@ -1,0 +1,1213 @@
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import { View, StyleSheet, Dimensions, Animated, Text, ActivityIndicator } from 'react-native';
+import { BlurView } from 'expo-blur';
+import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { LinearGradient } from 'expo-linear-gradient';
+import * as Haptics from 'expo-haptics';
+import AIAnimatedText from './AIAnimatedText';
+import AIAnimatedSubtitle from './AIAnimatedSubtitle';
+import ShimmerText from '../components/ShimmerText';
+// Import AsyncStorage
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const { width } = Dimensions.get('window');
+
+// Step states
+const STEP_WAITING = 'waiting';
+const STEP_ACTIVE = 'active';
+const STEP_COMPLETED = 'completed';
+
+// Constants for AsyncStorage keys - must match those in WebSearchProvider
+const SEARCH_QUERIES_KEY = '@nutrilens:search_queries';
+const SEARCH_RESULTS_KEY = '@nutrilens:search_results';
+const API_FINISHED_KEY = '@nutrilens:api_finished';
+const DETECTED_FOOD_KEY = '@nutrilens:detected_food';
+const PROCESSING_STEP_KEY = '@nutrilens:processing_step';
+const STEP_TIMESTAMP_KEY = '@nutrilens:step_timestamp';
+
+// Step-specific AsyncStorage keys - must match those in WebSearchProvider
+const RECOGNIZE_STEP_ACTIVE_KEY = '@nutrilens:recognize_step_active';
+const SEARCH_STEP_ACTIVE_KEY = '@nutrilens:search_step_active';
+const PROCESS_STEP_ACTIVE_KEY = '@nutrilens:process_step_active';
+const RESULT_STEP_ACTIVE_KEY = '@nutrilens:result_step_active';
+
+const RECOGNIZE_STEP_COMPLETED_KEY = '@nutrilens:recognize_step_completed';
+const SEARCH_STEP_COMPLETED_KEY = '@nutrilens:search_step_completed';
+const PROCESS_STEP_COMPLETED_KEY = '@nutrilens:process_step_completed';
+const RESULT_STEP_COMPLETED_KEY = '@nutrilens:result_step_completed';
+
+// Define step constants - must match those in WebSearchProvider
+const STEP_RECOGNIZE = 'recognize';
+const STEP_SEARCH = 'search';
+const STEP_PROCESS = 'process';
+const STEP_RESULT = 'result';
+
+// Minimum step durations in milliseconds
+const MIN_STEP_DURATIONS = {
+  recognize: 1800,
+  search: 2200,
+  process: 2600,
+  result: 1800
+};
+
+// Add a debug flag to control logging
+const DEBUG_LOGGING = false;
+
+// Helper for conditional logging
+const debugLog = (...args) => {
+  if (DEBUG_LOGGING) {
+    console.log(...args);
+  }
+};
+
+const FunctionalAIVisualization = forwardRef(({ 
+  isDark, 
+  isVisible, 
+  searchQueries = [], 
+  searchResults = [], 
+  foodItems = [],
+  processingSteps = [],
+  brandName = '',
+  onComplete
+}, ref) => {
+  // Track the current state of each step
+  const [stepStates, setStepStates] = useState({
+    recognize: STEP_WAITING,
+    search: STEP_WAITING,
+    process: STEP_WAITING,
+    result: STEP_WAITING
+  });
+  
+  // Track if text animation is completed for each step
+  const [textAnimCompleted, setTextAnimCompleted] = useState({
+    recognize: false,
+    search: false,
+    process: false,
+    result: false
+  });
+  
+  // Animation value for steps container
+  const stepsContainerAnim = useRef(new Animated.Value(1)).current;
+  
+  // Animation for the main container
+  const containerAnim = useRef(new Animated.Value(0)).current;
+  
+  // Animation values for steps
+  const recognizeAnim = useRef(new Animated.Value(0)).current;
+  const searchAnim = useRef(new Animated.Value(0)).current;
+  const processAnim = useRef(new Animated.Value(0)).current;
+  const resultAnim = useRef(new Animated.Value(0)).current;
+  
+  // Animation values for subtitles
+  const recognizeSubtitleAnim = useRef(new Animated.Value(0)).current;
+  const searchSubtitleAnim = useRef(new Animated.Value(0)).current;
+  const processSubtitleAnim = useRef(new Animated.Value(0)).current;
+  const resultSubtitleAnim = useRef(new Animated.Value(0)).current;
+  
+  // Animation values for checkmarks
+  const recognizeCheckAnim = useRef(new Animated.Value(0)).current;
+  const searchCheckAnim = useRef(new Animated.Value(0)).current;
+  const processCheckAnim = useRef(new Animated.Value(0)).current;
+  const resultCheckAnim = useRef(new Animated.Value(0)).current;
+  
+  // Animation values for spinners
+  const recognizeSpinAnim = useRef(new Animated.Value(0)).current;
+  const searchSpinAnim = useRef(new Animated.Value(0)).current;
+  const processSpinAnim = useRef(new Animated.Value(0)).current;
+  const resultSpinAnim = useRef(new Animated.Value(0)).current;
+  
+  // Food recognition subtitles that cycle
+  const [recognizeSubtitles, setRecognizeSubtitles] = useState([
+    'Analyzing image for food...',
+    'Zooming in on food...',
+    'Detecting ingredients...',
+    'Categorizing food items...',
+    'Measuring portion sizes...',
+  ]);
+  
+  // Web search subtitles that cycle
+  const [searchSubtitles, setSearchSubtitles] = useState([
+    'Searching "USDA food database"...',
+    'Clicking on link: "www.usda.gov"...',
+    'Clicking on link: "www.fda.gov"...',
+    'Clicking on link: "www.eatright.org"...',
+    'Checking "European Food Safety Authority"...',
+    'Accessing "WHO Nutrition Database"...',
+    'Searching "NIH Dietary Supplements"...',
+    'Checking "Harvard School of Public Health"...',
+    'Looking at ingredient images...',
+    'Comparing with similar foods...',
+    'Accessing recipe databases...',
+  ]);
+  
+  // Processing subtitles that cycle
+  const [processSubtitles, setProcessSubtitles] = useState([
+    'Calculating nutritional values...',
+    'Applying AI algorithms...',
+    'Cross-referencing research...',
+    'Evaluating health impact...',
+    'Optimizing recommendations...',
+  ]);
+  
+  // Current subtitle indices
+  const [currentRecognizeSubtitleIndex, setCurrentRecognizeSubtitleIndex] = useState(0);
+  const [currentSearchSubtitleIndex, setCurrentSearchSubtitleIndex] = useState(0);
+  const [currentProcessSubtitleIndex, setCurrentProcessSubtitleIndex] = useState(0);
+
+  // Animation cleanup references
+  const timeoutRefs = useRef([]);
+  const intervalRefs = useRef([]);
+  const shimmerLoopsRef = useRef([]);
+
+  // Animation for the accuracy box
+  const accuracyBoxAnim = useRef(new Animated.Value(0)).current;
+
+  // Animation for component fade-out
+  const componentFadeOutAnim = useRef(new Animated.Value(1)).current;
+
+  // Track state
+  const [isAPIFinished, setIsAPIFinished] = useState(false);
+  const [detectedFood, setDetectedFood] = useState('');
+  const [isAnimationRunning, setIsAnimationRunning] = useState(false);
+  const stateIsFrozenRef = useRef(false);
+  
+  // Track real subtitles for persistence
+  const [realRecognizeSubtitles, setRealRecognizeSubtitles] = useState([]);
+  const [realSearchSubtitles, setRealSearchSubtitles] = useState([]);
+  const [realProcessSubtitles, setRealProcessSubtitles] = useState([]);
+  
+  // Reference to track the last global state update time
+  const lastGlobalUpdateRef = useRef(0);
+  const lastAnimationUpdateRef = useRef(0);
+
+  // Haptic feedback functions
+  const triggerStepHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+  };
+
+  const triggerSubtitleHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
+
+  const triggerCompletionHaptic = () => {
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+  };
+
+  // Start a spinner animation
+  const startSpinner = (spinAnim) => {
+    Animated.loop(
+      Animated.timing(spinAnim, {
+        toValue: 1,
+        duration: 1000,
+        useNativeDriver: true,
+      })
+    ).start();
+  };
+
+  // Stop a spinner animation
+  const stopSpinner = (spinAnim) => {
+    spinAnim.stopAnimation();
+    spinAnim.setValue(0);
+  };
+
+  // Check if a step is active in global state
+  const isStepActive = (step) => {
+    if (!global.NUTRILENS_VISUALIZATION?.stepStates) return false;
+    return global.NUTRILENS_VISUALIZATION.stepStates[step]?.active || false;
+  };
+
+  // Check if a step is completed in global state
+  const isStepCompleted = (step) => {
+    if (!global.NUTRILENS_VISUALIZATION?.stepStates) return false;
+    return global.NUTRILENS_VISUALIZATION.stepStates[step]?.completed || false;
+  };
+  
+  // Get the current active step from global state
+  const getCurrentStep = () => {
+    return global.NUTRILENS_VISUALIZATION?.currentStep;
+  };
+
+  // Complete a specific step
+  const completeStep = (step) => {
+    // Stop spinner and animate checkmark
+    switch(step) {
+      case 'recognize':
+        stopSpinner(recognizeSpinAnim);
+        Animated.timing(recognizeCheckAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+        break;
+      case 'search':
+        stopSpinner(searchSpinAnim);
+        Animated.timing(searchCheckAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+        break;
+      case 'process':
+        stopSpinner(processSpinAnim);
+        Animated.timing(processCheckAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+        break;
+      case 'result':
+        stopSpinner(resultSpinAnim);
+        Animated.timing(resultCheckAnim, {
+          toValue: 1,
+          duration: 500,
+          useNativeDriver: true,
+        }).start();
+        break;
+    }
+    
+    // Update step state
+    setStepStates(prev => ({ ...prev, [step]: STEP_COMPLETED }));
+    triggerStepHaptic();
+  };
+
+  // Start a specific step
+  const startStep = (step) => {
+    // Set the step as active in local state
+    setStepStates(prev => ({ ...prev, [step]: STEP_ACTIVE }));
+    triggerStepHaptic();
+    
+    // Start spinner
+    switch(step) {
+      case 'recognize':
+        startSpinner(recognizeSpinAnim);
+        Animated.spring(recognizeAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(recognizeSubtitleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+        break;
+      case 'search':
+        startSpinner(searchSpinAnim);
+        Animated.spring(searchAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(searchSubtitleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+        break;
+      case 'process':
+        startSpinner(processSpinAnim);
+        Animated.spring(processAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(processSubtitleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+        break;
+      case 'result':
+        startSpinner(resultSpinAnim);
+        Animated.spring(resultAnim, {
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }).start();
+        Animated.timing(resultSubtitleAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }).start();
+        break;
+    }
+    
+    // Start cycling subtitles
+    const interval = setInterval(() => {
+      switch(step) {
+        case 'recognize':
+          setCurrentRecognizeSubtitleIndex(prevIndex => 
+            (prevIndex + 1) % recognizeSubtitles.length
+          );
+          break;
+        case 'search':
+          setCurrentSearchSubtitleIndex(prevIndex => 
+            (prevIndex + 1) % searchSubtitles.length
+          );
+          break;
+        case 'process':
+          setCurrentProcessSubtitleIndex(prevIndex => 
+            (prevIndex + 1) % processSubtitles.length
+          );
+          break;
+      }
+      triggerSubtitleHaptic();
+    }, step === 'search' ? 800 : 1200);
+    
+    intervalRefs.current.push(interval);
+    
+    // Mark text animation as completed after a delay
+    setTimeout(() => {
+      setTextAnimCompleted(prev => ({ ...prev, [step]: true }));
+    }, 1000);
+  };
+
+  // Helper function to show accuracy box with animation
+  const showAccuracyBox = () => {
+    Animated.spring(accuracyBoxAnim, {
+      toValue: 1,
+      tension: 50,
+      friction: 7,
+      useNativeDriver: true
+    }).start(() => {
+      // Only trigger completion haptic if all steps are done
+      if (stepStates.recognize === STEP_COMPLETED && 
+          stepStates.search === STEP_COMPLETED && 
+          stepStates.process === STEP_COMPLETED && 
+          stepStates.result === STEP_COMPLETED) {
+        setTimeout(() => {
+          triggerCompletionHaptic();
+        }, 500);
+      }
+    });
+  };
+
+  // Check if API process is finished
+  const isApiFinishedInStorage = async () => {
+    try {
+      const apiFinishedValue = await AsyncStorage.getItem(API_FINISHED_KEY);
+      return apiFinishedValue === 'true';
+    } catch (error) {
+      console.error('Error checking API finished state:', error);
+      return false;
+    }
+  };
+
+  // Update with data from search queries
+  const updateWithSearchQueries = (queries) => {
+    if (!queries || !queries.length || stateIsFrozenRef.current) return;
+    
+    // Update search subtitles based on real queries
+    const newSubtitles = queries.map(query => `Searching "${query}"...`);
+    
+    // Save real search subtitles for persistence
+    setRealSearchSubtitles(prev => {
+      const combined = [...prev, ...newSubtitles];
+      return [...new Set(combined)]; // Remove duplicates
+    });
+    
+    // Update search subtitles with new queries
+    setSearchSubtitles(prev => {
+      // Keep some original subtitles
+      const originalSubtitles = prev.filter(subtitle => 
+        subtitle.includes('Clicking on link:') || 
+        subtitle.includes('Checking') || 
+        subtitle.includes('Accessing')
+      );
+      
+      // Combine with new query subtitles
+      return [...newSubtitles, ...originalSubtitles].slice(0, 12);
+    });
+    
+    // Extract possible food items from queries
+    for (const query of queries) {
+      if (!query) continue;
+      
+      const foodKeywords = ['nutrition facts for', 'calories in'];
+      for (const keyword of foodKeywords) {
+        if (query.toLowerCase().includes(keyword)) {
+          const match = query.match(new RegExp(`${keyword}\\s+(.+?)(?:$|\\.|,)`, 'i'));
+          if (match && match[1]) {
+            const foodName = match[1].trim();
+            setDetectedFood(foodName);
+            
+            // Update the recognize subtitles with the detected food
+            if (foodName && foodName.length > 2) {
+              const newSubtitle = `Detected ${foodName}...`;
+              setRealRecognizeSubtitles(prev => 
+                prev.includes(newSubtitle) ? prev : [newSubtitle, ...prev]
+              );
+            }
+            break;
+          }
+        }
+      }
+    }
+  };
+
+  // Update with data from search results
+  const updateWithSearchResults = (results) => {
+    if (!results || !results.length || stateIsFrozenRef.current) return;
+    
+    // Limit results to avoid performance issues
+    const limitedResults = results.slice(0, 5);
+    
+    // Update processing subtitles with result titles
+    const newSubtitles = limitedResults.map(result => {
+      const title = result.title || '';
+      const shortTitle = title.length > 20 ? title.substring(0, 20) + '...' : title;
+      return `Analyzing "${shortTitle}"`;
+    });
+    
+    // Save real process subtitles for persistence
+    setRealProcessSubtitles(prev => {
+      const combined = [...prev, ...newSubtitles];
+      return [...new Set(combined)].slice(0, 5); // Remove duplicates and limit size
+    });
+    
+    // Update process subtitles with new results
+    setProcessSubtitles(prev => {
+      // Keep some original subtitles
+      const originalSubtitles = prev.filter(subtitle => 
+        subtitle.includes('Calculating') || 
+        subtitle.includes('Cross-referencing') || 
+        subtitle.includes('Evaluating')
+      ).slice(0, 2);
+      
+      // Combine with new result subtitles
+      return [...newSubtitles, ...originalSubtitles].slice(0, 5);
+    });
+  };
+
+  // Update with food item data
+  const updateWithFoodItems = (items) => {
+    if (!items || !items.length || stateIsFrozenRef.current) return;
+    
+    const limitedItems = items.slice(0, 3);
+    
+    // Update recognition subtitles with food items
+    const newSubtitles = limitedItems
+      .filter(item => item && typeof item === 'string')
+      .map(item => `Detected ${item}...`);
+    
+    if (newSubtitles.length === 0) return;
+    
+    // Save real recognition subtitles for persistence
+    setRealRecognizeSubtitles(prev => {
+      const combined = [...prev, ...newSubtitles];
+      return [...new Set(combined)].slice(0, 5); // Remove duplicates and limit size
+    });
+    
+    // Update recognize subtitles with new food items
+    setRecognizeSubtitles(prev => {
+      // Keep some original subtitles
+      const originalSubtitles = prev.filter(subtitle => 
+        subtitle.includes('Analyzing') || 
+        subtitle.includes('Measuring') || 
+        subtitle.includes('Zooming')
+      ).slice(0, 3);
+      
+      // Combine with new food item subtitles
+      return [...newSubtitles, ...originalSubtitles].slice(0, 5);
+    });
+    
+    // Update detected food
+    if (limitedItems[0] && typeof limitedItems[0] === 'string') {
+      setDetectedFood(limitedItems[0]);
+    }
+  };
+
+  // Main logic for syncing with global state
+  const syncWithGlobalState = () => {
+    // Skip if global state isn't initialized
+    if (!global.NUTRILENS_VISUALIZATION) return;
+    
+    // Skip if no update since last check
+    if (lastGlobalUpdateRef.current === global.NUTRILENS_VISUALIZATION.updateTime) return;
+    
+    // Update our reference with the latest update time
+    lastGlobalUpdateRef.current = global.NUTRILENS_VISUALIZATION.updateTime;
+    
+    // Check if API is finished
+    const apiFinished = !!global.NUTRILENS_VISUALIZATION.apiFinished;
+    if (apiFinished && !isAPIFinished) {
+      setIsAPIFinished(true);
+      stateIsFrozenRef.current = true;
+    }
+    
+    // Update detected food
+    if (global.NUTRILENS_VISUALIZATION.detectedFood && !detectedFood) {
+      setDetectedFood(global.NUTRILENS_VISUALIZATION.detectedFood);
+    }
+    
+    // Update subtitles from global state
+    if (global.NUTRILENS_VISUALIZATION.subtitles) {
+      // Update recognize subtitles
+      if (global.NUTRILENS_VISUALIZATION.subtitles.recognize?.length) {
+        setRealRecognizeSubtitles(global.NUTRILENS_VISUALIZATION.subtitles.recognize);
+      }
+      
+      // Update search subtitles
+      if (global.NUTRILENS_VISUALIZATION.subtitles.search?.length) {
+        setRealSearchSubtitles(global.NUTRILENS_VISUALIZATION.subtitles.search);
+      }
+      
+      // Update process subtitles
+      if (global.NUTRILENS_VISUALIZATION.subtitles.process?.length) {
+        setRealProcessSubtitles(global.NUTRILENS_VISUALIZATION.subtitles.process);
+      }
+    }
+    
+    // Update step states based on global state
+    const { stepStates: globalStepStates, currentStep } = global.NUTRILENS_VISUALIZATION;
+    
+    // We need to check the current local state of steps before updating
+    // to avoid inappropriate changes
+    
+    // Handle recognize step
+    if (globalStepStates.recognize.active && stepStates.recognize === STEP_WAITING) {
+      startStep('recognize');
+    } else if (globalStepStates.recognize.completed && stepStates.recognize === STEP_ACTIVE) {
+      completeStep('recognize');
+    }
+    
+    // Handle search step
+    if (globalStepStates.search.active && stepStates.search === STEP_WAITING) {
+      startStep('search');
+    } else if (globalStepStates.search.completed && stepStates.search === STEP_ACTIVE) {
+      completeStep('search');
+    }
+    
+    // Handle process step
+    if (globalStepStates.process.active && stepStates.process === STEP_WAITING) {
+      startStep('process');
+    } else if (globalStepStates.process.completed && stepStates.process === STEP_ACTIVE) {
+      completeStep('process');
+    }
+    
+    // Handle result step
+    if (globalStepStates.result.active && stepStates.result === STEP_WAITING) {
+      startStep('result');
+    } else if (globalStepStates.result.completed && stepStates.result === STEP_ACTIVE) {
+      completeStep('result');
+      
+      // Show accuracy box when result step is completed
+      if (accuracyBoxAnim._value === 0) {
+        showAccuracyBox();
+      }
+    }
+  };
+
+  // Function to determine the cycling subtitle for a step
+  const getCyclingSubtitle = (step) => {
+    switch(step) {
+      case 'recognize':
+        // Use real subtitle if available
+        if (realRecognizeSubtitles.length > 0) {
+          return realRecognizeSubtitles[currentRecognizeSubtitleIndex % realRecognizeSubtitles.length];
+        }
+        return recognizeSubtitles[currentRecognizeSubtitleIndex % recognizeSubtitles.length];
+      
+      case 'search':
+        // Use real subtitle if available
+        if (realSearchSubtitles.length > 0) {
+          return realSearchSubtitles[currentSearchSubtitleIndex % realSearchSubtitles.length];
+        }
+        return searchSubtitles[currentSearchSubtitleIndex % searchSubtitles.length];
+      
+      case 'process':
+        // Use real subtitle if available
+        if (realProcessSubtitles.length > 0) {
+          return realProcessSubtitles[currentProcessSubtitleIndex % realProcessSubtitles.length];
+        }
+        return processSubtitles[currentProcessSubtitleIndex % processSubtitles.length];
+      
+      case 'result':
+        // For result step, use food name if available
+        if (detectedFood) {
+          return `Generating nutrition facts for ${detectedFood}...`;
+        } else if (foodItems && foodItems.length > 0) {
+          return `Generating nutrition facts for ${foodItems[0]}...`;
+        }
+        return 'Generating personalized nutrition insights...';
+      
+      default:
+        return '';
+    }
+  };
+
+  // Get the checkmark animation for a step
+  const getCheckmarkAnimation = (step) => {
+    switch(step) {
+      case 'recognize': return recognizeCheckAnim;
+      case 'search': return searchCheckAnim;
+      case 'process': return processCheckAnim;
+      case 'result': return resultCheckAnim;
+      default: return recognizeCheckAnim;
+    }
+  };
+  
+  // Get the spinner animation for a step
+  const getSpinnerAnimation = (step) => {
+    switch(step) {
+      case 'recognize': return recognizeSpinAnim;
+      case 'search': return searchSpinAnim;
+      case 'process': return processSpinAnim;
+      case 'result': return resultSpinAnim;
+      default: return recognizeSpinAnim;
+    }
+  };
+
+  // Render a single step
+  const renderStep = (icon, text, defaultSubtitle, animation, subtitleAnim, step, isLast = false, isDark) => {
+    const checkAnim = getCheckmarkAnimation(step);
+    const spinAnim = getSpinnerAnimation(step);
+    const stepState = stepStates[step];
+    const isTextAnimDone = textAnimCompleted[step];
+    
+    const spin = spinAnim.interpolate({
+      inputRange: [0, 1],
+      outputRange: ['0deg', '360deg'],
+    });
+    
+    // Use the appropriate subtitle based on step state and cycling
+    const displaySubtitle = stepState === STEP_ACTIVE ? getCyclingSubtitle(step) : defaultSubtitle;
+    
+    // Determine opacity based on step state
+    const containerOpacity = stepState === STEP_COMPLETED ? 0.7 : 1;
+    
+    return (
+      <View style={styles.stepContainer}>
+        <Animated.View
+          style={[
+            styles.iconContainer,
+            {
+              backgroundColor: isDark ? '#2C2C2E' : '#000',
+              borderColor: isDark ? '#333' : '#000',
+              borderWidth: 1,
+              opacity: animation,
+              transform: [
+                {
+                  scale: animation.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.5, 1],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <MaterialCommunityIcons
+            name={icon}
+            size={24}
+            color={isDark ? '#FFF' : '#fff'}
+          />
+          
+          {stepState === STEP_COMPLETED && (
+            <Animated.View 
+              style={[
+                styles.checkmarkOverlay,
+                {
+                  opacity: checkAnim,
+                  transform: [
+                    { scale: checkAnim },
+                  ],
+                  backgroundColor: isDark ? '#FFF' : '#fff',
+                  borderColor: isDark ? '#333' : '#E0E0E0',
+                  borderWidth: 1,
+                }
+              ]}
+            >
+              <MaterialCommunityIcons
+                name="check"
+                size={18}
+                color={isDark ? '#000' : '#000'}
+              />
+            </Animated.View>
+          )}
+        </Animated.View>
+        
+        <View style={[styles.textContainer, { opacity: containerOpacity, paddingRight: 4 }]}>
+          <View style={styles.textWrapper}>
+            <Animated.View
+              style={{
+                opacity: animation,
+                position: 'relative',
+                overflow: 'hidden',
+                transform: [
+                  { translateX: animation.interpolate({ inputRange: [0, 1], outputRange: [-20, 0] }) },
+                ],
+              }}
+            >
+              {stepState === STEP_ACTIVE && !isTextAnimDone ? (
+                <AIAnimatedText
+                  text={text}
+                  style={[styles.stepText, { color: isDark ? '#FFF' : '#000' }]}
+                  typingSpeed={20000}
+                  characterDelay={20000}
+                  onComplete={() => { setTextAnimCompleted(prev => ({ ...prev, [step]: true })); }}
+                />
+              ) : (
+                <ShimmerText
+                  text={text}
+                  style={[styles.stepText]}
+                  isCompleted={stepState === STEP_COMPLETED}
+                  completedColor={isDark ? '#CCC' : '#999999'}
+                  baseColor={isDark ? '#FFF' : '#000'}
+                  shimmerDuration={1600}
+                />
+              )}
+            </Animated.View>
+          </View>
+          <Animated.View
+            style={{
+              opacity: subtitleAnim,
+              transform: [
+                { translateY: subtitleAnim.interpolate({ inputRange: [0, 1], outputRange: [10, 0] }) },
+                { translateX: subtitleAnim.interpolate({ inputRange: [0, 1], outputRange: [-10, 0] }) },
+              ],
+            }}
+          >
+            <AIAnimatedSubtitle
+              text={displaySubtitle}
+              style={[styles.subtitleText]}
+              colorScheme={isDark ? 'dark' : 'light'}
+              isCompleted={stepState === STEP_COMPLETED}
+            />
+          </Animated.View>
+        </View>
+        
+        {stepState === STEP_ACTIVE && (
+          <View style={{ marginLeft: 8 }}>
+            <ActivityIndicator size="small" color={isDark ? '#FFF' : '#000'} />
+          </View>
+        )}
+        
+        {!isLast && (
+          <Animated.View
+            style={[
+              styles.connector,
+              {
+                backgroundColor: isDark ? '#333' : '#000',
+                opacity: animation.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 0.7],
+                }),
+              },
+            ]}
+          />
+        )}
+      </View>
+    );
+  };
+
+  // Reset all animations and state
+  const reset = () => {
+    // Clear all intervals and timeouts
+    timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
+    intervalRefs.current.forEach(interval => clearInterval(interval));
+    timeoutRefs.current = [];
+    intervalRefs.current = [];
+    
+    // Reset state
+    setStepStates({
+      recognize: STEP_WAITING,
+      search: STEP_WAITING,
+      process: STEP_WAITING,
+      result: STEP_WAITING
+    });
+    
+    setTextAnimCompleted({
+      recognize: false,
+      search: false,
+      process: false,
+      result: false
+    });
+    
+    // Reset animations
+    containerAnim.setValue(0);
+    recognizeAnim.setValue(0);
+    searchAnim.setValue(0);
+    processAnim.setValue(0);
+    resultAnim.setValue(0);
+    recognizeSubtitleAnim.setValue(0);
+    searchSubtitleAnim.setValue(0);
+    processSubtitleAnim.setValue(0);
+    resultSubtitleAnim.setValue(0);
+    recognizeCheckAnim.setValue(0);
+    searchCheckAnim.setValue(0);
+    processCheckAnim.setValue(0);
+    resultCheckAnim.setValue(0);
+    recognizeSpinAnim.setValue(0);
+    searchSpinAnim.setValue(0);
+    processSpinAnim.setValue(0);
+    resultSpinAnim.setValue(0);
+    accuracyBoxAnim.setValue(0);
+    componentFadeOutAnim.setValue(1);
+    
+    // Reset subtitle indices
+    setCurrentRecognizeSubtitleIndex(0);
+    setCurrentSearchSubtitleIndex(0);
+    setCurrentProcessSubtitleIndex(0);
+    
+    // Reset other state
+    setIsAPIFinished(false);
+    setIsAnimationRunning(false);
+    setDetectedFood('');
+    stateIsFrozenRef.current = false;
+    
+    // Reset stored subtitles
+    setRealRecognizeSubtitles([]);
+    setRealSearchSubtitles([]);
+    setRealProcessSubtitles([]);
+    
+    // Reset reference times
+    lastGlobalUpdateRef.current = 0;
+    lastAnimationUpdateRef.current = 0;
+  };
+
+  // Handle API finished state
+  const setAPIFinishedInternal = (finished) => {
+    if (finished && !isAPIFinished) {
+      setIsAPIFinished(true);
+      stateIsFrozenRef.current = true;
+      
+      // Clear all intervals to stop subtitle cycling
+      intervalRefs.current.forEach(interval => clearInterval(interval));
+      intervalRefs.current = [];
+      
+      // If result step is completed, show accuracy box
+      if (stepStates.result === STEP_COMPLETED && accuracyBoxAnim._value === 0) {
+        showAccuracyBox();
+      }
+    }
+  };
+
+  // Expose methods to parent component
+  useImperativeHandle(ref, () => ({
+    reset,
+    updateWithSearchQueries,
+    updateWithSearchResults,
+    updateWithFoodItems,
+    setAPIFinished: setAPIFinishedInternal
+  }));
+
+  // Initialize animation when component becomes visible
+  useEffect(() => {
+    if (isVisible && !isAnimationRunning) {
+      // Animate container in
+      Animated.spring(containerAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
+      
+      // Process initial data
+      if (searchQueries.length > 0) {
+        updateWithSearchQueries(searchQueries);
+      }
+      
+      if (searchResults.length > 0) {
+        updateWithSearchResults(searchResults);
+      }
+      
+      if (foodItems.length > 0) {
+        updateWithFoodItems(foodItems);
+      }
+      
+      // Start animation
+      setIsAnimationRunning(true);
+      
+      // Set up polling interval to sync with global state
+      const syncInterval = setInterval(() => {
+        syncWithGlobalState();
+      }, 400); // Poll every 400ms for state changes
+      
+      intervalRefs.current.push(syncInterval);
+      
+      // Force a check for API finished status periodically
+      const apiCheckInterval = setInterval(async () => {
+        const apiFinished = await isApiFinishedInStorage();
+        if (apiFinished && !isAPIFinished) {
+          setAPIFinishedInternal(true);
+        }
+      }, 2000);
+      
+      intervalRefs.current.push(apiCheckInterval);
+      
+      // Force visualization to complete after a timeout (safety measure)
+      const safetyTimeout = setTimeout(async () => {
+        // Only force completion if API is finished 
+        const apiFinished = await isApiFinishedInStorage();
+        if (apiFinished) {
+          setAPIFinishedInternal(true);
+          
+          // Force all steps to complete
+          if (stepStates.recognize !== STEP_COMPLETED) {
+            completeStep('recognize');
+          }
+          
+          if (stepStates.search !== STEP_COMPLETED) {
+            completeStep('search');
+          }
+          
+          if (stepStates.process !== STEP_COMPLETED) {
+            completeStep('process');
+          }
+          
+          if (stepStates.result !== STEP_COMPLETED) {
+            completeStep('result');
+          }
+          
+          // Show accuracy box
+          showAccuracyBox();
+        }
+      }, 30000); // 30 second safety timeout
+      
+      timeoutRefs.current.push(safetyTimeout);
+    }
+    
+    // Cleanup on unmount
+    return () => {
+      timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
+      intervalRefs.current.forEach(interval => clearInterval(interval));
+    };
+  }, [isVisible]);
+
+  return (
+    <View style={styles.container}>
+      <Animated.View
+        style={[
+          styles.content,
+          {
+            backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+            borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : '#bbb',
+            borderWidth: 1,
+            position: 'relative',
+            opacity: containerAnim,
+            transform: [
+              { 
+                scale: containerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0.9, 1],
+                })
+              },
+              {
+                translateY: containerAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [20, 0],
+                })
+              }
+            ]
+          },
+        ]}
+      >
+        <Animated.View 
+          style={[
+            styles.stepsContainer,
+            { opacity: stepsContainerAnim }
+          ]}
+        >
+          {renderStep(
+            'food-apple', 
+            'Food Recognition', 
+            'Found 3 items in your image.',
+            recognizeAnim,
+            recognizeSubtitleAnim,
+            'recognize',
+            false,
+            isDark
+          )}
+          {renderStep(
+            'web', 
+            'Web Search', 
+            'Searched 8 websites and databases.',
+            searchAnim,
+            searchSubtitleAnim,
+            'search',
+            false,
+            isDark
+          )}
+          {renderStep(
+            'brain', 
+            'AI Processing', 
+            'Retrieved 3 data points.',
+            processAnim,
+            processSubtitleAnim,
+            'process',
+            false,
+            isDark
+          )}
+          {renderStep(
+            'flag', 
+            'Results', 
+            'Nutrient facts are done processing.',
+            resultAnim,
+            resultSubtitleAnim,
+            'result',
+            true,
+            isDark
+          )}
+        </Animated.View>
+        
+        {/* Accuracy information box */}
+        <Animated.View 
+          style={[
+            styles.accuracyBox,
+            {
+              borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : 'rgba(224, 224, 224, 0.5)',
+              backgroundColor: isDark ? 'rgba(44, 44, 46, 0.8)' : 'rgba(248, 248, 248, 0.8)',
+              opacity: accuracyBoxAnim,
+              transform: [
+                { 
+                  translateY: accuracyBoxAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [20, 0]
+                  })
+                },
+                {
+                  scale: accuracyBoxAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [0.95, 1]
+                  })
+                }
+              ]
+            }
+          ]}
+        >
+          <View style={styles.accuracyContent}>
+            <MaterialCommunityIcons 
+              name="shield-check" 
+              size={22} 
+              color={isDark ? '#FFF' : '#666'} 
+              style={styles.accuracyIcon}
+            />
+            <Text
+              style={[styles.accuracyText, { color: isDark ? '#CCC' : '#333' }]}
+            >
+              We verify multiple websites and databases to ensure accuracy, every single time.
+            </Text>
+          </View>
+        </Animated.View>
+      </Animated.View>
+    </View>
+  );
+});
+
+const styles = StyleSheet.create({
+  container: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 20,
+    overflow: 'hidden',
+    marginVertical: 16,
+    paddingHorizontal: 20,
+  },
+  content: {
+    borderRadius: 32,
+    padding: 20,
+    width: width * 0.9,
+    backgroundColor: '#fff',
+    position: 'relative',
+    minHeight: 380,
+  },
+  stepsContainer: {
+    opacity: 1, // Will be animated
+  },
+  stepContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginVertical: 12,
+    position: 'relative',
+  },
+  iconContainer: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 16,
+    position: 'relative',
+    backgroundColor: '#000',
+  },
+  checkmarkOverlay: {
+    position: 'absolute',
+    right: -5,
+    bottom: -5,
+    backgroundColor: '#fff',
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  textContainer: {
+    flex: 1,
+    paddingTop: 2,
+    paddingRight: 10,
+  },
+  textWrapper: {
+    marginBottom: 4,
+  },
+  stepText: {
+    fontSize: 17,
+    fontWeight: '600',
+    backgroundColor: 'transparent',
+    letterSpacing: -0.3,
+    color: '#000',
+    minHeight: 24,
+  },
+  subtitleText: {
+    fontSize: 13,
+    fontStyle: 'italic',
+    marginLeft: 2,
+    letterSpacing: -0.2,
+    color: '#666',
+    marginTop: 0,
+    minHeight: 18,
+  },
+  connector: {
+    position: 'absolute',
+    left: 22,
+    top: 42,
+    width: 2,
+    height: 36,
+    backgroundColor: '#000',
+  },
+  accuracyBox: {
+    marginTop: 12,
+    borderRadius: 20,
+    borderWidth: 1,
+    overflow: 'hidden',
+  },
+  accuracyContent: {
+    padding: 14,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  accuracyIcon: {
+    marginRight: 10,
+  },
+  accuracyText: {
+    flex: 1,
+    fontSize: 14,
+    fontWeight: '500',
+    lineHeight: 20,
+  },
+  spinnerContainer: {
+    position: 'absolute',
+    right: 16,
+    top: 14,
+    width: 20,
+    height: 20,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+});
+
+export default FunctionalAIVisualization;

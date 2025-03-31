@@ -62,7 +62,7 @@ const SearchScreen = () => {
   // Core state
   const [image, setImage] = useState(null);
   const [processingImage, setProcessingImage] = useState(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isSearchProcessing, setIsSearchProcessing] = useState(false);
   const [foodData, setFoodData] = useState(null);
   const [activeTab, setActiveTab] = useState('nutrition');
   const colorScheme = useColorScheme();
@@ -115,6 +115,9 @@ const SearchScreen = () => {
   
   // Add a reference to track interval/timeout IDs using an object
   const timersRef = useRef({}); // Changed from array to object
+  
+  // Add new animated value for search loading indicator
+  const searchLoadingAnim = useRef(new Animated.Value(0)).current;
   
   // Helper to safely clear all timers (intervals and timeouts)
   const clearAllTimers = () => {
@@ -367,7 +370,7 @@ const SearchScreen = () => {
     setTimeout(() => {
       // Directly reset state without animations
       setShowVisualization(false);
-      setIsLoading(false);
+      setIsSearchProcessing(false);
       
       // Do a final reset of the visualization component
       if (visualizationRef.current && visualizationRef.current.reset) {
@@ -561,7 +564,8 @@ const SearchScreen = () => {
         hasDrawing
       });
       
-      setIsLoading(true);
+      setIsSearchProcessing(true);
+      startSearchLoadingAnimation(); // Start search loading animation
       setNoFoodFound(false);
       setErrorOccurred(false);
       
@@ -634,7 +638,8 @@ const SearchScreen = () => {
       if (!apiKey) {
         console.error(`API key not found for ${provider}`);
         Alert.alert('Error', `API key not found for ${provider}`);
-        setIsLoading(false);
+        setIsSearchProcessing(false);
+        stopSearchLoadingAnimation(); // Stop search loading animation
         isProcessingRef.current = false;
         
         // Safely stop animations
@@ -674,6 +679,9 @@ const SearchScreen = () => {
             // Also add a flag to indicate this is a new scan
             parsedData._isNewScan = true;
             
+            // Mark this as a search scan for the FoodScanScreen
+            parsedData._scanType = 'search';
+            
             // MARK API AS FINISHED - This must happen before updating visualization
             await markAPIFinished();
             
@@ -695,16 +703,17 @@ const SearchScreen = () => {
                 setTimeout(() => {
                   if (visualizationRef.current && visualizationRef.current.completeVisualization) {
                     console.log('Explicitly completing AI visualization - using force flag');
-                    visualizationRef.current.completeVisualization(true); // Use force flag to bypass timing checks
+                    visualizationRef.current.completeVisualization(true);
                     
                     // Increase the delay before hiding the visualization
-                    // This gives users more time to see the completed visualization
-                    if (!isLoading) {
-                      const fadeOutTimer = setTimeout(() => { // Track this timer
+                    if (!isSearchProcessing) {
+                      const fadeOutTimer = setTimeout(() => {
                         if (isProcessingRef.current) {
                           fadeOutVisualization(() => {
                             // After fade completes, update state and refresh UI
                             setShowVisualization(false);
+                            stopSearchLoadingAnimation();
+                            setIsSearchProcessing(false);
                             
                             // Clear search storage when visualization is hidden
                             clearSearchStorage();
@@ -727,13 +736,12 @@ const SearchScreen = () => {
                           });
                         }
                       }, 2000);
-                      addTimer('fadeOutVizSuccess', fadeOutTimer); // Track timer
+                      addTimer('fadeOutVizSuccess', fadeOutTimer);
                     }
                   }
                 }, 1500);
-                // Track the timeout
-                const completeVizDelayTimer = setTimeout(() => {}, 1); // Placeholder timer
-                addTimer('completeVizDelay', completeVizDelayTimer); // Track timer
+                const completeVizDelayTimer = setTimeout(() => {}, 1);
+                addTimer('completeVizDelay', completeVizDelayTimer);
               }
               
               return true;
@@ -742,16 +750,19 @@ const SearchScreen = () => {
             return false;
           } catch (error) {
             console.error('Error in handleSuccessfulScan:', error);
+            setIsSearchProcessing(false);
+            stopSearchLoadingAnimation();
             return false;
           }
         },
-        handleError: (error, imageUri, barcodeData) => {
-          console.error('Error in web search:', error);
+        handleError: (error) => {
+          console.error('Error in search operation:', error);
           setErrorOccurred(true);
-          setIsLoading(false);
+          setIsSearchProcessing(false);
+          stopSearchLoadingAnimation();
           
           // Reset all animation and visualization states
-          stopLoadingAnimation(); // This now calls clearAllTimers
+          stopLoadingAnimation();
           
           // Explicitly reset the visualization component
           if (visualizationRef.current && visualizationRef.current.reset) {
@@ -890,7 +901,7 @@ const SearchScreen = () => {
       // Call the web search handler
       foodFound = await handleWebSearch(providerParams);
       
-      setIsLoading(false);
+      setIsSearchProcessing(false);
       stopLoadingAnimation();
       setProcessingImage(null);
       
@@ -941,7 +952,7 @@ const SearchScreen = () => {
       setShowPlaceholder(false);
     } catch (error) {
       console.error('Error in sendImageToApi:', error);
-      setIsLoading(false);
+      setIsSearchProcessing(false);
       
       // Explicitly stop animations before resetting state
       fadeAnim.stopAnimation();
@@ -974,7 +985,7 @@ const SearchScreen = () => {
   
   // Handle tab switching
   const handleTabPress = (tab) => {
-    if (activeTab === tab || isLoading || noFoodFound || !foodData) return;
+    if (activeTab === tab || isSearchProcessing || noFoodFound || !foodData) return;
     
     Animated.timing(tabFadeAnim, {
       toValue: 0,
@@ -996,28 +1007,28 @@ const SearchScreen = () => {
       <TouchableOpacity
         style={[styles.tab, activeTab === 'nutrition' && styles.activeTab]}
         onPress={() => handleTabPress('nutrition')}
-        disabled={isLoading || noFoodFound || !foodData}
+        disabled={isSearchProcessing || noFoodFound || !foodData}
       >
         <Text style={[styles.tabText, activeTab === 'nutrition' && styles.activeTabText]}>Nutrition</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.tab, activeTab === 'ingredients' && styles.activeTab]}
         onPress={() => handleTabPress('ingredients')}
-        disabled={isLoading || noFoodFound || !foodData}
+        disabled={isSearchProcessing || noFoodFound || !foodData}
       >
         <Text style={[styles.tabText, activeTab === 'ingredients' && styles.activeTabText]}>Ingredients</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.tab, activeTab === 'details' && styles.activeTab]}
         onPress={() => handleTabPress('details')}
-        disabled={isLoading || noFoodFound || !foodData}
+        disabled={isSearchProcessing || noFoodFound || !foodData}
       >
         <Text style={[styles.tabText, activeTab === 'details' && styles.activeTabText]}>Details</Text>
       </TouchableOpacity>
       <TouchableOpacity
         style={[styles.tab, activeTab === 'search' && styles.activeTab]}
         onPress={() => handleTabPress('search')}
-        disabled={isLoading || noFoodFound || !foodData}
+        disabled={isSearchProcessing || noFoodFound || !foodData}
       >
         <Text style={[styles.tabText, activeTab === 'search' && styles.activeTabText]}>Search</Text>
       </TouchableOpacity>
@@ -1166,11 +1177,11 @@ const SearchScreen = () => {
             brandName={detectedBrand}
             onComplete={() => {
               // When animation completes, we can do additional actions if needed
-              console.log('Animation completed, isLoading:', isLoading);
+              console.log('Animation completed, isSearchProcessing:', isSearchProcessing);
               
               // If we're no longer loading, we can hide the visualization after a delay
               // but only if we have food data successfully processed
-              if (!isLoading && foodData) {
+              if (!isSearchProcessing && foodData) {
                 console.log('Setting timer to hide visualization');
                 const visHideTimeout = setTimeout(() => {
                   console.log('Hiding visualization with fade');
@@ -1188,7 +1199,7 @@ const SearchScreen = () => {
           />
         )}
       </Animated.View>
-      {isLoading && !searchQueries.length && !searchResults.length && (
+      {isSearchProcessing && !searchQueries.length && !searchResults.length && (
         <Text style={[styles.loadingText, { marginTop: 8 }]}>
           Initializing search...
         </Text>
@@ -1216,13 +1227,52 @@ const SearchScreen = () => {
     </View>
   );
   
+  const renderSearchLoadingIndicator = () => (
+    <Animated.View 
+      style={[
+        styles.searchLoadingContainer,
+        {
+          opacity: searchLoadingAnim,
+          transform: [{
+            scale: searchLoadingAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0.95, 1.05]
+            })
+          }]
+        }
+      ]}
+    >
+      <BlurView
+        intensity={80}
+        tint={colorScheme === 'dark' ? 'dark' : 'light'}
+        style={styles.searchLoadingBlur}
+      >
+        <ActivityIndicator 
+          size="large" 
+          color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} 
+        />
+        <Text style={[
+          styles.searchLoadingText,
+          { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+        ]}>
+          Searching...
+        </Text>
+      </BlurView>
+    </Animated.View>
+  );
+  
   const renderContent = () => {
     if (showVisualization) {
       return renderLoadingState();
     }
     
-    if (isLoading) {
-      return renderLoadingState();
+    if (isSearchProcessing) {
+      return (
+        <View style={styles.contentContainer}>
+          {renderSearchLoadingIndicator()}
+          {renderLoadingState()}
+        </View>
+      );
     }
     
     if (noFoodFound) {
@@ -1269,7 +1319,7 @@ const SearchScreen = () => {
       <TouchableOpacity
         style={[styles.button, styles.cameraButton]}
         onPress={takePhoto}
-        disabled={isLoading}
+        disabled={isSearchProcessing}
       >
         <Icon name="camera-outline" size={24} color="#fff" />
         <Text style={styles.buttonText}>Camera</Text>
@@ -1278,7 +1328,7 @@ const SearchScreen = () => {
       <TouchableOpacity
         style={[styles.button, styles.galleryButton]}
         onPress={pickImage}
-        disabled={isLoading}
+        disabled={isSearchProcessing}
       >
         <Icon name="image-outline" size={24} color="#fff" />
         <Text style={styles.buttonText}>Gallery</Text>
@@ -1399,6 +1449,34 @@ const SearchScreen = () => {
     }
   };
   
+  // Add new function to handle search loading animation
+  const startSearchLoadingAnimation = () => {
+    // Reset animation value
+    searchLoadingAnim.setValue(0);
+    
+    // Create pulsing animation
+    Animated.loop(
+      Animated.sequence([
+        Animated.timing(searchLoadingAnim, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(searchLoadingAnim, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    ).start();
+  };
+
+  // Add new function to stop search loading animation
+  const stopSearchLoadingAnimation = () => {
+    searchLoadingAnim.stopAnimation();
+    searchLoadingAnim.setValue(0);
+  };
+  
   // Add cleanup effect when component unmounts
   useEffect(() => {
     return () => {
@@ -1409,7 +1487,8 @@ const SearchScreen = () => {
       clearSearchStorage();
       
       // Reset all states
-      setIsLoading(false);
+      setIsSearchProcessing(false);
+      stopSearchLoadingAnimation();
       setShowVisualization(false);
       setProcessingImage(null);
       setCurrentLoadingText('');
@@ -1743,6 +1822,28 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: colorScheme === 'dark' ? '#aaaaaa' : '#666666',
     textAlign: 'center',
     marginTop: 20,
+  },
+  searchLoadingContainer: {
+    position: 'absolute',
+    top: '50%',
+    left: '50%',
+    transform: [{ translateX: -75 }, { translateY: -50 }],
+    width: 150,
+    height: 100,
+    borderRadius: 15,
+    overflow: 'hidden',
+    zIndex: 1000,
+  },
+  searchLoadingBlur: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 15,
+  },
+  searchLoadingText: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '600',
   },
 });
 

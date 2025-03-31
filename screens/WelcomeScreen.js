@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -8,31 +8,123 @@ import {
   Dimensions,
   Platform,
   Animated,
+  SafeAreaView,
 } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Appearance } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FontAwesome } from '@expo/vector-icons';
+import { BlurView } from 'expo-blur';
 import AnimatedTextLoading from './AnimatedTextLoading';
+import FloatingChips from '../components/FloatingChips';
 
 const { width, height } = Dimensions.get('window');
 
 export default function SignInScreen({ navigation }) {
   const [colorScheme, setColorScheme] = useState(Appearance.getColorScheme());
   const [buttonScaleAnim] = useState(new Animated.Value(1));
+  const [imageBlurRadius] = useState(new Animated.Value(20)); // Start with blur
+  const bottomCardHeight = useRef(new Animated.Value(0)).current;
+  const logoBottom = useRef(new Animated.Value(height * 0.05)).current;
+  const [cardOpacity] = useState(new Animated.Value(0)); // Start card invisible
+  const [logoOpacity] = useState(new Animated.Value(0)); // Start logo invisible
+  const [buttonOpacity] = useState(new Animated.Value(0)); // Start buttons invisible
+  const [fullScreenBlurRadius] = useState(new Animated.Value(20)); // Start with full blur
+  const [bgOverlayOpacity] = useState(new Animated.Value(1)); // White overlay opacity for fade-in effect
   const styles = getDynamicStyles(colorScheme);
 
   useEffect(() => {
     const subscription = Appearance.addChangeListener(({ colorScheme }) => {
       setColorScheme(colorScheme);
     });
+
+    // Create staggered animations for a more natural feel
+    const startAnimations = () => {
+      // First wave - Background and blur effects
+      Animated.parallel([
+        // Remove background blur with easing
+        Animated.timing(imageBlurRadius, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: false,
+        }),
+        // Fade out white overlay with easing
+        Animated.timing(bgOverlayOpacity, {
+          toValue: 0,
+          duration: 1200,
+          useNativeDriver: true,
+        }),
+        // Remove full screen blur with easing
+        Animated.timing(fullScreenBlurRadius, {
+          toValue: 0,
+          duration: 1000,
+          useNativeDriver: false,
+        }),
+      ]).start();
+
+      // Second wave - Logo animation
+      setTimeout(() => {
+        Animated.spring(logoOpacity, {
+          toValue: 1,
+          duration: 800,
+          useNativeDriver: false,
+          damping: 12,
+          stiffness: 100,
+        }).start();
+
+        Animated.spring(logoBottom, {
+          toValue: height * 0.45 - 40,
+          useNativeDriver: false,
+          damping: 14,
+          stiffness: 100,
+          mass: 1,
+        }).start();
+      }, 200);
+
+      // Third wave - Bottom card animation
+      setTimeout(() => {
+        Animated.parallel([
+          // Fade in the card with easing
+          Animated.timing(cardOpacity, {
+            toValue: 1,
+            duration: 800,
+            useNativeDriver: false,
+          }),
+          // Animate card height with refined spring physics
+          Animated.spring(bottomCardHeight, {
+            toValue: height * 0.45,
+            useNativeDriver: false,
+            damping: 14,
+            stiffness: 100,
+            mass: 1,
+            restDisplacementThreshold: 0.001,
+            restSpeedThreshold: 0.001,
+          }),
+        ]).start();
+
+        // Fourth wave - Button fade in
+        setTimeout(() => {
+          Animated.timing(buttonOpacity, {
+            toValue: 1,
+            duration: 600,
+            useNativeDriver: true,
+          }).start();
+        }, 800);
+      }, 400);
+    };
+
+    // Start the animation sequence after a short delay
+    setTimeout(startAnimations, 300);
+
     return () => subscription.remove();
   }, []);
 
   const handlePressIn = () => {
     Animated.spring(buttonScaleAnim, {
-      toValue: 0.95,
+      toValue: 0.97,
       useNativeDriver: true,
+      damping: 12,
+      stiffness: 200,
     }).start();
   };
 
@@ -40,169 +132,272 @@ export default function SignInScreen({ navigation }) {
     Animated.spring(buttonScaleAnim, {
       toValue: 1,
       useNativeDriver: true,
+      damping: 12,
+      stiffness: 200,
     }).start();
   };
 
   return (
-    <View style={styles.View}>
-      <View style={styles.contentContainer}>
-        <View style={styles.logoContainer}>
-          <View style={styles.logoBackground}>
-            <Image source={require('../assets/icon.png')} style={styles.logo} />
-          </View>
-        </View>
+    <View style={styles.container}>
+      <BlurView
+        style={StyleSheet.absoluteFill}
+        intensity={100}
+        blurRadius={fullScreenBlurRadius}
+        tint={colorScheme}
+      />
+      <View style={styles.imageContainer}>
+        <Image
+          source={require('../assets/foodwelcome.jpg')}
+          style={styles.image}
+          resizeMode='cover'
+        />
+        <Animated.View
+          style={[
+            StyleSheet.absoluteFill,
+            {
+              backgroundColor: 'rgba(0,0,0,0.1)',
+              blurRadius: imageBlurRadius,
+            },
+          ]}
+        />
+        <Animated.View 
+          style={[
+            StyleSheet.absoluteFill, 
+            { backgroundColor: '#fff', opacity: bgOverlayOpacity }
+          ]}
+        />
+        <FloatingChips />
+      </View>
 
-        <View style={styles.textContainer}>
-          <AnimatedTextLoading
-            text="This is MacroScan"
-            colorScheme={colorScheme}
-            style={styles.title}
-          />
-          <AnimatedTextLoading
-            text="The easiest way to track your daily macros"
-            colorScheme={colorScheme}
-            style={styles.description}
-          />
-        </View>
+      <Animated.View 
+        style={[
+          styles.appIconContainer, 
+          { 
+            bottom: logoBottom,
+            opacity: logoOpacity 
+          }
+        ]}>
+        <Image source={require('../assets/logo4.jpg')} style={styles.appIcon} />
+      </Animated.View>
 
-        <View style={styles.buttonContainer}>
-          <Animated.View style={[
-            styles.SignUpButtonTouchable,
-            { transform: [{ scale: buttonScaleAnim }] }
+      {/* NEW: Shadow container wrapping the bottom card */}
+      <View style={styles.bottomCardShadow}>
+        <Animated.View 
+          style={[
+            styles.bottomCard, 
+            { 
+              height: bottomCardHeight,
+              opacity: cardOpacity,
+            }
           ]}>
-            <TouchableOpacity
-              onPress={async () => {
-                await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                navigation.navigate('OnBoardingScreen');
-              }}
-              onPressIn={handlePressIn}
-              onPressOut={handlePressOut}
-            >
-              <LinearGradient
-                colors={colorScheme === 'dark' ? ['#2a2a2a', '#1a1a1a'] : ['#000', '#333']}
-                style={styles.SignUpButton}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 1 }}
-              >
-                <View style={styles.buttonContent}>
-                  <Text style={styles.SignUpText}>Get Started</Text>
-                  <FontAwesome
-                    name="arrow-right"
-                    size={16}
-                    color={colorScheme === 'dark' ? '#d8d8d8' : '#fff'}
-                    style={styles.arrowIcon}
-                  />
-                </View>
-              </LinearGradient>
-            </TouchableOpacity>
-          </Animated.View>
+          <View style={styles.topBorder} />
+          <BlurView intensity={100} tint={colorScheme} style={StyleSheet.absoluteFill} />
+          <View style={[StyleSheet.absoluteFill, { backgroundColor: colorScheme === 'dark' ? 'rgba(0,0,0,0.6)' : 'rgba(255,255,255,0.7)' }]} />
+          <View style={styles.contentContainer}>
+            <View style={styles.textContainer}>
+              <AnimatedTextLoading
+                text="This is MacroScan"
+                colorScheme={colorScheme}
+                style={styles.title}
+                delay={1000}
+              />
+              <AnimatedTextLoading
+                text="The easiest way to track your daily macros"
+                colorScheme={colorScheme}
+                style={styles.description}
+                delay={1200}
+              />
+            </View>
 
-          <TouchableOpacity style={styles.SignInButton}>
-            <Text style={styles.SignInText}>
-              Get ready to transform how you track nutrition
-            </Text>
-          </TouchableOpacity>
-        </View>
+            <Animated.View style={[styles.buttonContainer, { opacity: buttonOpacity }]}>
+              <Animated.View style={[
+                styles.SignUpButtonTouchable,
+                { transform: [{ scale: buttonScaleAnim }] }
+              ]}>
+                <TouchableOpacity
+                  onPress={async () => {
+                    await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    navigation.navigate('OnBoardingScreen');
+                  }}
+                  onPressIn={handlePressIn}
+                  onPressOut={handlePressOut}
+                >
+                  <LinearGradient
+                    colors={colorScheme === 'dark' ? ['#2a2a2a', '#1a1a1a'] : ['#000', '#333']}
+                    style={styles.SignUpButton}
+                    start={{ x: 0, y: 0 }}
+                    end={{ x: 1, y: 1 }}
+                  >
+                    <View style={styles.buttonContent}>
+                      <Text style={styles.SignUpText}>Get Started</Text>
+                      <FontAwesome
+                        name="arrow-right"
+                        size={16}
+                        color={colorScheme === 'dark' ? '#d8d8d8' : '#fff'}
+                        style={styles.arrowIcon}
+                      />
+                    </View>
+                  </LinearGradient>
+                </TouchableOpacity>
+              </Animated.View>
+
+              <TouchableOpacity style={styles.SignInButton}>
+                <Text style={styles.SignInText}>
+                  Get ready to transform how you track nutrition
+                </Text>
+              </TouchableOpacity>
+            </Animated.View>
+          </View>
+        </Animated.View>
       </View>
     </View>
   );
 }
 
 const getDynamicStyles = (colorScheme) => {
-  const isSmallScreen = height < 700; // Adjust breakpoint as needed
-  const isLargeScreen = height > 800;
+  const isSmallScreen = height < 700;
   
   return StyleSheet.create({
-    View: {
+    container: {
       flex: 1,
-      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+      backgroundColor: colorScheme === 'dark' ? '#000' : '#fff', // Ensure background is set
+    },
+    bottomCard: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      borderTopLeftRadius: 35,
+      borderTopRightRadius: 35,
+      paddingTop: 60,
+      overflow: 'hidden',
+    },
+    topBorder: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      right: 0,
+      height: 35, // Adjust the height as needed
+      backgroundColor: colorScheme === 'dark' ? '#00eeff90' : '#0044cc80', // Adjust the color as needed
+      overflow: 'visible',
     },
     contentContainer: {
       flex: 1,
       alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: Platform.OS === 'ios' ? 60 : 40,
+      paddingHorizontal: 24,
+    },
+    appIconContainer: {
+      position: 'absolute',
+      alignSelf: 'center',
+      zIndex: 1,
+      backgroundColor: '#FFF',
+      borderRadius: 28,
+      padding: 0,
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 4,
+      },
+      shadowOpacity: 1,
+      shadowRadius: 25,
+      elevation: 5,
+    },
+    appIcon: {
+      width: width * 0.2,
+      height: width * 0.2,
+      borderRadius: 18,
     },
     textContainer: {
       alignItems: 'center',
-      paddingHorizontal: 20,
-    },
-    buttonContainer: {
-      width: '100%',
-      paddingHorizontal: 24,
-      alignItems: 'center',
+      marginTop: 24,
     },
     title: {
-      fontSize: width * 0.07, // 7% of screen width
+      fontSize: width * 0.07,
       fontWeight: '800',
       color: colorScheme === 'dark' ? '#fff' : '#000',
       textAlign: 'center',
-      marginBottom: height * 0.02, // 2% of screen height
+      marginBottom: 12,
       letterSpacing: -0.5,
-      padding: 4,
     },
-    logoContainer: {
-      alignItems: 'center',
-      marginTop: height * 0.1, // 10% of screen height
+    description: {
+      fontSize: width * 0.044,
+      fontWeight: '500',
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      textAlign: 'center',
+      marginBottom: 32,
+      letterSpacing: 0.2,
     },
-    logoBackground: {
-      backgroundColor: '#FFF',
-      borderRadius: 32,
-      padding: 0,
-      shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
-      shadowOffset: { width: 0, height: height * 0.02 }, // 2% of height
-      shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.25,
-      shadowRadius: height * 0.02, // 2% of height
-      elevation: 10,
-    },
-    logo: {
-      width: width * 0.3, // 30% of screen width
-      height: width * 0.3,
-    },
-    SignUpButton: {
-      borderRadius: 16,
-      padding: height * 0.02, // 2% of height
+    buttonContainer: {
       width: '100%',
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: height * 0.005 },
-      shadowOpacity: 0.3,
-      shadowRadius: 8,
-      elevation: 5,
+      alignItems: 'center',
+      marginTop: 'auto',
+      marginBottom: Platform.OS === 'ios' ? 34 : 24,
     },
     SignUpButtonTouchable: {
       width: '100%',
       maxWidth: 400,
     },
-    SignUpText: {
-      color: '#fff',
-      fontSize: width * 0.045, // 4.5% of width
-      fontWeight: '600',
-      letterSpacing: 0.3,
-    },
-    SignInButton: {
-      marginTop: 20,
-      padding: 12,
-    },
-    SignInText: {
-      fontSize: width * 0.035, // 3.5% of width
-      color: colorScheme === 'dark' ? '#999' : '#666',
-      textAlign: 'center',
-    },
-    description: {
-      fontSize: height < 830 ? width * 0.044 : width * 0.045, // 3.4% or 4.5% of width
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#999' : '#666',
-      textAlign: 'center',
-      marginBottom: height * 0.2, // 20% of height
-      letterSpacing: 0.2,
+    SignUpButton: {
+      borderRadius: 16,
+      padding: height * 0.02,
+      width: '100%',
+      shadowColor: '#000',
+      shadowOffset: {
+        width: 0,
+        height: 2,
+      },
+      shadowOpacity: 0.2,
+      shadowRadius: 4,
+      elevation: 3,
+      borderWidth: 1,
+      borderColor: colorScheme === 'dark' ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
     },
     buttonContent: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
     },
+    SignUpText: {
+      color: '#fff',
+      fontSize: width * 0.045,
+      fontWeight: '600',
+      letterSpacing: 0.3,
+    },
     arrowIcon: {
       marginLeft: 8,
+    },
+    SignInButton: {
+      marginTop: 16,
+      padding: 12,
+    },
+    SignInText: {
+      fontSize: width * 0.035,
+      color: colorScheme === 'dark' ? '#999' : '#666',
+      textAlign: 'center',
+    },
+    imageContainer: {
+      position: 'absolute',
+      top: 0,
+      left: 0,
+      width: '100%',
+      height: '100%',
+    },
+    image: {
+      width: '100%',
+      height: '100%',
+    },
+    bottomCardShadow: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      borderTopLeftRadius: 35,
+      borderTopRightRadius: 35,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -3 },
+      shadowOpacity: 1,
+      shadowRadius: 10,
+      elevation: 10,
     },
   });
 };

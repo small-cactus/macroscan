@@ -63,6 +63,148 @@ const MIN_RESULT_DURATION = 1800;
 const STEP_TRANSITION_DELAY = 400; // Added for smooth transitions
 const TOTAL_MIN_DURATION = 12000; // Minimum total processing time for better UX
 
+// Real-time state access via global variable for smoother visualization
+global.NUTRILENS_VISUALIZATION_ACCESS = {
+  getData: () => {
+    // This function will be called by the visualization component to get the latest data
+    return {
+      currentStep: global.NUTRILENS_VISUALIZATION?.currentStep || null,
+      stepStates: global.NUTRILENS_VISUALIZATION?.stepStates || {
+        recognize: { active: false, completed: false },
+        search: { active: false, completed: false },
+        process: { active: false, completed: false },
+        result: { active: false, completed: false }
+      },
+      subtitles: global.NUTRILENS_VISUALIZATION?.subtitles || {
+        recognize: [],
+        search: [],
+        process: [],
+        result: []
+      },
+      detectedFood: global.NUTRILENS_VISUALIZATION?.detectedFood || "",
+      searchQueries: [],
+      searchResults: [],
+      apiFinished: false,
+      updateTime: Date.now()
+    };
+  },
+  refreshVisualization: async () => {
+    // Force refresh the visualization with the latest data from AsyncStorage
+    try {
+      // Get all step states
+      const [
+        recognizeActive, recognizeCompleted,
+        searchActive, searchCompleted,
+        processActive, processCompleted,
+        resultActive, resultCompleted,
+        detectedFood, apiFinished,
+        searchQueriesRaw, searchResultsRaw
+      ] = await Promise.all([
+        AsyncStorage.getItem(RECOGNIZE_STEP_ACTIVE_KEY),
+        AsyncStorage.getItem(RECOGNIZE_STEP_COMPLETED_KEY),
+        AsyncStorage.getItem(SEARCH_STEP_ACTIVE_KEY),
+        AsyncStorage.getItem(SEARCH_STEP_COMPLETED_KEY),
+        AsyncStorage.getItem(PROCESS_STEP_ACTIVE_KEY),
+        AsyncStorage.getItem(PROCESS_STEP_COMPLETED_KEY),
+        AsyncStorage.getItem(RESULT_STEP_ACTIVE_KEY),
+        AsyncStorage.getItem(RESULT_STEP_COMPLETED_KEY),
+        AsyncStorage.getItem(DETECTED_FOOD_KEY),
+        AsyncStorage.getItem(API_FINISHED_KEY),
+        AsyncStorage.getItem(SEARCH_QUERIES_KEY),
+        AsyncStorage.getItem(SEARCH_RESULTS_KEY)
+      ]);
+      
+      // Update global state with latest data
+      if (!global.NUTRILENS_VISUALIZATION) {
+        global.NUTRILENS_VISUALIZATION = {
+          currentStep: null,
+          stepStates: {
+            recognize: { active: false, completed: false },
+            search: { active: false, completed: false },
+            process: { active: false, completed: false },
+            result: { active: false, completed: false }
+          },
+          subtitles: {
+            recognize: [],
+            search: [],
+            process: [],
+            result: []
+          },
+          detectedFood: "",
+          updateTime: Date.now()
+        };
+      }
+      
+      // Update step states
+      global.NUTRILENS_VISUALIZATION.stepStates.recognize.active = recognizeActive === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.recognize.completed = recognizeCompleted === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.search.active = searchActive === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.search.completed = searchCompleted === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.process.active = processActive === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.process.completed = processCompleted === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.result.active = resultActive === 'true';
+      global.NUTRILENS_VISUALIZATION.stepStates.result.completed = resultCompleted === 'true';
+      
+      // Update current step based on active states
+      if (resultActive === 'true') {
+        global.NUTRILENS_VISUALIZATION.currentStep = 'result';
+      } else if (processActive === 'true') {
+        global.NUTRILENS_VISUALIZATION.currentStep = 'process';
+      } else if (searchActive === 'true') {
+        global.NUTRILENS_VISUALIZATION.currentStep = 'search';
+      } else if (recognizeActive === 'true') {
+        global.NUTRILENS_VISUALIZATION.currentStep = 'recognize';
+      }
+      
+      // Update food and API state
+      global.NUTRILENS_VISUALIZATION.detectedFood = detectedFood || "";
+      global.NUTRILENS_VISUALIZATION.apiFinished = apiFinished === 'true';
+      
+      // Parse and store search queries and results
+      try {
+        const searchQueries = searchQueriesRaw ? JSON.parse(searchQueriesRaw) : [];
+        const searchResults = searchResultsRaw ? JSON.parse(searchResultsRaw) : [];
+        
+        // Create subtitles from queries and results
+        if (searchQueries.length > 0) {
+          global.NUTRILENS_VISUALIZATION.subtitles.search = searchQueries.map(q => `Searching "${q}"...`);
+        }
+        
+        if (searchResults.length > 0) {
+          global.NUTRILENS_VISUALIZATION.subtitles.process = searchResults
+            .slice(0, 3)
+            .map(r => `Analyzing "${r.title?.substring(0, 20) || 'results'}..."`);
+        }
+        
+        // Store food subtitles
+        if (detectedFood) {
+          global.NUTRILENS_VISUALIZATION.subtitles.recognize = [`Detected ${detectedFood}...`];
+          global.NUTRILENS_VISUALIZATION.subtitles.result = [`Nutrition facts for ${detectedFood}`];
+        }
+      } catch (err) {
+        console.error('Error parsing search data:', err);
+      }
+      
+      // Update timestamp to trigger observers
+      global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+      
+      return true;
+    } catch (error) {
+      console.error('Error refreshing visualization data:', error);
+      return false;
+    }
+  }
+};
+
+// Setup a polling interval to ensure visualization stays updated
+setInterval(() => {
+  if (!global._isNutrilensProcessingComplete) {
+    global.NUTRILENS_VISUALIZATION_ACCESS.refreshVisualization().catch(err => {
+      console.error('Error in visualization refresh interval:', err);
+    });
+  }
+}, 500);
+
 // UPDATED - Simple Direct Function for Updating Step States
 /**
  * Updates a step's state in both global state and AsyncStorage
@@ -167,18 +309,27 @@ const updateDetectedFood = async (foodName) => {
 
 // SIMPLIFIED - Activate a step and automatically manage transition from previous step
 const directActivateStep = async (step) => {
-  const currentStep = global.NUTRILENS_VISUALIZATION.currentStep;
+  console.log(`DIRECT: Activating step ${step}`);
+  const currentStep = global.NUTRILENS_VISUALIZATION?.currentStep;
   
   // Complete previous step if it exists and isn't completed
   if (currentStep && 
       currentStep !== step && 
-      !global.NUTRILENS_VISUALIZATION.stepStates[currentStep].completed) {
+      global.NUTRILENS_VISUALIZATION?.stepStates[currentStep]?.active && 
+      !global.NUTRILENS_VISUALIZATION?.stepStates[currentStep]?.completed) {
     await updateStepState(currentStep, { completed: true });
   }
   
-  // Activate new step
   await updateStepState(step, { active: true });
-  console.log(`Step ${step} activated`);
+  
+  // DIRECTLY update global state
+  if (global.NUTRILENS_VISUALIZATION) {
+    global.NUTRILENS_VISUALIZATION.currentStep = step;
+    global.NUTRILENS_VISUALIZATION.stepStates[step].active = true;
+    global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+  }
+  
+  console.log(`DIRECT: Step ${step} activated`);
   
   return true;
 };
@@ -186,7 +337,14 @@ const directActivateStep = async (step) => {
 // SIMPLIFIED - Complete a step
 const directCompleteStep = async (step) => {
   await updateStepState(step, { completed: true });
-  console.log(`Step ${step} completed`);
+  
+  // DIRECTLY update global state
+  if (global.NUTRILENS_VISUALIZATION) {
+    global.NUTRILENS_VISUALIZATION.stepStates[step].completed = true;
+    global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+  }
+  
+  console.log(`DIRECT: Step ${step} completed`);
   
   return true;
 };
@@ -489,6 +647,9 @@ const storeSearchData = async (queries = [], results = []) => {
       await AsyncStorage.setItem('@nutrilens:scan_start_time', Date.now().toString());
     }
     
+    let updatedQueries = [];
+    let updatedResults = [];
+    
     // Smooth query handling
     if (queries.length > 0) {
       if (currentStep === STEP_RECOGNIZE) {
@@ -507,7 +668,7 @@ const storeSearchData = async (queries = [], results = []) => {
       }
       
       // Add new unique queries
-      const updatedQueries = [...existingQueries];
+      updatedQueries = [...existingQueries];
       let hasNewQueries = false;
       
       queries.forEach(query => {
@@ -521,6 +682,12 @@ const storeSearchData = async (queries = [], results = []) => {
         await AsyncStorage.setItem(SEARCH_QUERIES_KEY, JSON.stringify(updatedQueries));
         console.log('Updated queries in AsyncStorage:', updatedQueries.length);
         
+        // DIRECTLY update global state for instant visualization updates
+        if (global.NUTRILENS_VISUALIZATION) {
+          global.NUTRILENS_VISUALIZATION.subtitles.search = updatedQueries.map(q => `Searching "${q}"...`);
+          global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+        }
+        
         // Extract food data from queries
         const foodKeywords = ['nutrition facts for', 'calories in'];
         for (const query of queries) {
@@ -530,9 +697,18 @@ const storeSearchData = async (queries = [], results = []) => {
               if (match && match[1]) {
                 const foodName = match[1].trim();
                 if (foodName.length > 2) {
-                  // Save detected food
+                  // Save detected food to AsyncStorage and update global state
                   await AsyncStorage.setItem(DETECTED_FOOD_KEY, foodName);
                   console.log('Stored detected food in AsyncStorage:', foodName);
+                  
+                  // DIRECTLY update global state
+                  if (global.NUTRILENS_VISUALIZATION) {
+                    global.NUTRILENS_VISUALIZATION.detectedFood = foodName;
+                    global.NUTRILENS_VISUALIZATION.subtitles.recognize = [`Detected ${foodName}...`];
+                    global.NUTRILENS_VISUALIZATION.subtitles.result = [`Nutrition facts for ${foodName}`];
+                    global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+                  }
+                  
                   break;
                 }
               }
@@ -563,7 +739,7 @@ const storeSearchData = async (queries = [], results = []) => {
       }
       
       // Add new unique results (by URL)
-      const updatedResults = [...existingResults];
+      updatedResults = [...existingResults];
       let hasNewResults = false;
       
       results.forEach(result => {
@@ -576,14 +752,25 @@ const storeSearchData = async (queries = [], results = []) => {
       if (hasNewResults) {
         await AsyncStorage.setItem(SEARCH_RESULTS_KEY, JSON.stringify(updatedResults));
         console.log('Updated results in AsyncStorage:', updatedResults.length);
+        
+        // DIRECTLY update global state for instant visualization updates
+        if (global.NUTRILENS_VISUALIZATION) {
+          global.NUTRILENS_VISUALIZATION.subtitles.process = updatedResults
+            .slice(0, 3)
+            .map(r => `Analyzing "${r.title?.substring(0, 20) || 'results'}..."`);
+          global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+        }
       }
     }
+    
+    // Directly update global state with step states for immediate visualization
+    await global.NUTRILENS_VISUALIZATION_ACCESS.refreshVisualization();
     
     // Progressive updates for visualization
     await manageVisualizationSteps({
       food: await AsyncStorage.getItem(DETECTED_FOOD_KEY),
-      searchQueries: queries,
-      searchResults: results
+      searchQueries: updatedQueries,
+      searchResults: updatedResults
     }, false);
     
     return true;
@@ -921,126 +1108,95 @@ const handleApiCompletion = async (data) => {
     // CRITICAL: First, mark API as finished in AsyncStorage - this will prevent further updates
     await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
     
+    // Also update global state
+    if (global.NUTRILENS_VISUALIZATION) {
+      global.NUTRILENS_VISUALIZATION.apiFinished = true;
+    }
+    
     // Get current step and check if we're on the last step
     const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
     console.log(`API completed with current step: ${currentStep}`);
     
-    // ALWAYS verify all steps are marked as ACTIVE before proceeding
-    const recognizeActive = await AsyncStorage.getItem(RECOGNIZE_STEP_ACTIVE_KEY);
-    const searchActive = await AsyncStorage.getItem(SEARCH_STEP_ACTIVE_KEY);
-    const processActive = await AsyncStorage.getItem(PROCESS_STEP_ACTIVE_KEY);
-    const resultActive = await AsyncStorage.getItem(RESULT_STEP_ACTIVE_KEY);
+    // Ensure all steps are completed in order
+    await completeAllStepsInOrder();
     
-    // Check for the steps that haven't been activated yet
-    if (recognizeActive !== 'true') {
-      console.log('Recognize step not activated - activating it now');
-      await activateStep(STEP_RECOGNIZE);
-      // Add a small delay to ensure step activation is processed
-      await new Promise(resolve => setTimeout(resolve, 100));
-    }
-    
-    // Make sure all previous steps are completed in sequence
-    console.log('Ensuring all steps complete in proper sequence');
-    
-    // Complete the recognize step if needed
-    if (recognizeActive === 'true') {
-      const recognizeCompleted = await AsyncStorage.getItem(RECOGNIZE_STEP_COMPLETED_KEY);
-      if (recognizeCompleted !== 'true') {
-        console.log('Completing recognize step');
-        await completeStep(STEP_RECOGNIZE);
-        // Add a small delay to ensure step completion is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Activate search if not active
-      if (searchActive !== 'true') {
-        console.log('Activating search step');
-        await activateStep(STEP_SEARCH);
-        // Add a small delay to ensure step activation is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    // Complete the search step if needed
-    if (searchActive === 'true') {
-      const searchCompleted = await AsyncStorage.getItem(SEARCH_STEP_COMPLETED_KEY);
-      if (searchCompleted !== 'true') {
-        console.log('Completing search step');
-        await completeStep(STEP_SEARCH);
-        // Add a small delay to ensure step completion is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Activate process if not active
-      if (processActive !== 'true') {
-        console.log('Activating process step');
-        await activateStep(STEP_PROCESS);
-        // Add a small delay to ensure step activation is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    // Complete the process step if needed
-    if (processActive === 'true') {
-      const processCompleted = await AsyncStorage.getItem(PROCESS_STEP_COMPLETED_KEY);
-      if (processCompleted !== 'true') {
-        console.log('Completing process step');
-        await completeStep(STEP_PROCESS);
-        // Add a small delay to ensure step completion is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-      
-      // Activate result if not active
-      if (resultActive !== 'true') {
-        console.log('Activating result step');
-        await activateStep(STEP_RESULT);
-        // Add a small delay to ensure step activation is processed
-        await new Promise(resolve => setTimeout(resolve, 100));
-      }
-    }
-    
-    // Now handle the result step
-    if (resultActive === 'true') {
-      const resultCompleted = await AsyncStorage.getItem(RESULT_STEP_COMPLETED_KEY);
-      if (resultCompleted !== 'true') {
-        // Complete after a short delay to ensure it's visible
-        console.log('Completing result step');
-        await completeStep(STEP_RESULT);
-        
-        // Re-verify all steps are completed
-        console.log('Verifying all steps are marked as completed in AsyncStorage');
-        await verifyAllStepsCompleted();
-      }
-    } else {
-      // Result not active yet, need to activate it first
-      console.log('Result step not active - activating it');
-      await activateStep(STEP_RESULT);
-      
-      // Complete after delay
-      await new Promise(resolve => setTimeout(resolve, 100));
-      console.log('Completing result step');
-      await completeStep(STEP_RESULT);
-      
-      // Re-verify all steps are completed
-      console.log('Verifying all steps are marked as completed in AsyncStorage');
-      await verifyAllStepsCompleted();
-    }
-    
-    // FINALLY, double-check that API_FINISHED_KEY is set
+    // Final double-check
     await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-    console.log('API completion handler finished - all steps should be marked as completed');
+    if (global.NUTRILENS_VISUALIZATION) {
+      global.NUTRILENS_VISUALIZATION.apiFinished = true;
+      global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
+    }
+    
+    console.log('API completion handler finished successfully');
   } catch (error) {
     console.error('Error handling API completion:', error);
-    // Safety fallback - mark API as finished
-    await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-    
-    // Safety fallback - force all steps to complete
-    try {
-      await forceCompleteAllSteps();
-    } catch (fallbackError) {
-      console.error('Error in fallback step completion:', fallbackError);
-    }
+    // Force all steps to complete as fallback
+    await forceCompleteAllSteps();
   }
+};
+
+// Helper function to complete all steps in order
+const completeAllStepsInOrder = async () => {
+  try {
+    // Step 1: Recognize
+    if (!await isStepActivated(STEP_RECOGNIZE)) {
+      await directActivateStep(STEP_RECOGNIZE);
+    }
+    if (!await isStepCompleted(STEP_RECOGNIZE)) {
+      await directCompleteStep(STEP_RECOGNIZE);
+    }
+    
+    // Step 2: Search
+    if (!await isStepActivated(STEP_SEARCH)) {
+      await directActivateStep(STEP_SEARCH);
+    }
+    if (!await isStepCompleted(STEP_SEARCH)) {
+      await directCompleteStep(STEP_SEARCH);
+    }
+    
+    // Step 3: Process
+    if (!await isStepActivated(STEP_PROCESS)) {
+      await directActivateStep(STEP_PROCESS);
+    }
+    if (!await isStepCompleted(STEP_PROCESS)) {
+      await directCompleteStep(STEP_PROCESS);
+    }
+    
+    // Step 4: Result
+    if (!await isStepActivated(STEP_RESULT)) {
+      await directActivateStep(STEP_RESULT);
+    }
+    if (!await isStepCompleted(STEP_RESULT)) {
+      await directCompleteStep(STEP_RESULT);
+    }
+    
+    // Final verification
+    await verifyAllStepsCompleted();
+    
+    return true;
+  } catch (error) {
+    console.error('Error completing steps in order:', error);
+    return false;
+  }
+};
+
+// Helper functions to check step status
+const isStepActivated = async (step) => {
+  const key = step === STEP_RECOGNIZE ? RECOGNIZE_STEP_ACTIVE_KEY :
+              step === STEP_SEARCH ? SEARCH_STEP_ACTIVE_KEY :
+              step === STEP_PROCESS ? PROCESS_STEP_ACTIVE_KEY :
+              RESULT_STEP_ACTIVE_KEY;
+              
+  return await AsyncStorage.getItem(key) === 'true';
+};
+
+const isStepCompleted = async (step) => {
+  const key = step === STEP_RECOGNIZE ? RECOGNIZE_STEP_COMPLETED_KEY :
+              step === STEP_SEARCH ? SEARCH_STEP_COMPLETED_KEY :
+              step === STEP_PROCESS ? PROCESS_STEP_COMPLETED_KEY :
+              RESULT_STEP_COMPLETED_KEY;
+              
+  return await AsyncStorage.getItem(key) === 'true';
 };
 
 /**
@@ -1180,11 +1336,12 @@ export const handleWebSearch = async ({
     // Get the appropriate model based on provider and search mode
     const currentModel = getModel(provider, { 
       selectedMode: 'search',  // Force search mode
-      selectedModel,
+      selectedModel: 'search',
       hasDrawing
     });
     
-    console.log(`Using search mode with ${provider} model: ${currentModel}`);
+    console.log(`Debug - handleWebSearch inputs - provider: ${provider}, selectedModel: ${selectedModel}`);
+    console.log(`Debug - handleWebSearch - Using search mode with ${provider} model: ${currentModel}`);
     
     // Wrap the handleSuccessfulScan function to manage visualization steps
     const wrappedHandleSuccessfulScan = async (...args) => {
@@ -1322,14 +1479,16 @@ const handleAnthropicWebSearch = async ({
       results: []
     };
     
-    console.log("Using search mode with Anthropic. Sending request to API");
+    // Ensure we have a valid model string - fall back to Claude 3.5 Sonnet if null
+    const actualModel = selectedModel || 'claude-3-haiku-20240307';
     
-    // Ensure visualization begins with the recognition step
-    await activateStep(STEP_RECOGNIZE);
+    console.log("Using search mode with Anthropic. Sending request to API");
+    console.log("Debug - handleAnthropicWebSearch - Selected model:", selectedModel);
+    console.log("Debug - handleAnthropicWebSearch - Actual model being used:", actualModel);
     
     // Initial message to identify the food and determine what to search for
     const initialResponse = await anthropic.messages.create({
-      model: selectedModel,
+      model: actualModel,
       max_tokens: 4096,
       temperature: 0.5,
       system: systemPrompts.searchMode(hasDrawing, barcodeData),
@@ -1575,7 +1734,7 @@ const handleAnthropicWebSearch = async ({
       
       // Continue the conversation with the search results
       currentResponse = await anthropic.messages.create({
-        model: selectedModel,
+        model: actualModel,
         max_tokens: 4096,
         temperature: 0.4,
         system: systemPrompts.searchMode(hasDrawing, barcodeData),
@@ -1657,7 +1816,7 @@ Now, provide the complete nutritional information in the JSON format exactly as 
     
     // Get the final JSON response
     const finalResponse = await anthropic.messages.create({
-      model: selectedModel,
+      model: actualModel,
       max_tokens: 4096,
       temperature: 0.3,
       system: systemPrompts.searchMode(hasDrawing, barcodeData),

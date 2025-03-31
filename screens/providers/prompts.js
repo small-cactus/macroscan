@@ -369,12 +369,12 @@ Expected JSON Output Format:
     ]
   },
   "details": {
-    "summaryText": "String - Summary of food and nutrition facts",
+    "summaryText": "String - Concise summary of food and nutrition facts. 30 words max",
     "sources": [
       {
         "title": "String - Source title",
         "url": "String - Source URL",
-        "snippet": "String - Relevant excerpt"
+        "snippet": "String - Relevant excerpt or summary of how you used the source."
       }
     ]
   }

@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useContext } from 'react';
 import { useNavigationState } from '@react-navigation/native';
 import { useRoute } from '@react-navigation/native';
 import {
@@ -39,8 +39,10 @@ import ModeTooltip from '../components/ModeTooltip';
 import ScanButtonTooltip from '../components/ScanButtonTooltip';
 import { useTimeZone } from '../TimeZoneContext';
 import { FadeInDown } from 'react-native-reanimated';
-
-const useOpenAI = false; // Set to true to use OpenAI, false to use Anthropic
+import { handleWebSearch } from './providers/WebSearchProvider';
+import WebSearchProvider from './providers/WebSearchProvider';
+import FunctionalAIVisualization from './FunctionalAIVisualization';
+const useOpenAI = false; // Set to true to use OpenAI, false rto use Anthropic
 
 const { width, height } = Dimensions.get('window');
 
@@ -71,6 +73,7 @@ const LOADING_TEXTS = {
     "Checking for errors...",
     "Ensuring consistency...",
   ],
+  search: [] // Empty array since we don't need loading texts for search mode
 };
 
 const isIphoneSE = () => {
@@ -95,7 +98,13 @@ const isIphoneSE = () => {
 const MODE_LABELS = {
   fast: 'Fast Mode',
   accurate: 'Accurate Mode',
+  search: 'Search Mode (BETA)',
 };
+
+// Add search mode constant
+const FAST_MODE = 'fast';
+const ACCURATE_MODE = 'accurate';
+const SEARCH_MODE = 'search';
 
 const FoodScanScreen = () => {
   // Add debug flag at the top of the component
@@ -107,7 +116,7 @@ const FoodScanScreen = () => {
   const [processingImage, setProcessingImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [foodData, setFoodData] = useState(null);
-  const [activeTab, setActiveTab] = useState('');
+  const [activeTab, setActiveTab] = useState('Nutrition');
   const colorScheme = useColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -140,6 +149,7 @@ const FoodScanScreen = () => {
   const [isSubscribedPlus, setIsSubscribedPlus] = useState(false);
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
   const [freeAccurateScansUsed, setFreeAccurateScansUsed] = useState(0);
+  const [freeSearchScansUsed, setFreeSearchScansUsed] = useState(0);
 
   // Add new animated value for tab indicator
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
@@ -231,7 +241,16 @@ const FoodScanScreen = () => {
   }, [route.params?.imageUri, route.params?.barcodeData]);
 
   const getLoadingTextsByMode = (mode) => {
-    return LOADING_TEXTS[mode] || LOADING_TEXTS.fast; // Default to 'fast' if mode not found
+    switch (mode) {
+      case 'fast':
+        return LOADING_TEXTS.fast;
+      case 'accurate':
+        return LOADING_TEXTS.accurate;
+      case 'search':
+        return LOADING_TEXTS.search;
+      default:
+        return LOADING_TEXTS.fast;
+    }
   };
 
   const enqueueLoadingText = (text) => {
@@ -252,6 +271,12 @@ const FoodScanScreen = () => {
   // Update scheduleLoadingTexts to use the loaded times
   const scheduleLoadingTexts = () => {
     const mode = selectedMode;
+    
+    // Skip loading texts for search mode
+    if (mode === SEARCH_MODE) {
+      return;
+    }
+    
     let averageTime = 6000; // Default fallback time
 
     // Try to get the actual average time for current provider/model
@@ -285,6 +310,18 @@ const FoodScanScreen = () => {
   const startLoadingAnimation = () => {
     if (isAnimationRunningRef.current) return;
     isAnimationRunningRef.current = true;
+    
+    // If in search mode, don't show loading texts
+    if (selectedMode === SEARCH_MODE) {
+      // Just show the loading UI without text animations
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }).start();
+      return;
+    }
+    
     const loadingTexts = getLoadingTextsByMode(selectedMode);
   
     // Reset states
@@ -354,7 +391,7 @@ const FoodScanScreen = () => {
         useNativeDriver: true,
       }).start();
     }, averageTime + 2000);
-  };  
+  };
 
 // Corrected updateLoadingText function
 const updateLoadingText = () => {
@@ -402,9 +439,22 @@ const stopLoadingAnimation = () => {
   setShowProcessingTime(false);
   clearInterval(processingTimeRef.current);
   
+  // Clear the scan duration timer
+  if (scanTimerRef.current) {
+    clearInterval(scanTimerRef.current);
+    scanTimerRef.current = null;
+  }
+  
   if (loadingTimeoutRef.current) {
     clearTimeout(loadingTimeoutRef.current);
     loadingTimeoutRef.current = null;
+  }
+  
+  // If using search mode, mark the visualization as complete
+  if (selectedMode === SEARCH_MODE && visualizationRef.current) {
+    if (visualizationRef.current.setAPIFinished) {
+      visualizationRef.current.setAPIFinished(true);
+    }
   }
   
   Animated.timing(fadeAnim, {
@@ -508,7 +558,9 @@ const stopLoadingAnimation = () => {
           await AsyncStorage.setItem('dailyScanCount', '0');
           await AsyncStorage.setItem('dateLastUsed', today);
           await AsyncStorage.setItem('freeAccurateScansUsed', '0');
+          await AsyncStorage.setItem('freeSearchScansUsed', '0');
           setFreeAccurateScansUsed(0);
+          setFreeSearchScansUsed(0);
           setScanCount(0);
         } else {
           // If the date is the same, load existing counters
@@ -518,6 +570,10 @@ const stopLoadingAnimation = () => {
           // Also load how many accurate scans used
           const accurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
           setFreeAccurateScansUsed(parseInt(accurateScansUsed, 10) || 0);
+          
+          // Load how many search scans used
+          const searchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+          setFreeSearchScansUsed(parseInt(searchScansUsed, 10) || 0);
         }
   
         // 4) Load the user's chosen model & mode
@@ -536,6 +592,7 @@ const stopLoadingAnimation = () => {
         setIsFirstDayUnlimited(false);
         setScanCount(0);
         setFreeAccurateScansUsed(0);
+        setFreeSearchScansUsed(0);
         
         // Ensure dateLastUsed is set to prevent future errors
         await AsyncStorage.setItem('dateLastUsed', getTodayString());
@@ -846,6 +903,15 @@ const stopLoadingAnimation = () => {
           usedCircleScan: productDetails.hasDrawing === true // Only true if drawing occurred
         }
       };
+      
+      // Add web search sources if available (for search mode)
+      if (selectedMode === SEARCH_MODE && productDetails.nutrients && 
+          productDetails.nutrients.details && 
+          productDetails.nutrients.details.sources) {
+        productDetailsWithDate.sources = productDetails.nutrients.details.sources;
+        productDetailsWithDate.isWebSearch = true;
+      }
+      
       // Removed logging of product details to avoid logging sensitive base64 data:
       // console.log('Storing product details:', JSON.stringify(productDetailsWithDate, null, 2));
       
@@ -969,12 +1035,34 @@ const stopLoadingAnimation = () => {
       const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
       setSelectedProvider(provider);
       
+      console.log('Debug - Provider before getModel:', provider);
+      console.log('Debug - Selected mode before getModel:', selectedMode);
+      console.log('Debug - Has drawing before getModel:', hasDrawing);
+      
       const currentModel = getModel(provider, { 
         selectedMode: selectedMode,
         selectedModel: selectedModel,
         hasDrawing: hasDrawing 
       });
+      
+      console.log('Debug - Model after getModel:', currentModel);
+      
       setSelectedModel(currentModel);
+
+      // Check if we're in search mode and need to check the scan limit
+      if (selectedMode === SEARCH_MODE) {
+        // Check if user has reached search scan limit
+        const canProceed = await checkSearchScanLimit();
+        if (!canProceed) {
+          // User has reached their limit
+          setIsLoading(false);
+          isProcessingRef.current = false;
+          return;
+        }
+        
+        // Increment search scan count now that we're proceeding
+        await incrementSearchScanCount();
+      }
 
       setIsLoading(true);
       setNoFoodFound(false);
@@ -1019,17 +1107,20 @@ const stopLoadingAnimation = () => {
     
       scheduleLoadingTexts();
       startTimeRef.current = Date.now();
+      
+      // Start the scan timer for search mode
+      if (mode === SEARCH_MODE) {
+        startScanTimer();
+      }
     
       let foodFound = false;
 
       // Use API key from context
-      const apiKey = mode === 'search' 
-        ? apiKeys?.geminiApiKey // Always use geminiApiKey for search mode
-        : apiKeys?.[provider + 'ApiKey'];
+      const apiKey = apiKeys?.[provider + 'ApiKey'];
         
       if (!apiKey) {
-        console.error(`API key not found for ${mode === 'search' ? 'gemini' : provider}`);
-        Alert.alert('Error', `API key not found for ${mode === 'search' ? 'gemini' : provider}`);
+        console.error(`API key not found for ${provider}`);
+        Alert.alert('Error', `API key not found for ${provider}`);
         setIsLoading(false);
         stopLoadingAnimation();
         setProcessingImage(null);
@@ -1066,7 +1157,39 @@ const stopLoadingAnimation = () => {
           break;
         case 'anthropic':
         default:
-          foodFound = await handleAnthropicScan(providerParams);
+          if (selectedMode === SEARCH_MODE) {
+            // Use web search mode with handleWebSearch for any provider
+            foodFound = await handleWebSearch({
+              ...providerParams,
+              // Add callbacks to update visualization component
+              onSearchQueryUpdate: (queries) => {
+                setSearchQueries(queries);
+                if (visualizationRef.current?.updateWithSearchQueries) {
+                  visualizationRef.current.updateWithSearchQueries(queries);
+                }
+              },
+              onSearchResultUpdate: (results) => {
+                setSearchResults(results);
+                if (visualizationRef.current?.updateWithSearchResults) {
+                  visualizationRef.current.updateWithSearchResults(results);
+                }
+              },
+              onFoodItemDetected: (items) => {
+                setDetectedFoodItems(items);
+                if (visualizationRef.current?.updateWithFoodItems) {
+                  visualizationRef.current.updateWithFoodItems(items);
+                }
+              },
+              onProcessingStepUpdate: (step) => {
+                setProcessingSteps(prev => [...prev, step]);
+              },
+              onBrandDetected: (brand) => {
+                setDetectedBrand(brand);
+              }
+            });
+          } else {
+            foodFound = await handleAnthropicScan(providerParams);
+          }
           break;
       }
 
@@ -1714,19 +1837,68 @@ const stopLoadingAnimation = () => {
   };
 
   const renderDetailsTab = () => {
-    // Check if we have any details to display
-    const hasDetails = foodData?.details && (
-      foodData.details.summary || 
-      foodData.details.summaryText ||
-      foodData.details.servingSize ||
-      foodData.details.prepTime ||
-      foodData.details.preparation?.steps?.length > 0 ||
-      foodData.details.wikipediaLink ||
-      foodData.details.sources?.length > 0
-    );
+    console.log('renderDetailsTab - foodData:', JSON.stringify(foodData, null, 2));
+    console.log('renderDetailsTab - selectedMode:', selectedMode);
+    
+    // Determine if this is a search mode scan
+    const isSearchMode = selectedMode === SEARCH_MODE || (foodData && foodData._scanType === 'search');
+    console.log('renderDetailsTab - isSearchMode:', isSearchMode);
+    
+    // Get the summary text from various possible sources based on scan type
+    let summaryText = '';
+    let hasDetails = false;
 
-    // If no details, show empty state
-    if (!hasDetails) {
+    if (isSearchMode) {
+      // For search mode scans
+      summaryText = foodData?.details?.summaryText || 
+                   foodData?.details?.summary || 
+                   (foodData?.name ? `Nutritional information for ${foodData.name}.` : '');
+      
+      hasDetails = foodData?.details && (
+        foodData.details.summaryText ||
+        foodData.details.summary ||
+        foodData.details.sources?.length > 0
+      );
+      console.log('renderDetailsTab - search mode details:', {
+        summaryText,
+        hasDetails,
+        sources: foodData?.details?.sources
+      });
+    } else {
+      // For regular scans (accurate/fast mode)
+      summaryText = foodData?.details?.summary || 
+                   (foodData?.name ? `Nutritional information for ${foodData.name}. ` +
+                    `This ${foodData.type || 'food'} contains ${foodData.calories?.amount || '0'} calories per serving.` : '');
+      
+      hasDetails = foodData?.details && (
+        foodData.details.summary ||
+        foodData.details.servingSize ||
+        foodData.details.prepTime ||
+        foodData.details.preparation?.steps?.length > 0 ||
+        foodData.details.wikipediaLink
+      );
+
+      // If we have food data but no explicit details, consider that as having details
+      if (!hasDetails && foodData) {
+        hasDetails = true;
+      }
+      console.log('renderDetailsTab - regular mode details:', {
+        summaryText,
+        hasDetails,
+        details: foodData?.details
+      });
+    }
+
+    const hasSummary = !!summaryText;
+    console.log('renderDetailsTab - final state:', {
+      hasSummary,
+      hasDetails,
+      summaryText
+    });
+
+    // If no details and no summary, show empty state
+    if (!hasDetails && !hasSummary) {
+      console.log('renderDetailsTab - showing empty state');
       return (
         <View style={styles.tabContentContainer}>
           <Text style={styles.noDataText}>No detailed information available for this food.</Text>
@@ -1735,6 +1907,7 @@ const stopLoadingAnimation = () => {
     }
 
     // If we have details, render organized content
+    console.log('renderDetailsTab - rendering content');
     return (
       <View style={styles.tabContentContainer}>
         <ScrollView 
@@ -1749,7 +1922,7 @@ const stopLoadingAnimation = () => {
         >
           <View style={styles.macroGridContainer}>
             {/* About Card */}
-            {(foodData.details.summary || foodData.details.summaryText) && (
+            {hasSummary && (
               <Animated.View 
                 style={[
                   styles.macroCard, 
@@ -1793,13 +1966,21 @@ const stopLoadingAnimation = () => {
                   </View>
                 </TouchableOpacity>
                 <Text style={styles.summaryText}>
-                  {foodData.details.summary || foodData.details.summaryText}
+                  {summaryText}
                 </Text>
               </Animated.View>
             )}
 
-            {/* Quick Facts Card */}
-            {(foodData.details.servingSize || foodData.details.prepTime) && (
+            {/* Quick Facts Card - Only show for regular scans */}
+            {!isSearchMode && (
+              // Check both object formats for the data
+              foodData?.details?.prepTime || 
+              (foodData?.details?.servingSize && typeof foodData.details.servingSize === 'string') || 
+              (foodData?.servingSize?.amount) ||
+              // Additional check for nested food.details structure
+              (foodData?.food?.details?.prepTime) ||
+              (foodData?.food?.details?.servingSize && typeof foodData.food.details.servingSize === 'string')
+            ) && (
               <Animated.View 
                 style={[
                   styles.macroCard, 
@@ -1845,25 +2026,40 @@ const stopLoadingAnimation = () => {
 
                 {/* Facts Content */}
                 <View style={styles.factsContainer}>
-                  {foodData.details.prepTime && (
+                  {/* Get prepTime from foodData.details or foodData.food.details */}
+                  {(foodData?.details?.prepTime || foodData?.food?.details?.prepTime) && (
                     <View style={styles.factRow}>
                       <Text style={styles.factLabel}>Prep Time</Text>
-                      <Text style={styles.factValue}>{foodData.details.prepTime}</Text>
+                      <Text style={styles.factValue}>{foodData?.details?.prepTime || foodData?.food?.details?.prepTime}</Text>
                     </View>
                   )}
                   
-                  {foodData.details.servingSize && (
+                  {/* Get servingSize string from foodData.details or foodData.food.details */}
+                  {((foodData?.details?.servingSize && typeof foodData.details.servingSize === 'string') || 
+                   (foodData?.food?.details?.servingSize && typeof foodData.food.details.servingSize === 'string')) && (
                     <View style={styles.factRow}>
                       <Text style={styles.factLabel}>Serving Size</Text>
-                      <Text style={styles.factValue} numberOfLines={3}>{foodData.details.servingSize}</Text>
+                      <Text style={styles.factValue} numberOfLines={3}>
+                        {foodData?.details?.servingSize || foodData?.food?.details?.servingSize}
+                      </Text>
+                    </View>
+                  )}
+
+                  {/* Add fallback for servingSize in food object */}
+                  {!foodData?.details?.servingSize && !foodData?.food?.details?.servingSize && foodData?.servingSize?.amount && (
+                    <View style={styles.factRow}>
+                      <Text style={styles.factLabel}>Serving Size</Text>
+                      <Text style={styles.factValue} numberOfLines={3}>
+                        {foodData.servingSize.amount} {foodData.servingSize.unit || ''}
+                      </Text>
                     </View>
                   )}
                 </View>
               </Animated.View>
             )}
             
-            {/* Preparation Steps Card */}
-            {foodData.details.preparation?.steps?.length > 0 && (
+            {/* Preparation Steps Card - Only show for regular scans */}
+            {!isSearchMode && foodData?.details?.preparation?.steps?.length > 0 && (
               <Animated.View 
                 style={[
                   styles.macroCard, 
@@ -1919,8 +2115,8 @@ const stopLoadingAnimation = () => {
               </Animated.View>
             )}
             
-            {/* Wikipedia Link Card */}
-            {foodData.details.wikipediaLink && (
+            {/* Wikipedia Link Card - Only show for regular scans */}
+            {!isSearchMode && (foodData?.details?.wikipediaLink || foodData?.food?.details?.wikipediaLink) && (
               <Animated.View 
                 style={[
                   styles.macroCard, 
@@ -1947,9 +2143,13 @@ const stopLoadingAnimation = () => {
               >
                 <TouchableOpacity 
                   style={[styles.linkRow, { paddingVertical: 16 * scale, paddingHorizontal: 16 * scale }]}
-                  onPress={() => Linking.openURL(foodData.details.wikipediaLink)}
+                  onPress={() => {
+                    const link = foodData?.details?.wikipediaLink || foodData?.food?.details?.wikipediaLink;
+                    console.log("Opening link:", link);
+                    Linking.openURL(link);
+                  }}
                 >
-                  <View style={styles.iconContainer}>
+                  <View style={[styles.iconContainer, {marginRight: 12 * scale}]}>
                     <LinearGradient
                       colors={['#805AD5', '#6B46C1']}
                       style={StyleSheet.absoluteFill}
@@ -1963,9 +2163,9 @@ const stopLoadingAnimation = () => {
                 </TouchableOpacity>
               </Animated.View>
             )}
-            
-            {/* Sources Links Card */}
-            {foodData.details.sources?.length > 0 && (
+
+            {/* Sources Card - Only show for search mode */}
+            {isSearchMode && foodData?.details?.sources && foodData.details.sources.length > 0 && (
               <Animated.View 
                 style={[
                   styles.macroCard, 
@@ -2011,31 +2211,31 @@ const stopLoadingAnimation = () => {
 
                 {/* Sources Links */}
                 <View style={styles.linksContainer}>
-                  {foodData.details.sources.map((source, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      style={styles.linkRow}
-                      onPress={() => Linking.openURL(source.url)}
-                    >
-                      <Text style={styles.linkText}>{source.name || source.url}</Text>
-                      <Icon name="open-outline" size={16} color={colorScheme === 'dark' ? '#BBBBBB' : '#666666'} />
-                    </TouchableOpacity>
-                  ))}
+                  {foodData.details.sources.map((source, index) => {
+                    // Handle both source formats (search and regular)
+                    const title = source.title || source.name || "Source";
+                    const url = source.url || "";
+                    const snippet = source.snippet || source.description || "";
+                    
+                    return (
+                      <TouchableOpacity 
+                        key={index}
+                        style={styles.sourceItem}
+                        onPress={() => url ? Linking.openURL(url) : null}
+                      >
+                        <Text style={styles.sourceTitle}>{title}</Text>
+                        {url && <Text style={styles.sourceUrl}>{url}</Text>}
+                        {snippet && (
+                          <Text style={styles.sourceSnippet} numberOfLines={3}>{snippet}</Text>
+                        )}
+                      </TouchableOpacity>
+                    );
+                  })}
                 </View>
               </Animated.View>
             )}
           </View>
         </ScrollView>
-        {activeTab === 'Details' && showScrollIndicator && (
-          <Animated.View
-            style={[styles.scrollIndicator, { opacity: scrollIndicatorOpacity }]}
-            pointerEvents={showScrollIndicator ? 'auto' : 'none'}
-          >
-            <TouchableOpacity onPress={scrollToBottom}>
-              <Entypo name="chevron-down" size={32} color={colorScheme === 'dark' ? '#FFF' : '#000'} />
-            </TouchableOpacity>
-          </Animated.View>
-        )}
       </View>
     );
   };
@@ -2227,6 +2427,7 @@ const stopLoadingAnimation = () => {
     const modeDescriptions = {
       fast: 'Fast Mode provides quick results and is great for packaged foods.',
       accurate: 'Accurate Mode uses detailed analysis and is best for complex meals.',
+      search: 'Search Mode (BETA) is our experimental feature for advanced search capabilities.',
     };
     
     Alert.alert(
@@ -2282,6 +2483,44 @@ const stopLoadingAnimation = () => {
             }
           },
           style: currentMode === 'accurate' ? 'default' : 'default'
+        },
+        { 
+          text: `Switch to ${MODE_LABELS['search']}`,
+          onPress: async () => {
+            if (currentMode !== 'search') {
+              if (isSubscribed || isFirstDayUnlimited) {
+                await AsyncStorage.setItem('selectedMode', 'search');
+                crossfadeChipText('search');
+                Haptics.selectionAsync();
+              } else {
+                const freeSearchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+                if (freeSearchScansUsed === '1') {
+                  Alert.alert(
+                    'Daily Limit Reached',
+                    'You have already used your daily Search Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+                  );
+                  return;
+                }
+                Alert.alert(
+                  'Heads Up!',
+                  'You only get one search scan a day on the free plan, so make it count!',
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    {
+                      text: 'OK',
+                      onPress: async () => {
+                        await AsyncStorage.setItem('selectedMode', 'search');
+                        crossfadeChipText('search');
+                        Haptics.selectionAsync();
+                      },
+                    },
+                  ],
+                  { cancelable: false }
+                );
+              }
+            }
+          },
+          style: currentMode === 'search' ? 'default' : 'default'
         },
       ]
     );
@@ -2364,15 +2603,28 @@ const stopLoadingAnimation = () => {
   // Update handleSuccessfulScan to mark that user has scanned
   const handleSuccessfulScan = async (parsedData, imageUri, barcodeData, hasDrawing = false, actualModel = null) => {
     try {
-      console.log("Received food data:", JSON.stringify(parsedData?.food?.name));
+      console.log('[FOODSCAN] handleSuccessfulScan called with food:', parsedData?.food?.name);
+      console.log('[FOODSCAN] API completion status:', parsedData?._isProcessingComplete);
       
       // Ensure parsedData has valid structure
       if (!parsedData || !parsedData.food) {
-        console.error("Invalid parsedData structure:", parsedData);
+        console.error("[FOODSCAN] Invalid parsedData structure:", parsedData);
         setNoFoodFound(true);
         return false;
       }
       
+      // Update visualization with scan data if in search mode
+      if (selectedMode === SEARCH_MODE && visualizationRef.current) {
+        // Create a combined data object that includes both food and details
+        const combinedData = {
+          food: parsedData.food,
+          details: parsedData.details || {},
+          _isProcessingComplete: true
+        };
+        console.log('Updating visualization with data:', JSON.stringify(combinedData, null, 2));
+        visualizationRef.current.updateWithScanData(combinedData);
+      }
+
       // First fade out existing content
       await new Promise((resolve) => {
         Animated.timing(tabFadeAnim, {
@@ -2382,18 +2634,93 @@ const stopLoadingAnimation = () => {
         }).start(resolve);
       });
 
-      // Then update the data
-      setFoodData(parsedData.food);
+      // Then update the data - IMPORTANT: Include both food and details
+      // Ensure data is properly structured for the current mode
+      let foodDataToSet;
+      
+      if (selectedMode === SEARCH_MODE || parsedData._scanType === 'search') {
+        // For search mode, maintain the details object structure
+        foodDataToSet = {
+          ...parsedData.food,
+          details: parsedData.details || {},
+          _scanType: 'search'
+        };
+      } else {
+        // First, check where the details are located - they might be nested in food object or at top level
+        // Determine the right location of details - check if details exists at top level or nested in food
+        const detailsSource = parsedData.details || parsedData.food.details || {};
+        
+        console.log("Details source location:", {
+          topLevelDetails: !!parsedData.details,
+          nestedInFood: !!parsedData.food.details,
+          detailsSource
+        });
+        
+        // For regular mode, ensure details are structured as expected
+        // Make sure details have the correct structure with all properties we expect
+        const details = {
+          ...detailsSource,
+          // Explicitly extract values with proper fallbacks
+          summary: detailsSource.summary || null,
+          prepTime: detailsSource.prepTime || null,
+          servingSize: detailsSource.servingSize || 
+                      (parsedData.food.servingSize ? 
+                        `${parsedData.food.servingSize.amount || 1} ${parsedData.food.servingSize.unit || 'serving'}` : 
+                        null),
+          wikipediaLink: detailsSource.wikipediaLink || null,
+          // If preparation steps exist, make sure they're properly formatted
+          preparation: detailsSource.preparation || null
+        };
+        
+        foodDataToSet = {
+          ...parsedData.food,
+          details: details,
+          _scanType: 'regular'
+        };
+      }
+      
+      console.log("Setting food data:", JSON.stringify(foodDataToSet, null, 2));
+      setFoodData(foodDataToSet);
       setNoFoodFound(false);
-      setActiveTab('Nutrition');  // or whatever default tab you want
+      setActiveTab('Nutrition');
 
-      // Finally fade in new content
+      // Process scan data in the visualization BEFORE fading in results content
+      // This ensures animation steps happen correctly
+      if (visualizationRef.current) {
+        // Make sure parsedData has _isProcessingComplete flag
+        if (!parsedData._isProcessingComplete) {
+          console.log('[FOODSCAN] Adding missing _isProcessingComplete flag to parsedData');
+          parsedData._isProcessingComplete = true;
+        }
+        
+        // First update with the complete data
+        console.log('[FOODSCAN] Calling updateWithScanData on visualization');
+        visualizationRef.current.updateWithScanData(parsedData);
+        
+        // Wait a short moment before marking API as finished to ensure data is processed
+        console.log('[FOODSCAN] Waiting 300ms before calling setAPIFinished');
+        await new Promise(resolve => {
+          setTimeout(() => {
+            console.log('[FOODSCAN] Calling setAPIFinished(true) on visualization');
+            visualizationRef.current.setAPIFinished(true);
+            resolve();
+          }, 300);
+        });
+        
+        // Add a delay to allow animation steps to complete before hiding visualization
+        console.log('[FOODSCAN] Waiting for visualization steps to complete...');
+        await new Promise(resolve => setTimeout(resolve, 4000));
+      } else {
+        console.log('[FOODSCAN] visualizationRef.current is null - cannot update visualization');
+      }
+      
+      // Now fade in the results
       Animated.timing(tabFadeAnim, {
         toValue: 1,
         duration: 300,
         useNativeDriver: true,
       }).start();
-
+      
       // Check if this is the first scan ever
       const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
       if (hasEverScanned !== 'true') {
@@ -2413,16 +2740,19 @@ const stopLoadingAnimation = () => {
       await storeProductDetails({
         productName: parsedData.food.name,
         imageUri: imageUri,
-        nutrients: parsedData.food,
+        nutrients: {
+          ...parsedData.food,
+          details: foodDataToSet.details // Include the properly formatted details
+        },
         date: new Date().toISOString(),
         hadBarcode: !!barcodeData,
         hasDrawing: hasDrawing,
         modelUsed: actualModel || selectedMode
       });
-
+      
       return true;
     } catch (error) {
-      console.error('Error in handleSuccessfulScan:', error);
+      console.error('[FOODSCAN] Error in handleSuccessfulScan:', error);
       return false;
     }
   };
@@ -2831,6 +3161,605 @@ const stopLoadingAnimation = () => {
     };
   }, []);
 
+  // Function to check if user has reached their search scan limit
+  const checkSearchScanLimit = async () => {
+    try {
+      // Skip the check for subscribed users or on first day of app use
+      if (isSubscribed || isFirstDayUnlimited) {
+        return true; // No limit for these users
+      }
+
+      // Load search scan usage
+      const freeSearchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+      const searchScansUsed = parseInt(freeSearchScansUsed, 10) || 0;
+
+      // Free users get 1 search scan per day
+      if (searchScansUsed >= 1) {
+        // User has reached their daily limit
+        const timeLeft = getTimeUntilMidnight().formatted;
+        Alert.alert(
+          "Search Scan Limit Reached",
+          `You've used your daily search scan. Please wait ${timeLeft} or upgrade for unlimited search scans.`,
+          [
+            { text: "OK", style: "default" },
+            { 
+              text: "Upgrade", 
+              onPress: () => navigation.navigate('Subscription'),
+              style: "default" 
+            }
+          ]
+        );
+        return false;
+      }
+      
+      return true; // User can still perform search scans
+    } catch (error) {
+      console.error('Error checking search scan limit:', error);
+      return true; // Default to allowing the scan if there's an error
+    }
+  };
+
+  // Function to increment the search scan count
+  const incrementSearchScanCount = async () => {
+    try {
+      // Skip for subscribed users or on first day
+      if (isSubscribed || isFirstDayUnlimited) {
+        return;
+      }
+
+      // Get current count
+      const freeSearchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+      let count = parseInt(freeSearchScansUsed, 10) || 0;
+      
+      // Increment count
+      count += 1;
+      
+      // Save updated count
+      await AsyncStorage.setItem('freeSearchScansUsed', count.toString());
+      setFreeSearchScansUsed(count);
+      
+      console.log(`Updated search scan count: ${count}`);
+    } catch (error) {
+      console.error('Error incrementing search scan count:', error);
+    }
+  };
+
+  // Add this after renderDetailsTab
+  const renderSearchTab = () => {
+    // Only show this tab for search mode scans
+    const isSearchMode = selectedMode === SEARCH_MODE || (foodData && foodData._scanType === 'search');
+    // Safely access search data with fallbacks
+    const queries = searchQueries || [];
+    const results = searchResults || [];
+    const hasSearchData = queries.length > 0 || results.length > 0;
+    
+    if (!isSearchMode && !hasSearchData) {
+      return (
+        <View style={styles.tabContentContainer}>
+          <Text style={styles.noDataText}>This tab is only available for search mode scans.</Text>
+        </View>
+      );
+    }
+    
+    return (
+      <View style={styles.tabContentContainer}>
+        <ScrollView 
+          showsVerticalScrollIndicator={true} 
+          style={{flex: 1}} 
+          contentContainerStyle={{paddingBottom: 16 * scale}}
+          onScroll={handleScroll}
+          scrollEventThrottle={16}
+          onContentSizeChange={handleContentSizeChange}
+          ref={scrollViewRef}
+          key={`search-scrollview-${activeTab}`}
+        >
+          <View style={styles.macroGridContainer}>
+            {/* Search Queries Card */}
+            {queries.length > 0 && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[0],
+                    transform: [
+                      {
+                        scale: cardAnimations[0].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[0].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(100).springify()}
+              >
+                <View style={styles.macroHeaderContainer}>
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#4299E1', '#3182CE']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="search-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Search Queries</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.queriesContainer}>
+                  {queries.map((query, index) => (
+                    <View key={index} style={styles.queryItem}>
+                      <Icon name="search-outline" size={16} color={colorScheme === 'dark' ? '#BBB' : '#666'} />
+                      <Text style={styles.queryText}>{query}</Text>
+                    </View>
+                  ))}
+                </View>
+              </Animated.View>
+            )}
+            
+            {/* Search Results Card */}
+            {results.length > 0 && (
+              <Animated.View 
+                style={[
+                  styles.macroCard, 
+                  { height: 'auto', minHeight: 100 * scale, marginBottom: 6 * scale },
+                  {
+                    opacity: cardAnimations[1],
+                    transform: [
+                      {
+                        scale: cardAnimations[1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [0.8, 1],
+                        }),
+                      },
+                      {
+                        translateY: cardAnimations[1].interpolate({
+                          inputRange: [0, 1],
+                          outputRange: [50, 0],
+                        }),
+                      },
+                    ],
+                  }
+                ]}
+                entering={FadeInDown.delay(200).springify()}
+              >
+                <View style={styles.macroHeaderContainer}>
+                  <View style={styles.iconLabelContainer}>
+                    <View style={[styles.iconContainer]}>
+                      <LinearGradient
+                        colors={['#48BB78', '#38A169']}
+                        style={StyleSheet.absoluteFill}
+                        start={{ x: 0, y: 0 }}
+                        end={{ x: 1, y: 1 }}
+                      />
+                      <Icon name="globe-outline" size={20} color="#FFF" />
+                    </View>
+                    <Text style={styles.macroLabel}>Search Results</Text>
+                  </View>
+                </View>
+                
+                <View style={styles.resultsContainer}>
+                  {results.map((result, index) => {
+                    const title = result.title || result.name || "Result";
+                    const url = result.url || "";
+                    const snippet = result.snippet || result.description || "";
+                    
+                    return (
+                      <View key={index} style={styles.resultItem}>
+                        <Text style={styles.resultTitle}>{title}</Text>
+                        {url && (
+                          <TouchableOpacity onPress={() => Linking.openURL(url)}>
+                            <Text style={styles.resultUrl}>{url}</Text>
+                          </TouchableOpacity>
+                        )}
+                        {snippet && (
+                          <Text style={styles.resultSnippet} numberOfLines={3}>{snippet}</Text>
+                        )}
+                      </View>
+                    );
+                  })}
+                </View>
+              </Animated.View>
+            )}
+            
+            {queries.length === 0 && results.length === 0 && (
+              <View style={styles.noSearchContainer}>
+                <Text style={styles.noSearchText}>No search data available.</Text>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Update the renderTabNavigator function
+  const renderTabNavigator = () => {
+    // Only show the search tab for search mode scans
+    const isSearchMode = selectedMode === SEARCH_MODE || (foodData && foodData._scanType === 'search');
+    // Safely access search data with fallbacks
+    const queries = searchQueries || [];
+    const results = searchResults || [];
+    const hasSearchData = queries.length > 0 || results.length > 0;
+    const showSearchTab = isSearchMode || hasSearchData;
+    
+    return (
+      <View style={styles.tabNavigator}>
+        <ScrollView
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          contentContainerStyle={styles.tabButtonsContainer}
+        >
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              activeTab === 'Nutrition' && styles.activeTabButton,
+            ]}
+            onPress={() => setActiveTab('Nutrition')}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === 'Nutrition' && styles.activeTabButtonText,
+              ]}
+            >
+              Nutrition
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              activeTab === 'Ingredients' && styles.activeTabButton,
+            ]}
+            onPress={() => setActiveTab('Ingredients')}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === 'Ingredients' && styles.activeTabButtonText,
+              ]}
+            >
+              Ingredients
+            </Text>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            style={[
+              styles.tabButton,
+              activeTab === 'Details' && styles.activeTabButton,
+            ]}
+            onPress={() => setActiveTab('Details')}
+          >
+            <Text
+              style={[
+                styles.tabButtonText,
+                activeTab === 'Details' && styles.activeTabButtonText,
+              ]}
+            >
+              Details
+            </Text>
+          </TouchableOpacity>
+          
+          {showSearchTab && (
+            <TouchableOpacity
+              style={[
+                styles.tabButton,
+                activeTab === 'Search' && styles.activeTabButton,
+              ]}
+              onPress={() => setActiveTab('Search')}
+            >
+              <Text
+                style={[
+                  styles.tabButtonText,
+                  activeTab === 'Search' && styles.activeTabButtonText,
+                ]}
+              >
+                Search
+              </Text>
+            </TouchableOpacity>
+          )}
+        </ScrollView>
+      </View>
+    );
+  };
+
+  // Update the renderTabContent function to render the Search tab
+  const renderTabContent = () => {
+    switch (activeTab) {
+      case 'Nutrition':
+        return renderNutritionTab();
+      case 'Ingredients':
+        return renderIngredientsTab();
+      case 'Details':
+        return renderDetailsTab();
+      case 'Search':
+        return renderSearchTab();
+      default:
+        return renderNutritionTab();
+    }
+  };
+
+  // Search-related state
+  const [searchQueries, setSearchQueries] = useState([]);
+  const [searchResults, setSearchResults] = useState([]);
+  
+  // Add detection states for search
+  const [detectedFoodItems, setDetectedFoodItems] = useState([]);
+  const [detectedBrand, setDetectedBrand] = useState('');
+  const [detectedPackaging, setDetectedPackaging] = useState('');
+  const [detectedPortionSize, setDetectedPortionSize] = useState('');
+  const [processingSteps, setProcessingSteps] = useState([]);
+
+  
+  // Add this where you use the visualization ref or initialize the component
+  const updateVisualizationWithSearch = (queries = [], results = []) => {
+    console.log('[FOODSCAN] updateVisualizationWithSearch called with:', { 
+      queries: queries?.length || 0, 
+      results: results?.length || 0 
+    });
+    
+    if (!visualizationRef.current) {
+      console.log('[FOODSCAN] No visualization ref available');
+      return;
+    }
+    
+    // First update food items if we have a valid food name in queries
+    if (queries && queries.length > 0) {
+      // Extract potential food items from search queries 
+      const foodKeywords = ['nutrition facts for', 'calories in'];
+      let foodFound = false;
+      
+      // First pass: Try to find a food item from the queries
+      for (const query of queries) {
+        if (!query) continue;
+        
+        for (const keyword of foodKeywords) {
+          if (query.toLowerCase().includes(keyword)) {
+            const match = query.match(new RegExp(`${keyword}\\s+(.+?)(?:$|\\.|,)`, 'i'));
+            if (match && match[1]) {
+              const foodName = match[1].trim();
+              if (foodName.length > 2) {
+                foodFound = true;
+                console.log('[FOODSCAN] Found food in query:', foodName);
+                
+                // Update detected food items state
+                setDetectedFoodItems(prev => {
+                  if (!prev || !prev.includes(foodName)) {
+                    return [...(prev || []), foodName];
+                  }
+                  return prev;
+                });
+                
+                // This is critical for step progression - update food items FIRST
+                console.log('[FOODSCAN] Updating food items in visualization');
+                visualizationRef.current.updateWithFoodItems([foodName]);
+                break;
+              }
+            }
+          }
+        }
+        if (foodFound) break;
+      }
+    }
+    
+    // Next, update search queries (ensures search step activates)
+    if (queries && queries.length > 0) {
+      console.log('[FOODSCAN] Updating search queries in visualization');
+      
+      // Store search queries state
+      setSearchQueries(prev => {
+        // Handle duplicate queries
+        const combined = [...(prev || [])];
+        // Only add queries that aren't already in the list
+        queries.forEach(query => {
+          if (!combined.includes(query)) {
+            combined.push(query);
+          }
+        });
+        return combined;
+      });
+
+      // Update visualization with search queries
+      visualizationRef.current.updateWithSearchQueries(queries);
+    }
+    
+    // Finally, update search results (ensures process step activates)
+    if (results && results.length > 0) {
+      console.log('[FOODSCAN] Updating search results in visualization');
+      
+      // Store search results state
+      setSearchResults(prev => {
+        const combined = [...(prev || [])];
+        // Only add results that aren't already in the list
+        results.forEach(result => {
+          if (!combined.some(existing => existing.url === result.url)) {
+            combined.push(result);
+          }
+        });
+        return combined;
+      });
+
+      // Update visualization with search results
+      visualizationRef.current.updateWithSearchResults(results);
+    }
+  };
+
+  // Update the handleSearchModeScan function to safely handle search data
+  const handleSearchModeScan = async (base64Image, imageUri, barcodeData, hasDrawing) => {
+    try {
+      console.log('[FOODSCAN] handleSearchModeScan called');
+      
+      // Check if we've reached the search scan limit
+      const canScan = await checkSearchScanLimit();
+      if (!canScan) {
+        console.log('[FOODSCAN] Search scan limit reached');
+        return false;
+      }
+      
+      // Increment search scan count
+      await incrementSearchScanCount();
+      
+      // Reset state variables
+      console.log('[FOODSCAN] Resetting state variables');
+      setSearchQueries([]);
+      setSearchResults([]);
+      setDetectedFoodItems([]);
+      setDetectedBrand('');
+      
+      // Clear previous visualization state
+      if (visualizationRef.current) {
+        console.log('[FOODSCAN] Resetting visualization');
+        visualizationRef.current.reset();
+      }
+      
+      // Add a small delay to ensure reset is complete before starting search
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
+      // Start timer for performance tracking
+      const startTime = Date.now();
+      
+      // Define the search tracking function
+      const searchTrackingFn = (queries = [], results = []) => {
+        console.log('[FOODSCAN] searchTrackingFn called with:', {
+          queriesCount: queries?.length || 0,
+          resultsCount: results?.length || 0
+        });
+        
+        // Update the visualization with latest search data
+        updateVisualizationWithSearch(queries, results);
+      };
+      
+      // Get API key from AsyncStorage
+      const apiKey = await AsyncStorage.getItem('@apikey');
+      
+      // Call the web search provider with tracking function
+      console.log('[FOODSCAN] Calling WebSearchProvider.handleWebSearch');
+      const result = await WebSearchProvider.handleWebSearch({
+        provider,
+        selectedModel: MODELS[provider]?.regular || MODELS['anthropic'].regular,
+        selectedMode: 'search',
+        base64Image,
+        barcodeData,
+        hasDrawing,
+        apiKey,
+        handleSuccessfulScan,
+        handleError,
+        handleSearchTracking: searchTrackingFn,
+        imageUri,
+        startTimeRef: { current: startTime },
+        updateAverageProcessingTime,
+        isFirstDayUnlimited: user?.isFreeTrialActive || false,
+        isSubscribed: user?.isSubscribed || false,
+        setNoFoodFound,
+        setFoodData,
+        setActiveTab,
+      });
+      
+      console.log('[FOODSCAN] WebSearchProvider.handleWebSearch completed');
+      
+      // Don't call setAPIFinished here - it's already called in handleSuccessfulScan
+      // Let the natural completion of the API process handle this
+      return result;
+    } catch (error) {
+      console.error('[FOODSCAN] Error in handleSearchModeScan:', error);
+      handleError(error, imageUri, barcodeData);
+      return false;
+    }
+  };
+  
+  // For completion, add a helper function to safely get food items data
+  const getFoodItems = () => {
+    const items = [];
+    const detectedItems = detectedFoodItems || [];
+    
+    // Add detected items first
+    detectedItems.forEach(item => {
+      if (!items.includes(item)) {
+        items.push(item);
+      }
+    });
+    
+    // Then add from foodData if available
+    if (foodData?.food) {
+      if (foodData.food.name && !items.includes(foodData.food.name)) {
+        items.push(foodData.food.name);
+      }
+      
+      // Check for ingredients list
+      if (foodData.food.ingredients && Array.isArray(foodData.food.ingredients)) {
+        foodData.food.ingredients.forEach(ingredient => {
+          if (ingredient.name && !items.includes(ingredient.name)) {
+            items.push(ingredient.name);
+          }
+        });
+      }
+    }
+    
+    return items;
+  };
+
+  // Add visualization and cancellation states
+  const visualizationRef = useRef(null);
+  const [scanDuration, setScanDuration] = useState(0);
+  const scanTimerRef = useRef(null);
+
+  // Add functions to manage scan timer and cancellation
+  const startScanTimer = () => {
+    // Reset scan duration
+    setScanDuration(0);
+    
+    // Clear any existing timer
+    if (scanTimerRef.current) {
+      clearInterval(scanTimerRef.current);
+    }
+    
+    // Start a new timer that updates every second
+    scanTimerRef.current = setInterval(() => {
+      setScanDuration(prev => prev + 1);
+    }, 1000);
+  };
+
+  const handleCancelScan = () => {
+    // Show warning if scan has been running for more than 4 seconds
+    if (scanDuration > 4) {
+      Alert.alert(
+        "Cancel Scan?",
+        "This scan has been running for a while and will still count toward your daily limit if you cancel now.",
+        [
+          {
+            text: "Keep Scanning",
+            style: "cancel"
+          },
+          {
+            text: "Cancel Anyway",
+            onPress: () => {
+              // Stop the scan
+              setIsLoading(false);
+              stopLoadingAnimation();
+              clearInterval(scanTimerRef.current);
+            },
+            style: "destructive"
+          }
+        ]
+      );
+    } else {
+      // Just cancel without warning if under 4 seconds
+      setIsLoading(false);
+      stopLoadingAnimation();
+      clearInterval(scanTimerRef.current);
+    }
+  };
+
   return (
     <ScrollView 
       ref={mainScrollViewRef}
@@ -2973,6 +3902,14 @@ const stopLoadingAnimation = () => {
                   } else {
                     message = `Accurate Scans Left Today: ${Math.max(0, 1 - freeAccurateScansUsed)}`;
                   }
+                } else if (selectedMode === SEARCH_MODE) {
+                  if (isFirstDayUnlimited || isSubscribed) {
+                    message = 'Search Scans: ∞ (Unlimited Plan)';
+                  } else if (isSubscribedPlus) {
+                    message = `Plus plan: ${20 - scanCount} total scans left. (Search scans are unlimited)`;
+                  } else {
+                    message = `Search Scans Left Today: ${Math.max(0, 1 - freeSearchScansUsed)}`;
+                  }
                 } else {
                   if (isFirstDayUnlimited || isSubscribed) {
                     message = isSubscribed 
@@ -3039,12 +3976,17 @@ const stopLoadingAnimation = () => {
                 style={[
                   styles.chip,
                   selectedMode === 'accurate' && styles.chipAccurate,
+                  selectedMode === SEARCH_MODE && styles.chipSearch,
                   { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' }
                 ]}
               >
                 <View style={styles.chipContent}>
                   <Icon
-                    name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'}
+                    name={
+                      selectedMode === 'fast' ? 'flash' : 
+                      selectedMode === 'accurate' ? 'shield-checkmark' : 
+                      'search'
+                    }
                     size={16}
                     color={chipAppearance === 'dark' ? '#fff' : '#444'}
                   />
@@ -3145,6 +4087,7 @@ const stopLoadingAnimation = () => {
               {activeTab === 'Nutrition' && renderNutritionTab()}
               {activeTab === 'Ingredients' && renderIngredientsTab()}
               {activeTab === 'Details' && renderDetailsTab()}
+              {activeTab === 'Search' && renderSearchTab()}
             </Animated.View>
             {renderButtons()}
           </ScrollView>
@@ -3182,93 +4125,120 @@ const stopLoadingAnimation = () => {
   animationType="fade"
   visible={isLoading}
 >
-  <BlurView
-    intensity={30}
-    tint={colorScheme === 'dark' ? 'dark' : 'light'}
-    style={styles.modalBackground}
-  >
-    <View style={styles.loadingCard}>
-      {/* Mode Badge */}
-      <View style={styles.modeBadgeContainer}>
-        <BlurView intensity={50} style={styles.modeBadge}>
-          <Icon 
-            name={
-              selectedMode === 'fast' ? 'flash' : 
-              selectedMode === 'accurate' ? 'shield-checkmark' : 
-              'search'
-            }
-            size={24} 
-            color={colorScheme === 'dark' ? '#fff' : '#000'} 
-          />
-          <Text style={styles.modeBadgeText}>
-            {
-              selectedMode === 'fast' ? 'Fast Scan' : 
-              selectedMode === 'accurate' ? 'Accurate Scan' : 
-              'Search Scan'
-            }
-          </Text>
-        </BlurView>
-      </View>
-
-      {/* Loading Indicator and Text */}
-      <View style={styles.loadingContent}>
-        <ActivityIndicator 
-          size="large" 
-          color={colorScheme === 'dark' ? '#FFF' : '#000'} 
+  {selectedMode === SEARCH_MODE ? (
+    // Search mode loading UI with visualization component
+    <BlurView
+      intensity={30}
+      tint={colorScheme === 'dark' ? 'dark' : 'light'}
+      style={styles.modalBackground}
+    >
+      <View style={styles.searchLoadingContainer}>
+        <FunctionalAIVisualization
+          isDark={colorScheme === 'dark'}
+          isVisible={isLoading}
+          ref={visualizationRef}
         />
-        
-        <Animated.View style={[styles.loadingTextContainer]}>
-          {isHoldingRef.current ? (
-            <Animated.Text style={[styles.loadingText, { opacity: longLoadingTextAnim }]}>
-              {currentLoadingText}
-            </Animated.Text>
-          ) : (
-            <Animated.Text style={[styles.loadingText, { opacity: loadingTextFadeAnim }]}>
-              {currentLoadingText}
-            </Animated.Text>
-          )}
-        </Animated.View>
+        <TouchableOpacity 
+          style={styles.cancelButton} 
+          onPress={handleCancelScan}
+          activeOpacity={0.7}
+        >
+          <BlurView intensity={50} style={styles.cancelButtonBlur}>
+            <Text style={styles.cancelButtonText}>Cancel</Text>
+          </BlurView>
+        </TouchableOpacity>
       </View>
+    </BlurView>
+  ) : (
+    // Regular loading UI for fast and accurate modes
+    <BlurView
+      intensity={30}
+      tint={colorScheme === 'dark' ? 'dark' : 'light'}
+      style={styles.modalBackground}
+    >
+      <View style={styles.loadingCard}>
+        {/* Mode Badge */}
+        <View style={styles.modeBadgeContainer}>
+          <BlurView intensity={50} style={styles.modeBadge}>
+            <Icon 
+              name={
+                selectedMode === 'fast' ? 'flash' : 
+                selectedMode === 'accurate' ? 'shield-checkmark' : 
+                'search'
+              }
+              size={24} 
+              color={colorScheme === 'dark' ? '#fff' : '#000'} 
+            />
+            <Text style={styles.modeBadgeText}>
+              {
+                selectedMode === 'fast' ? 'Fast Scan' : 
+                selectedMode === 'accurate' ? 'Accurate Scan' : 
+                'Search Scan'
+              }
+            </Text>
+          </BlurView>
+        </View>
 
-      {/* Info Cards */}
-      <View style={styles.infoCardsContainer}>
-        {/* Scans Left Card */}
-        <BlurView intensity={50} style={styles.infoCard}>
-          <Icon 
-            name="scan-outline" 
-            size={20} 
-            color={colorScheme === 'dark' ? '#fff' : '#000'} 
+        {/* Loading Indicator and Text */}
+        <View style={styles.loadingContent}>
+          <ActivityIndicator 
+            size="large" 
+            color={colorScheme === 'dark' ? '#FFF' : '#000'} 
           />
-          <Text style={styles.infoCardText}>
-            {isFirstDayUnlimited || isSubscribed ? (
-              'Unlimited Scans'
+          
+          <Animated.View style={[styles.loadingTextContainer]}>
+            {isHoldingRef.current ? (
+              <Animated.Text style={[styles.loadingText, { opacity: longLoadingTextAnim }]}>
+                {currentLoadingText}
+              </Animated.Text>
             ) : (
-              selectedMode === 'accurate' ? 
-                `${Math.max(0, 1 - freeAccurateScansUsed - 1)} left` :
-                isSubscribedPlus ?
-                  `${20 - scanCount - 1} left` :
-                  `${2 - scanCount - 1} left`
+              <Animated.Text style={[styles.loadingText, { opacity: loadingTextFadeAnim }]}>
+                {currentLoadingText}
+              </Animated.Text>
             )}
-          </Text>
-        </BlurView>
+          </Animated.View>
+        </View>
 
-        {/* Processing Time Card */}
-        <BlurView intensity={50} style={styles.infoCard}>
-          <Icon 
-            name="time-outline" 
-            size={20} 
-            color={colorScheme === 'dark' ? '#fff' : '#000'} 
-          />
-          <Text style={styles.infoCardText}>
-            {showProcessingTime ? 
-              `${processingTime}s` : 
-              `~${getPredictedProcessingTime()}s`
-            }
-          </Text>
-        </BlurView>
+        {/* Info Cards */}
+        <View style={styles.infoCardsContainer}>
+          {/* Scans Left Card */}
+          <BlurView intensity={50} style={styles.infoCard}>
+            <Icon 
+              name="scan-outline" 
+              size={20} 
+              color={colorScheme === 'dark' ? '#fff' : '#000'} 
+            />
+            <Text style={styles.infoCardText}>
+              {isFirstDayUnlimited || isSubscribed ? (
+                'Unlimited Scans'
+              ) : (
+                selectedMode === 'accurate' ? 
+                  `${Math.max(0, 1 - freeAccurateScansUsed - 1)} left` :
+                  isSubscribedPlus ?
+                    `${20 - scanCount - 1} left` :
+                    `${2 - scanCount - 1} left`
+              )}
+            </Text>
+          </BlurView>
+
+          {/* Processing Time Card */}
+          <BlurView intensity={50} style={styles.infoCard}>
+            <Icon 
+              name="time-outline" 
+              size={20} 
+              color={colorScheme === 'dark' ? '#fff' : '#000'} 
+            />
+            <Text style={styles.infoCardText}>
+              {showProcessingTime ? 
+                `${processingTime}s` : 
+                `~${getPredictedProcessingTime()}s`
+              }
+            </Text>
+          </BlurView>
+        </View>
       </View>
-    </View>
-  </BlurView>
+    </BlurView>
+  )}
 </Modal>
 
       <Modal
@@ -4341,9 +5311,11 @@ const scale = Math.min(scaleWidth, scaleHeight);
       shadowOpacity: 1,
       shadowRadius: 10,
       borderRadius: 200,
-      padding: 3,
+      padding: 3 * scale,
     },
     overlayContainer: {
+      width: '100%',
+      height: '100%',
       position: 'absolute',
       top: 0,
       bottom: 0,
@@ -4510,19 +5482,25 @@ const scale = Math.min(scaleWidth, scaleHeight);
       paddingHorizontal: 16,
     },
     sourceItem: {
-      padding: 16,
+      padding: 12 * scale,
       borderBottomWidth: 1,
-      borderBottomColor: colorScheme === 'dark' ? '#333' : '#EEE',
+      borderBottomColor: colorScheme === 'dark' ? '#333333' : '#E0E0E0',
+      marginBottom: 8 * scale,
     },
-    sourceName: {
+    sourceTitle: {
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '500',
-      marginBottom: 4,
+      marginBottom: 4 * scale,
     },
-    sourceLink: {
-      color: '#3498DB',
-      fontSize: 14,
+    sourceUrl: {
+      color: colorScheme === 'dark' ? '#64B5F6' : '#1976D2',
+      fontSize: 14 * scale,
+      marginBottom: 6 * scale,
+    },
+    sourceSnippet: {
+      color: colorScheme === 'dark' ? '#BBBBBB' : '#555555',
+      fontSize: 14 * scale,
     },
     searchStatusContainer: {
       width: '100%',
@@ -4852,10 +5830,10 @@ const scale = Math.min(scaleWidth, scaleHeight);
       marginRight: 6,
     },
     linkText: {
+      color: colorScheme === 'dark' ? '#64B5F6' : '#1976D2',
+      fontSize: 15 * scale,
       flex: 1,
-      fontSize: 15,
-      color: '#3498DB',
-      marginRight: 6,
+      marginRight: 8 * scale,
     },
     noDataText: {
       fontSize: 16,
@@ -4886,8 +5864,9 @@ const scale = Math.min(scaleWidth, scaleHeight);
     },
     // Updated styles for both tabs
     factsContainer: {
-      paddingHorizontal: 10 * scale,
+      paddingHorizontal: 16 * scale,
       paddingTop: 10 * scale,
+      paddingBottom: 10 * scale,
     },
     
     factRow: {
@@ -4943,27 +5922,28 @@ const scale = Math.min(scaleWidth, scaleHeight);
     },
     
     stepsContainer: {
-      paddingVertical: 6 * scale,
+      paddingVertical: 10 * scale,
+      paddingHorizontal: 16 * scale,
     },
     
     linksContainer: {
-      paddingHorizontal: 10 * scale,
-      paddingVertical: 6 * scale,
+      padding: 12 * scale,
     },
     
     linkRow: {
       flexDirection: 'row',
+      justifyContent: 'space-between',
       alignItems: 'center',
-      paddingVertical: 10 * scale,
-      paddingHorizontal: 10 * scale,
+      paddingVertical: 8 * scale,
+      borderBottomWidth: 1,
+      borderBottomColor: colorScheme === 'dark' ? '#333333' : '#E0E0E0',
     },
     
     linkText: {
-      flex: 1,
-      fontSize: 15 * scale,
       color: colorScheme === 'dark' ? '#64B5F6' : '#1976D2',
-      marginLeft: 10 * scale,
-      marginRight: 10 * scale,
+      fontSize: 15 * scale,
+      flex: 1,
+      marginRight: 8 * scale,
     },
     
     summaryText: {
@@ -5059,6 +6039,94 @@ const scale = Math.min(scaleWidth, scaleHeight);
       fontSize: 14 * scale,
       fontWeight: '500',
       marginLeft: 6 * scale,
+    },
+    queriesContainer: {
+      marginTop: 10,
+      paddingHorizontal: 10 * scale,
+    },
+    queryItem: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      paddingVertical: 8 * scale,
+      paddingHorizontal: 8 * scale,
+      marginBottom: 6 * scale,
+      backgroundColor: colorScheme === 'dark' ? '#252525' : '#f0f0f0',
+      borderRadius: 8,
+    },
+    queryText: {
+      marginLeft: 8 * scale,
+      fontSize: 14 * scale,
+      fontWeight: '400',
+      color: colorScheme === 'dark' ? '#e0e0e0' : '#333',
+    },
+    resultsContainer: {
+      marginTop: 10,
+      paddingHorizontal: 10 * scale,
+    },
+    resultItem: {
+      marginBottom: 12 * scale,
+      paddingVertical: 8 * scale,
+      paddingHorizontal: 8 * scale,
+      backgroundColor: colorScheme === 'dark' ? '#252525' : '#f0f0f0',
+      borderRadius: 8,
+    },
+    resultTitle: {
+      fontSize: 15 * scale,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#e0e0e0' : '#333',
+      marginBottom: 4 * scale,
+    },
+    resultUrl: {
+      fontSize: 13 * scale,
+      color: colorScheme === 'dark' ? '#64B5F6' : '#1976D2',
+      marginBottom: 6 * scale,
+    },
+    resultSnippet: {
+      fontSize: 13 * scale,
+      color: colorScheme === 'dark' ? '#bbb' : '#555',
+      lineHeight: 18 * scale,
+    },
+    noSearchContainer: {
+      padding: 16 * scale,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    noSearchText: {
+      fontSize: 16 * scale,
+      color: colorScheme === 'dark' ? '#aaa' : '#666',
+      textAlign: 'center',
+    },
+    searchLoadingSquare: {
+      width: 100 * scale,
+      height: 100 * scale,
+      backgroundColor: '#FF0000', // Red square
+      borderRadius: 8 * scale,
+    },
+    searchLoadingContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      alignItems: 'center',
+      width: '100%',
+      paddingBottom: 24 * scale,
+    },
+    cancelButton: {
+      marginTop: 20 * scale,
+      borderRadius: 20 * scale,
+      overflow: 'hidden',
+      width: 120 * scale,
+    },
+    cancelButtonBlur: {
+      paddingVertical: 12 * scale,
+      paddingHorizontal: 20 * scale,
+      borderRadius: 20 * scale,
+      borderWidth: 1,
+      borderColor: 'rgba(255, 59, 48, 0.5)',
+    },
+    cancelButtonText: {
+      color: 'rgb(255, 59, 48)',
+      fontSize: 16 * scale,
+      fontWeight: '600',
+      textAlign: 'center',
     },
   });
 
