@@ -133,14 +133,14 @@ function HomeTabs() {
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
-      <Tab.Screen 
+      {/* <Tab.Screen 
         name="Search (BETA)" 
         component={SearchScreen}
         options={{ 
           tabBarLabel: 'Search (BETA)',
           tabBarTestID: 'search-beta-tab'
         }}
-      />
+      /> */}
     </Tab.Navigator>
   );
 }

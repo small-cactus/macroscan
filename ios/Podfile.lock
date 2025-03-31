@@ -1606,7 +1606,7 @@ PODS:
     - React-Core
   - RNDateTimePicker (8.2.0):
     - React-Core
-  - RNGestureHandler (2.16.2):
+  - RNGestureHandler (2.25.0):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -1631,7 +1631,7 @@ PODS:
     - React-Core
   - RNKeychain (8.2.0):
     - React-Core
-  - RNReanimated (3.10.1):
+  - RNReanimated (3.6.2):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -2211,10 +2211,10 @@ SPEC CHECKSUMS:
   RNCMaskedView: 4c5ee1c8667d56077246cc6d1977f77393923560
   RNCPicker: 15ad063c72ecba748be9edea62a5bdce53090aa6
   RNDateTimePicker: 818460dc31b0dc5ec58289003e27dd8d022fb79c
-  RNGestureHandler: 326e35460fb6c8c64a435d5d739bea90d7ed4e49
+  RNGestureHandler: 0185e60058b516fe374233587dbb48af62ec5f5a
   RNIap: 38aca65c5c190248928fd126a31991bf52a91878
   RNKeychain: bbe2f6d5cc008920324acb49ef86ccc03d3b38e4
-  RNReanimated: def444e044c354f38bb0a5926a8583ba19d944c1
+  RNReanimated: dd4f379b94064ded836fa82efaf2c3061f5d3b0a
   RNScreens: a2d8a2555b4653d7a19706eb172f855657ac30d7
   RNStoreReview: 613c43e9132998ed41a65946e20c223c91b36464
   RNSVG: e77adf5edb2302f0f10dd03a09e92bb9420d914e

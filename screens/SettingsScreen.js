@@ -65,16 +65,16 @@ const SettingsScreen = () => {
       navigateTo: "AboutScreen",
       symbol: "info.circle.fill"
     },
-    {
-      title: "Multi-Food Scan (BETA)",
-      navigateTo: "MultiFoodScanScreen",
-      symbol: "fork.knife"
-    },
-    {
-      title: "Search Mode (BETA)",
-      navigateTo: "SearchScreen",
-      symbol: "fork.knife"
-    }
+    // {
+    //   title: "Multi-Food Scan (BETA)",
+    //   navigateTo: "MultiFoodScanScreen",
+    //   symbol: "fork.knife"
+    // },
+    // {
+    //   title: "Search Mode (BETA)",
+    //   navigateTo: "SearchScreen",
+    //   symbol: "fork.knife"
+    // }
   ];
 
   // Update the filtering logic to check against the array of authorized userStrings

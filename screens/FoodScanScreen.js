@@ -2396,6 +2396,12 @@ const stopLoadingAnimation = () => {
       LayoutAnimation.easeInEaseOut();
       setPrevMode(selectedMode);
       setSelectedMode(newMode);
+      
+      // Reset the hasSeenSearchInfoSheetThisSession when changing away from search mode
+      // or when switching to search mode from another mode
+      if (selectedMode === 'search' || newMode === 'search') {
+        setHasSeenSearchInfoSheetThisSession(false);
+      }
 
       Animated.timing(chipTextOpacity, {
         toValue: 1,
@@ -3764,6 +3770,7 @@ const stopLoadingAnimation = () => {
   // Add these new state variables near other state declarations
   const [showSearchInfoSheet, setShowSearchInfoSheet] = useState(false);
   const [hasSeenSearchInfoSheetThisSession, setHasSeenSearchInfoSheetThisSession] = useState(false);
+  const [searchInfoSheetKey, setSearchInfoSheetKey] = useState(0);
 
   // Update the useEffect that depends on selectedMode
   useEffect(() => {
@@ -3772,20 +3779,23 @@ const stopLoadingAnimation = () => {
       if (isLoading) {
         setLoadingTextQueue(getLoadingTextsByMode(selectedMode));
       }
+      
+      // Reset hasSeenSearchInfoSheetThisSession when switching away from search mode
+      if (selectedMode !== 'search' && prevMode === 'search') {
+        setHasSeenSearchInfoSheetThisSession(false);
+      }
 
       // New logic to show the info sheet for Search Mode
       if (selectedMode === 'search' && !hasSeenSearchInfoSheetThisSession) {
-        // Optionally check AsyncStorage if you want it shown only once ever
-        // const hasSeenEver = await AsyncStorage.getItem('@has_seen_search_info_sheet');
-        // if (hasSeenEver !== 'true') {
-          setShowSearchInfoSheet(true);
-          setHasSeenSearchInfoSheetThisSession(true);
-          // await AsyncStorage.setItem('@has_seen_search_info_sheet', 'true');
-        // }
+        // Increment the key to force a complete re-render of the component
+        setSearchInfoSheetKey(prevKey => prevKey + 1);
+        // Show the sheet
+        setShowSearchInfoSheet(true);
+        setHasSeenSearchInfoSheetThisSession(true);
       }
     };
     handleModeChange();
-  }, [selectedMode, isLoading]); // Keep existing dependencies
+  }, [selectedMode, isLoading, prevMode, hasSeenSearchInfoSheetThisSession]);
 
   return (
     <ScrollView 
@@ -4492,8 +4502,15 @@ const stopLoadingAnimation = () => {
 
       {/* Add the SearchModeInfoSheet modal */}
       <SearchModeInfoSheet
+        key={searchInfoSheetKey}
         visible={showSearchInfoSheet}
         onClose={() => setShowSearchInfoSheet(false)}
+        onRevertChip={() => {
+          // Revert to the previous mode
+          setSelectedMode(prevMode);
+          setHasSeenSearchInfoSheetThisSession(false);
+          AsyncStorage.setItem('selectedMode', prevMode);
+        }}
       />
     </ScrollView>
   );
