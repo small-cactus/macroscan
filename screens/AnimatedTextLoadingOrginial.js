@@ -2,7 +2,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Animated, StyleSheet, Text } from 'react-native';
 
-const AnimatedTextFoodScan = ({ text, colorScheme, style, delay = 500 }) => {
+const AnimatedTextFoodScan = ({ text, colorScheme, style }) => {
   const [lines, setLines] = useState([]);
 
   const animationsRef = useRef([]);
@@ -15,26 +15,23 @@ const AnimatedTextFoodScan = ({ text, colorScheme, style, delay = 500 }) => {
   }, [text]);
 
   useEffect(() => {
-    // Start animations after delay
-    const timer = setTimeout(() => {
-      animations.forEach((anim) => anim.setValue(0));
+    // Start animations
+    animations.forEach((anim) => anim.setValue(0));
 
-      const animationSequence = animations.map((anim) => {
-        return Animated.timing(anim, {
-          toValue: 1,
-          duration: 500, // Duration for each character's fade-in
-          useNativeDriver: false, // Must be false for opacity animation on Text
-        });
+    const animationSequence = animations.map((anim) => {
+      return Animated.timing(anim, {
+        toValue: 1,
+        duration: 500, // Duration for each character's fade-in
+        useNativeDriver: false, // Must be false for opacity animation on Text
       });
+    });
 
-      Animated.stagger(20, animationSequence).start();
-    }, delay);
+    Animated.stagger(20, animationSequence).start();
 
     return () => {
-      clearTimeout(timer);
       animations.forEach((anim) => anim.stopAnimation());
     };
-  }, [animations, delay]);
+  }, [animations]);
 
   const handleTextLayout = (event) => {
     const { lines } = event.nativeEvent;

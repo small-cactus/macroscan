@@ -139,7 +139,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
     Animated.loop(
       Animated.timing(spinAnim, {
         toValue: 1,
-        duration: 1000,
+        duration: 500,
         useNativeDriver: true,
       })
     ).start();
@@ -211,8 +211,8 @@ const AIVisualization = ({ isDark, isVisible }) => {
           setCurrentRecognizeSubtitleIndex(prevIndex => 
             (prevIndex + 1) % recognizeSubtitles.length
           );
-          triggerSubtitleHaptic(); // Haptic feedback when subtitle changes
-        }, 1200);
+          triggerSubtitleHaptic();
+        }, 600);
         intervalRefs.current.push(recognizeInterval);
         
         // Animate in the recognition step
@@ -225,7 +225,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
           }),
           Animated.timing(recognizeSubtitleAnim, {
             toValue: 1,
-            duration: 300,
+            duration: 150,
             useNativeDriver: true,
           }),
         ]).start();
@@ -233,7 +233,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
         // After a delay, mark recognize text animation as completed
         timeoutRefs.current.push(setTimeout(() => {
           setTextAnimCompleted(prev => ({ ...prev, recognize: true }));
-        }, 1000));
+        }, 500));
         
         // After a delay, complete the recognition step and move to search
         timeoutRefs.current.push(setTimeout(() => {
@@ -242,7 +242,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
           stopSpinner(recognizeSpinAnim);
           Animated.timing(recognizeCheckAnim, {
             toValue: 1,
-            duration: 500,
+            duration: 250,
             useNativeDriver: true,
           }).start();
           setStepStates(prev => ({ ...prev, recognize: STEP_COMPLETED }));
@@ -258,7 +258,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
             setCurrentSearchSubtitleIndex(prevIndex => 
               (prevIndex + 1) % searchSubtitles.length
             );
-            triggerSubtitleHaptic(); // Haptic feedback when subtitle changes
+            triggerSubtitleHaptic();
           }, 300);
           intervalRefs.current.push(searchInterval);
           
@@ -272,7 +272,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
             }),
             Animated.timing(searchSubtitleAnim, {
               toValue: 1,
-              duration: 300,
+              duration: 150,
               useNativeDriver: true,
             }),
           ]).start();
@@ -280,7 +280,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
           // After a delay, mark search text animation as completed
           timeoutRefs.current.push(setTimeout(() => {
             setTextAnimCompleted(prev => ({ ...prev, search: true }));
-          }, 1000));
+          }, 500));
           
           // After a delay, complete the search step and move to processing
           timeoutRefs.current.push(setTimeout(() => {
@@ -289,7 +289,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
             stopSpinner(searchSpinAnim);
             Animated.timing(searchCheckAnim, {
               toValue: 1,
-              duration: 500,
+              duration: 250,
               useNativeDriver: true,
             }).start();
             setStepStates(prev => ({ ...prev, search: STEP_COMPLETED }));
@@ -305,8 +305,8 @@ const AIVisualization = ({ isDark, isVisible }) => {
               setCurrentProcessSubtitleIndex(prevIndex => 
                 (prevIndex + 1) % processSubtitles.length
               );
-              triggerSubtitleHaptic(); // Haptic feedback when subtitle changes
-            }, 800);
+              triggerSubtitleHaptic();
+            }, 400);
             intervalRefs.current.push(processInterval);
             
             // Animate in the processing step
@@ -319,7 +319,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
               }),
               Animated.timing(processSubtitleAnim, {
                 toValue: 1,
-                duration: 300,
+                duration: 150,
                 useNativeDriver: true,
               }),
             ]).start();
@@ -327,7 +327,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
             // After a delay, mark process text animation as completed
             timeoutRefs.current.push(setTimeout(() => {
               setTextAnimCompleted(prev => ({ ...prev, process: true }));
-            }, 1000));
+            }, 500));
             
             // After a delay, complete the processing step and move to results
             timeoutRefs.current.push(setTimeout(() => {
@@ -336,7 +336,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
               stopSpinner(processSpinAnim);
               Animated.timing(processCheckAnim, {
                 toValue: 1,
-                duration: 500,
+                duration: 250,
                 useNativeDriver: true,
               }).start();
               setStepStates(prev => ({ ...prev, process: STEP_COMPLETED }));
@@ -357,7 +357,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
                 }),
                 Animated.timing(resultSubtitleAnim, {
                   toValue: 1,
-                  duration: 400,
+                  duration: 200,
                   useNativeDriver: true,
                 }),
               ]).start();
@@ -365,14 +365,14 @@ const AIVisualization = ({ isDark, isVisible }) => {
               // After a delay, mark result text animation as completed
               timeoutRefs.current.push(setTimeout(() => {
                 setTextAnimCompleted(prev => ({ ...prev, result: true }));
-              }, 1000));
+              }, 500));
               
               // Complete results step after proper delay
               timeoutRefs.current.push(setTimeout(() => {
                 stopSpinner(resultSpinAnim);
                 Animated.timing(resultCheckAnim, {
                   toValue: 1,
-                  duration: 500,
+                  duration: 250,
                   useNativeDriver: true,
                 }).start();
                 setStepStates(prev => ({ ...prev, result: STEP_COMPLETED }));
@@ -394,14 +394,14 @@ const AIVisualization = ({ isDark, isVisible }) => {
                     triggerCompletionHaptic();
                   }, 500);
                 }, 1000));
-              }, 3000));
-            }, 3000));
-          }, 3000));
-        }, 3000));
+              }, 2000));
+            }, 2000));
+          }, 2000));
+        }, 2000));
       };
 
       // Start the animation sequence after a short delay and container animation
-      timeoutRefs.current.push(setTimeout(animateSequence, 800));
+      timeoutRefs.current.push(setTimeout(animateSequence, 400));
 
       // Cleanup function
       return () => {
@@ -583,8 +583,8 @@ const AIVisualization = ({ isDark, isVisible }) => {
                 <AIAnimatedText
                   text={text}
                   style={[styles.stepText, { color: isDark ? '#FFF' : '#000' }]}
-                  typingSpeed={20000}
-                  characterDelay={20000}
+                  typingSpeed={10000}
+                  characterDelay={10000}
                   onComplete={() => { setTextAnimCompleted(prev => ({ ...prev, [step]: true })); }}
                 />
               ) : (
@@ -594,7 +594,7 @@ const AIVisualization = ({ isDark, isVisible }) => {
                   isCompleted={stepState === STEP_COMPLETED}
                   completedColor={isDark ? '#CCC' : '#999999'}
                   baseColor={'#000'}
-                  shimmerDuration={1600}
+                  shimmerDuration={800}
                 />
               )}
             </Animated.View>
