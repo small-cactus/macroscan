@@ -1,11 +1,11 @@
-import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle } from 'react';
+import React, { useEffect, useRef, useState, forwardRef, useImperativeHandle, useCallback } from 'react';
 import { View, StyleSheet, Dimensions, Animated, Text, ActivityIndicator } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import AIAnimatedText from './AIAnimatedText';
 import AIAnimatedSubtitle from './AIAnimatedSubtitle';
 import ShimmerText from '../components/ShimmerText';
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import { EventRegister } from 'react-native-event-listeners';
 
 const { width } = Dimensions.get('window');
 
@@ -20,6 +20,27 @@ const MIN_SEARCH_DURATION = 3000; // Increased to ensure search step visibility
 const MIN_PROCESS_DURATION = 2500; // Increased for smoother transition
 const MIN_RESULT_DURATION = 2000; // Increased for smoother transition
 const STEP_TRANSITION_DELAY = 500; // Added delay between steps
+
+// Create global event channel names
+const EVENTS = {
+  STEP_UPDATE: 'ai_visualization_step_update',
+  STEP_COMPLETE: 'ai_visualization_step_complete',
+  SUBTITLE_UPDATE: 'ai_visualization_subtitle_update',
+  FOOD_DETECTED: 'ai_visualization_food_detected',
+  API_FINISHED: 'ai_visualization_api_finished',
+  SEARCH_DATA: 'ai_visualization_search_data'
+};
+
+// Define a debounce function
+const debounce = (func, delay) => {
+  let inDebounce;
+  return function() {
+    const context = this;
+    const args = arguments;
+    clearTimeout(inDebounce);
+    inDebounce = setTimeout(() => func.apply(context, args), delay);
+  };
+};
 
 // Visualization component that actually works
 const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
@@ -108,18 +129,8 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   // Add step order validation
   const stepOrder = ['recognize', 'search', 'process', 'result'];
   
-  // Expose methods to parent component via ref
-  useImperativeHandle(ref, () => ({
-    reset,
-    resetForNewScan,
-    updateWithFoodItems,
-    updateWithSearchQueries,
-    updateWithSearchResults,
-    updateWithScanData,
-    setAPIFinished,
-    forceCompleteAllSteps,
-    logState
-  }), [stepStates, detectedFood, searchSubtitle, processSubtitle]);
+  // Add event listeners ref to help with cleanup
+  const listeners = useRef([]);
 
   // Start a spinner animation
   const spinnerRefs = {
@@ -155,88 +166,195 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
-  // Start a specific step
-  const startStep = (step) => {
-    console.log(`[VISUALIZER] Starting step: ${step}, current states:`, stepStates);
-    if (stepStates[step] !== STEP_WAITING) return;
+  // Add a controlled state update function that enforces proper step order
+  const updateStepStatesInOrder = useCallback((updates) => {
+    console.log('[VISUALIZER] Updating step states with enforced ordering:', updates);
     
-    currentStepRef.current = step;
-    
-    // Record the start time for this step
-    stepStartTimeRefs.current[step] = Date.now();
-    console.log(`[VISUALIZER] Recorded start time for ${step}: ${stepStartTimeRefs.current[step]}`);
-    
-    // Update state
-    setStepStates(prev => ({ ...prev, [step]: STEP_ACTIVE }));
-    
-    // Start spinner
-    startSpinner(step);
-    
-    // Animate in the step
-    let stepAnim;
-    let subtitleAnim;
-    
-    switch (step) {
-      case 'recognize':
-        stepAnim = recognizeAnim;
-        subtitleAnim = recognizeSubtitleAnim;
-        break;
-      case 'search':
-        stepAnim = searchAnim;
-        subtitleAnim = searchSubtitleAnim;
-        break;
-      case 'process':
-        stepAnim = processAnim;
-        subtitleAnim = processSubtitleAnim;
-        break;
-      case 'result':
-        stepAnim = resultAnim;
-        subtitleAnim = resultSubtitleAnim;
-        break;
-    }
-    
-    // Animate the step in
-        Animated.spring(stepAnim, {
-          toValue: 1,
-      tension: 50,
-      friction: 7,
-          useNativeDriver: true,
-    }).start();
-    
-    // Animate the subtitle in after a short delay
-    const subtitleTimeout = setTimeout(() => {
-        Animated.timing(subtitleAnim, {
-          toValue: 1,
-        duration: 300,
-          useNativeDriver: true,
-      }).start();
-    }, 200);
-    
-    timeoutRefs.current.push(subtitleTimeout);
-    
-    // Set text animation as completed after a delay
-    const textTimeout = setTimeout(() => {
-      setTextAnimCompleted(prev => ({ ...prev, [step]: true }));
-    }, 1000);
-    
-    timeoutRefs.current.push(textTimeout);
-    
-    // Trigger haptic feedback
-    triggerHaptic();
-  };
+    setStepStates((prevStates) => {
+      // Make a copy of the current states
+      const newStates = { ...prevStates };
+      
+      // Apply requested updates
+      Object.entries(updates).forEach(([step, newState]) => {
+        newStates[step] = newState;
+      });
+      
+      // Find the active step (if any)
+      const orderedSteps = ['recognize', 'search', 'process', 'result'];
+      let activeStepIndex = -1;
+      
+      for (let i = 0; i < orderedSteps.length; i++) {
+        if (newStates[orderedSteps[i]] === STEP_ACTIVE) {
+          activeStepIndex = i;
+          break;
+        }
+      }
+      
+      // Enforce proper state ordering: 
+      // - Steps before active step must be COMPLETED
+      // - Current step must be ACTIVE
+      // - Steps after active step must be WAITING
+      if (activeStepIndex >= 0) {
+        for (let i = 0; i < orderedSteps.length; i++) {
+          const step = orderedSteps[i];
+          
+          if (i < activeStepIndex) {
+            // All steps before active must be completed
+            if (newStates[step] !== STEP_COMPLETED) {
+              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be COMPLETED (before active step)`);
+              newStates[step] = STEP_COMPLETED;
+            }
+          } else if (i === activeStepIndex) {
+            // Current step must be active
+            if (newStates[step] !== STEP_ACTIVE) {
+              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be ACTIVE (current step)`);
+              newStates[step] = STEP_ACTIVE;
+            }
+          } else {
+            // All steps after active must be waiting
+            if (newStates[step] !== STEP_WAITING) {
+              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be WAITING (after active step)`);
+              newStates[step] = STEP_WAITING;
+            }
+          }
+        }
+      } else {
+        // If no active step, either all steps are waiting or some steps are completed
+        // Find the last completed step
+        let lastCompletedIndex = -1;
+        
+        for (let i = orderedSteps.length - 1; i >= 0; i--) {
+          if (newStates[orderedSteps[i]] === STEP_COMPLETED) {
+            lastCompletedIndex = i;
+            break;
+          }
+        }
+        
+        if (lastCompletedIndex >= 0) {
+          // Ensure all steps before the last completed step are also completed
+          for (let i = 0; i < lastCompletedIndex; i++) {
+            const step = orderedSteps[i];
+            if (newStates[step] !== STEP_COMPLETED) {
+              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be COMPLETED (before last completed step)`);
+              newStates[step] = STEP_COMPLETED;
+            }
+          }
+          
+          // Ensure all steps after the last completed step are waiting
+          for (let i = lastCompletedIndex + 1; i < orderedSteps.length; i++) {
+            const step = orderedSteps[i];
+            if (newStates[step] !== STEP_WAITING) {
+              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be WAITING (after last completed step)`);
+              newStates[step] = STEP_WAITING;
+            }
+          }
+        }
+      }
+      
+      return newStates;
+    });
+  }, []);
 
-  // Complete a specific step
-  const completeStep = (step) => {
+  // Replace the startStep and completeStep functions to use the controlled update
+  const startStep = useCallback((step) => {
+      // *** NEW: Stricter check for previous step completion ***
+      const currentStepIndex = stepOrder.indexOf(step);
+      const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
+      if (previousStep && stepStates[previousStep] !== STEP_COMPLETED) {
+          console.warn(`[VISUALIZER] Attempted to start step ${step} but previous step ${previousStep} is not completed (${stepStates[previousStep]}). Aborting start.`);
+          // Optionally, try to recover by completing the previous step first
+          // completeStep(previousStep); // Be careful with potential infinite loops or race conditions here
+          return; // Prevent starting the step
+      }
+      // *** END NEW CHECK ***
+
+      console.log(`[VISUALIZER] Starting step: ${step}, current states:`, stepStates);
+      if (stepStates[step] !== STEP_WAITING) {
+        console.log(`[VISUALIZER] Cannot start step ${step} - not in WAITING state`, { current: stepStates[step] });
+        return;
+      }
+      
+      currentStepRef.current = step;
+      
+      // Record the start time for this step
+      stepStartTimeRefs.current[step] = Date.now();
+      console.log(`[VISUALIZER] Recorded start time for ${step}: ${stepStartTimeRefs.current[step]}`);
+      
+      // Ensure proper state ordering
+      updateStepStatesInOrder({ [step]: STEP_ACTIVE });
+      
+      // Start spinner
+      startSpinner(step);
+      
+      // Animate in the step
+      let stepAnim;
+      let subtitleAnim;
+      
+      switch (step) {
+        case 'recognize':
+          stepAnim = recognizeAnim;
+          subtitleAnim = recognizeSubtitleAnim;
+          break;
+        case 'search':
+          stepAnim = searchAnim;
+          subtitleAnim = searchSubtitleAnim;
+          break;
+        case 'process':
+          stepAnim = processAnim;
+          subtitleAnim = processSubtitleAnim;
+          break;
+        case 'result':
+          stepAnim = resultAnim;
+          subtitleAnim = resultSubtitleAnim;
+          break;
+      }
+      
+      // Animate the step in
+          Animated.spring(stepAnim, {
+            toValue: 1,
+        tension: 50,
+        friction: 7,
+            useNativeDriver: true,
+      }).start();
+      
+      // Animate the subtitle in after a short delay
+      const subtitleTimeout = setTimeout(() => {
+          Animated.timing(subtitleAnim, {
+            toValue: 1,
+          duration: 300,
+            useNativeDriver: true,
+        }).start();
+      }, 200);
+      
+      timeoutRefs.current.push(subtitleTimeout);
+      
+      // Set text animation as completed after a delay
+      const textTimeout = setTimeout(() => {
+        setTextAnimCompleted(prev => ({ ...prev, [step]: true }));
+      }, 1000);
+      
+      timeoutRefs.current.push(textTimeout);
+      
+      // Trigger haptic feedback
+      triggerHaptic();
+    }, [stepStates, updateStepStatesInOrder]);
+
+  const completeStep = useCallback((step) => {
     console.log(`[VISUALIZER] Completing step: ${step}, current states:`, stepStates);
     
     // Validate step order
     const currentStepIndex = stepOrder.indexOf(step);
     const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
     
-    // Check if previous step is completed
+    // Check if previous steps are completed
     if (previousStep && stepStates[previousStep] !== STEP_COMPLETED) {
-      console.log(`[VISUALIZER] Cannot complete ${step} - previous step ${previousStep} not completed`);
-      return;
+      console.log(`[VISUALIZER] Cannot complete ${step} - previous step ${previousStep} not completed. Fixing this first.`);
+      // First complete all previous steps
+      for (let i = 0; i < currentStepIndex; i++) {
+        if (stepStates[stepOrder[i]] !== STEP_COMPLETED) {
+          completeStep(stepOrder[i]);
+        }
+      }
     }
     
     if (stepStates[step] !== STEP_ACTIVE) {
@@ -295,8 +413,8 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       return;
     }
     
-    // Update state to completed
-    setStepStates(prev => ({ ...prev, [step]: STEP_COMPLETED }));
+    // Update state with enforced ordering
+    updateStepStatesInOrder({ [step]: STEP_COMPLETED });
     lastCompletedStepRef.current = step;
     
     // Stop spinner
@@ -304,22 +422,27 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     
     // Animate checkmark in
     let checkAnim;
-    
+    let nextStepSubtitleSetter; // Variable to hold the next step's subtitle setter
+
     switch (step) {
       case 'recognize':
         checkAnim = recognizeCheckAnim;
+        nextStepSubtitleSetter = setSearchSubtitle; // Prepare to update search subtitle
         break;
       case 'search':
         checkAnim = searchCheckAnim;
+        nextStepSubtitleSetter = setProcessSubtitle; // Prepare to update process subtitle
         break;
       case 'process':
         checkAnim = processCheckAnim;
+        nextStepSubtitleSetter = setResultSubtitle; // Prepare to update result subtitle
         break;
       case 'result':
         checkAnim = resultCheckAnim;
+        nextStepSubtitleSetter = null; // No next step subtitle to set
         break;
     }
-    
+
     Animated.spring(checkAnim, {
       toValue: 1,
       tension: 50,
@@ -327,21 +450,136 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       useNativeDriver: true,
     }).start(() => {
       triggerCompletionHaptic();
-      
-      // Start next step after a delay if available
+
+      // Find the next step
       const nextStepIndex = currentStepIndex + 1;
       if (nextStepIndex < stepOrder.length) {
         const nextStep = stepOrder[nextStepIndex];
-        const startNextTimeout = setTimeout(() => {
-          if (stepStates[nextStep] === STEP_WAITING) {
-            console.log(`[VISUALIZER] Starting next step ${nextStep} after completion delay`);
-            startStep(nextStep);
+
+        // *** NEW: Update the next step's subtitle proactively ***
+        // This might make it appear slightly sooner, closer to when the checkmark appears.
+        // We get the default subtitle text here. Actual content updates (like search query)
+        // will still come from events/polling later if needed.
+        if (nextStepSubtitleSetter) {
+          let defaultNextSubtitle = '';
+          switch (nextStep) {
+            case 'search': defaultNextSubtitle = 'Searching nutrition databases...'; break;
+            case 'process': defaultNextSubtitle = 'Calculating nutritional values...'; break;
+            case 'result': defaultNextSubtitle = 'Generating personalized nutrition insights...'; break;
           }
-        }, STEP_TRANSITION_DELAY);
+          if (defaultNextSubtitle) {
+              console.log(`[VISUALIZER] Proactively setting subtitle for next step ${nextStep}`);
+              nextStepSubtitleSetter(defaultNextSubtitle);
+          }
+        }
+
+
+        // Start next step ONLY AFTER the current one is fully marked COMPLETED
+        // and after the transition delay.
+        const startNextTimeout = setTimeout(() => {
+          // Double-check the state before starting the next step
+          // Read the latest state directly inside the timeout callback
+          setStepStates(currentStates => {
+              if (currentStates[step] === STEP_COMPLETED && currentStates[nextStep] === STEP_WAITING) {
+                console.log(`[VISUALIZER] Starting next step ${nextStep} after completion delay and state check`);
+                startStep(nextStep);
+              } else {
+                 console.log(`[VISUALIZER] Condition not met to start next step ${nextStep}. Current step state: ${currentStates[step]}, Next step state: ${currentStates[nextStep]}`);
+              }
+              return currentStates; // No state change here, just reading
+          });
+        }, STEP_TRANSITION_DELAY); // Use the defined delay
         timeoutRefs.current.push(startNextTimeout);
+      } else {
+         // If this was the last step ('result'), show the accuracy box
+         if (step === 'result' && isAPIFinished) {
+            setTimeout(() => {
+               showAccuracyBox();
+            }, 500); // Show after a short delay
+         }
       }
     });
-  };
+  }, [stepStates, stepOrder, updateStepStatesInOrder, isAPIFinished, startStep]); // Added startStep dependency
+
+  // Replace the validation function with a simplified version that just logs but doesn't update state
+  const validateStepStates = useCallback(() => {
+    if (isValidatingState) return;
+    setIsValidatingState(true);
+    
+    try {
+      console.log('[VISUALIZER] Validating step states:', JSON.stringify(stepStates));
+      
+      // No longer updating states directly here - just log issues for debugging
+      // All state updates go through updateStepStatesInOrder
+      
+      const orderedSteps = ['recognize', 'search', 'process', 'result'];
+      let activeStepIndex = -1;
+      
+      // Find active step
+      for (let i = 0; i < orderedSteps.length; i++) {
+        if (stepStates[orderedSteps[i]] === STEP_ACTIVE) {
+          activeStepIndex = i;
+          break;
+        }
+      }
+      
+      if (activeStepIndex >= 0) {
+        // Check steps before active
+        for (let i = 0; i < activeStepIndex; i++) {
+          const step = orderedSteps[i];
+          if (stepStates[step] !== STEP_COMPLETED) {
+            console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be COMPLETED (before active step)`);
+          }
+        }
+        
+        // Check steps after active
+        for (let i = activeStepIndex + 1; i < orderedSteps.length; i++) {
+          const step = orderedSteps[i];
+          if (stepStates[step] !== STEP_WAITING) {
+            console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be WAITING (after active step)`);
+          }
+        }
+      } else {
+        // Find last completed step
+        let lastCompletedIndex = -1;
+        for (let i = orderedSteps.length - 1; i >= 0; i--) {
+          if (stepStates[orderedSteps[i]] === STEP_COMPLETED) {
+            lastCompletedIndex = i;
+            break;
+          }
+        }
+        
+        if (lastCompletedIndex >= 0) {
+          // Check steps before last completed
+          for (let i = 0; i < lastCompletedIndex; i++) {
+            const step = orderedSteps[i];
+            if (stepStates[step] !== STEP_COMPLETED) {
+              console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be COMPLETED (before last completed step)`);
+            }
+          }
+          
+          // Check steps after last completed
+          for (let i = lastCompletedIndex + 1; i < orderedSteps.length; i++) {
+            const step = orderedSteps[i];
+            if (stepStates[step] !== STEP_WAITING) {
+              console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be WAITING (after last completed step)`);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('[VISUALIZER] Error during state validation:', error);
+    } finally {
+      setIsValidatingState(false);
+    }
+  }, [stepStates, isValidatingState]);
+  
+  // Modify the effect that calls validateStepStates
+  useEffect(() => {
+    if (!isValidatingState) {
+      validateStepStates();
+    }
+  }, [stepStates, validateStepStates, isValidatingState]);
 
   // Get the next step
   const getNextStep = (step) => {
@@ -404,6 +642,15 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       result: 0
     };
     
+    // Reset event tracking to prevent stale event handling
+    lastEventsRef.current = {
+      step_update: {},
+      step_complete: {},
+      subtitle_update: {},
+      food_detected: null,
+      api_finished: false
+    };
+    
     // Reset animation values
     containerAnim.setValue(0);
     recognizeAnim.setValue(0);
@@ -439,97 +686,149 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     // Reset API finished state
     setIsAPIFinished(false);
     
-    // Clear AsyncStorage
-    try {
-      await AsyncStorage.multiRemove([
-        '@nutrilens:search_queries',
-        '@nutrilens:search_results',
-        '@nutrilens:api_finished',
-        '@nutrilens:detected_food',
-        '@nutrilens:processing_step',
-        '@nutrilens:step_timestamp',
-        '@nutrilens:recognize_step_active',
-        '@nutrilens:search_step_active',
-        '@nutrilens:process_step_active',
-        '@nutrilens:result_step_active',
-        '@nutrilens:recognize_step_completed',
-        '@nutrilens:search_step_completed',
-        '@nutrilens:process_step_completed',
-        '@nutrilens:result_step_completed'
-      ]);
-      console.log('[VISUALIZER] Cleared AsyncStorage');
-    } catch (error) {
-      console.error('[VISUALIZER] Error clearing AsyncStorage:', error);
-    }
+    // Disable polling
+    shouldPollRef.current = false;
     
-    // Reset global state
-    if (global.NUTRILENS_VISUALIZATION) {
-      global.NUTRILENS_VISUALIZATION = {
-        currentStep: null,
-        stepStates: {
-          recognize: { active: false, completed: false },
-          search: { active: false, completed: false },
-          process: { active: false, completed: false },
-          result: { active: false, completed: false }
-        },
-        subtitles: {
-          recognize: [],
-          search: [],
-          process: [],
-          result: []
-        },
-        detectedFood: "",
-        updateTime: Date.now()
-      };
-    }
+    // Emit reset event
+    EventRegister.emit('ai_visualization_reset');
     
     // Reset validation state
     setIsValidatingState(false);
   };
 
-  // Update with food items
-  const updateWithFoodItems = (items) => {
+  // Improve transition handling in the handleSearchStepUpdate function
+  const handleSearchStepUpdate = useCallback((queriesUpdated, resultsUpdated) => {
+    // When search queries are updated, it means we're in the search step
+    if (queriesUpdated) {
+      console.log('[VISUALIZER] Search queries updated, handling step transitions');
+      
+      // Make sure we complete the recognize step and activate the search step
+      if (stepStates.recognize === STEP_ACTIVE) {
+        console.log('[VISUALIZER] Search queries updated while in recognize step, completing recognize');
+        completeStep('recognize');
+      }
+      
+      // If search step isn't active, start it
+      if (stepStates.search === STEP_WAITING) {
+        console.log('[VISUALIZER] Search queries updated, starting search step');
+        startStep('search');
+      }
+    }
+    
+    // When search results are updated, we should transition to the process step
+    // BUT only after a minimum duration to ensure the search step is visible
+    if (resultsUpdated) {
+      console.log('[VISUALIZER] Search results updated, handling step transitions');
+      
+      // Make sure both recognize and search are complete/active
+      if (stepStates.recognize === STEP_WAITING || stepStates.recognize === STEP_ACTIVE) {
+        console.log('[VISUALIZER] Search results updated but recognize step not completed, completing it');
+        completeStep('recognize');
+      }
+      
+      // CRITICAL: Explicitly complete search and start process
+      if (stepStates.search === STEP_WAITING) {
+        console.log('[VISUALIZER] Search results updated but search step not started, starting it');
+        startStep('search');
+        
+        // After a proper delay, complete search and start process
+        const transitionTimeout = setTimeout(() => {
+          console.log('[VISUALIZER] Enforced minimum search duration reached, completing search step');
+          // IMPORTANT: First mark search as complete
+          completeStep('search');
+          
+          // Then explicitly start the process step
+          setTimeout(() => {
+            startStep('process');
+          }, 300);
+        }, MIN_SEARCH_DURATION);
+        
+        timeoutRefs.current.push(transitionTimeout);
+      } else if (stepStates.search === STEP_ACTIVE) {
+        // Calculate how long search has been active
+        const searchStartTime = stepStartTimeRefs.current.search || 0;
+        const searchActiveDuration = Date.now() - searchStartTime;
+        const remainingTime = Math.max(300, MIN_SEARCH_DURATION - searchActiveDuration);
+        
+        console.log(`[VISUALIZER] Search results received, search active for ${searchActiveDuration}ms, remaining: ${remainingTime}ms`);
+        
+        // Ensure search is visible for minimum duration before transitioning
+        const transitionTimeout = setTimeout(() => {
+          console.log('[VISUALIZER] Completing search step after minimum duration');
+          // IMPORTANT: First mark search as complete
+          completeStep('search');
+          
+          // Then explicitly start the process step after a short delay
+          setTimeout(() => {
+            if (stepStates.process === STEP_WAITING) {
+              startStep('process');
+            }
+          }, 300);
+        }, remainingTime);
+        
+        timeoutRefs.current.push(transitionTimeout);
+      }
+    }
+  }, [stepStates, completeStep, startStep]);
+
+  // Improve food detection update to make subtitle changes immediate
+  const updateWithFoodItems = useCallback((items) => {
     console.log('[VISUALIZER] updateWithFoodItems called with:', items);
-    console.log('[VISUALIZER] Current step states:', stepStates);
     
     if (!items || !items.length) return;
     
     const foodName = items[0];
     if (foodName) {
       console.log(`[VISUALIZER] Setting detectedFood to: ${foodName}`);
+      
+      // IMMEDIATE UI UPDATES - set these directly for faster feedback
       setDetectedFood(foodName);
       setRecognizeSubtitle(`Detected ${foodName}...`);
-      
-      // Update result subtitle with food name
       setResultSubtitle(`Generating nutrition facts for ${foodName}...`);
       
-      // CRITICAL FIX: Actually progress from step 1 to step 2 when food is detected
-      if (stepStates.recognize === STEP_ACTIVE && stepStates.recognize !== STEP_COMPLETED) {
-        console.log('[VISUALIZER] Scheduling recognize step completion after 1500ms');
+      // Force UI to update immediately
+      requestAnimationFrame(() => {
+        // Ensure recognize step is active
+        if (stepStates.recognize === STEP_WAITING) {
+          startStep('recognize');
+        }
         
-        // Complete recognize step after a short delay to let user see the food detection
+        // Ensure recognize subtitle is visible
+        Animated.timing(recognizeSubtitleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+        
+        // After food detection, schedule completion of recognize step
+        if (stepStates.recognize === STEP_ACTIVE) {
         const completeTimeout = setTimeout(() => {
-          console.log('[VISUALIZER] Timeout fired - completing recognize step');
           completeStep('recognize');
         }, 1500);
-        
         timeoutRefs.current.push(completeTimeout);
-      } else {
-        console.log('[VISUALIZER] Not scheduling recognize completion:', { 
-          isActive: stepStates.recognize === STEP_ACTIVE, 
-          isCompleted: stepStates.recognize === STEP_COMPLETED 
+        }
         });
       }
-    }
-  };
+  }, [stepStates, startStep, completeStep]);
 
   // Update with search queries
-  const updateWithSearchQueries = (queries) => {
+  const updateWithSearchQueries = useCallback((queries) => {
     console.log('[VISUALIZER] updateWithSearchQueries called with:', queries);
     if (!queries || !queries.length) return;
     
     // Update search subtitle with first query
     setSearchSubtitle(`Searching "${queries[0]}"...`);
+    
+    // Ensure search subtitle is visible immediately
+    requestAnimationFrame(() => {
+      if (stepStates.search === STEP_ACTIVE) {
+        Animated.timing(searchSubtitleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      }
+    });
     
     // Extract possible food name from queries
     const foodKeywords = ['nutrition facts for', 'calories in'];
@@ -544,23 +843,26 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
             setDetectedFood(foodName);
             setRecognizeSubtitle(`Detected ${foodName}...`);
             setResultSubtitle(`Generating nutrition facts for ${foodName}...`);
+            
+            // Ensure recognize subtitle is visible immediately
+            requestAnimationFrame(() => {
+              Animated.timing(recognizeSubtitleAnim, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+              }).start();
+            });
           }
         }
       }
     }
     
-    // Store the queries in the global state for other components
-    if (global.NUTRILENS_VISUALIZATION) {
-      global.NUTRILENS_VISUALIZATION.subtitles.search = queries.map(q => `Searching "${q}"...`);
-      global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
-    }
-    
-    // Use the new search step update handler to ensure proper step transitions
+    // Use the search step update handler to ensure proper step transitions
     handleSearchStepUpdate(true, false);
-  };
+  }, [stepStates, handleSearchStepUpdate, searchSubtitleAnim, recognizeSubtitleAnim]);
 
-  // Update with search results
-  const updateWithSearchResults = (results) => {
+  // Update handleSearchStepUpdate call in updateWithSearchResults
+  const updateWithSearchResults = useCallback((results) => {
     console.log('[VISUALIZER] updateWithSearchResults called with:', results?.length, 'results');
     if (!results || !results.length) return;
     
@@ -572,14 +874,62 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       const title = results[0].title;
       const shortTitle = title.length > 20 ? title.substring(0, 20) + '...' : title;
       setProcessSubtitle(`Analyzing "${shortTitle}"`);
+      
+      // Make subtitle immediately visible if process step is active
+      if (stepStates.process === STEP_ACTIVE) {
+        Animated.timing(processSubtitleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      }
     }
     
-    // Use the new search step update handler to ensure proper step transitions
+    // IMPORTANT: Set resultsUpdated=true to ensure search → process transition
     handleSearchStepUpdate(false, true);
-  };
+  }, [stepStates, handleSearchStepUpdate]);
 
-  // Update with scan data
-  const updateWithScanData = (data) => {
+  // Add explicit transition management for process → result step
+  const manageProcessToResultTransition = useCallback(() => {
+    if (stepStates.process === STEP_ACTIVE) {
+      console.log('[VISUALIZER] Managing process to result transition');
+      
+      // Calculate how long process has been active
+      const processStartTime = stepStartTimeRefs.current.process || 0;
+      const processActiveDuration = Date.now() - processStartTime;
+      const remainingTime = Math.max(300, MIN_PROCESS_DURATION - processActiveDuration);
+      
+      console.log(`[VISUALIZER] Process step active for ${processActiveDuration}ms, remaining: ${remainingTime}ms`);
+      
+      // Ensure process is visible for minimum duration before transitioning
+      const transitionTimeout = setTimeout(() => {
+        console.log('[VISUALIZER] Completing process step after minimum duration');
+        
+        // First mark process as complete
+        completeStep('process');
+        
+        // Then explicitly start the result step
+        setTimeout(() => {
+          if (stepStates.result === STEP_WAITING) {
+            startStep('result');
+          }
+        }, 300);
+      }, remainingTime);
+      
+      timeoutRefs.current.push(transitionTimeout);
+    }
+  }, [stepStates, completeStep, startStep]);
+
+  // Add useEffect to monitor search results count and trigger process → result transition
+  useEffect(() => {
+    if (searchResultsCount >= 3 && stepStates.process === STEP_ACTIVE) {
+      // We have enough results to move to the result step
+      manageProcessToResultTransition();
+    }
+  }, [searchResultsCount, stepStates.process, manageProcessToResultTransition]);
+
+  // Add dependencies to updateWithScanData
+  const updateWithScanData = useCallback((data) => {
     console.log('[VISUALIZER] updateWithScanData called with food:', data?.food?.name);
     console.log('[VISUALIZER] API completion status:', data?._isProcessingComplete);
     if (!data) return;
@@ -592,9 +942,21 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     // Update detected food from scan data
     if (data.food && data.food.name) {
       const foodName = data.food.name;
+      
+      // Immediate UI updates
       setDetectedFood(foodName);
       setRecognizeSubtitle(`Detected ${foodName}...`);
       setResultSubtitle(`Generating nutrition facts for ${foodName}...`);
+      
+      // Ensure recognize subtitle is visible immediately
+      requestAnimationFrame(() => {
+        Animated.timing(recognizeSubtitleAnim, {
+          toValue: 1,
+          duration: 200,
+          useNativeDriver: true,
+        }).start();
+      });
+      
       foodUpdated = true;
     }
     
@@ -605,6 +967,17 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         queriesUpdated = true;
         const query = data._searchInfo.queries[0];
         setSearchSubtitle(`Searching "${query}"...`);
+        
+        // Ensure search subtitle is visible immediately if search step is active
+        if (stepStates.search === STEP_ACTIVE) {
+          requestAnimationFrame(() => {
+            Animated.timing(searchSubtitleAnim, {
+              toValue: 1,
+              duration: 200,
+              useNativeDriver: true,
+            }).start();
+          });
+        }
       }
       
       // Update search results
@@ -617,6 +990,17 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           const title = data._searchInfo.results[0].title;
           const shortTitle = title.length > 20 ? title.substring(0, 20) + '...' : title;
           setProcessSubtitle(`Analyzing "${shortTitle}"`);
+          
+          // Ensure process subtitle is visible immediately if process step is active
+          if (stepStates.process === STEP_ACTIVE) {
+            requestAnimationFrame(() => {
+              Animated.timing(processSubtitleAnim, {
+                toValue: 1,
+                duration: 200,
+                useNativeDriver: true,
+              }).start();
+            });
+          }
         }
       }
     }
@@ -649,7 +1033,15 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         setAPIFinished(true);
       }, 1000);
     }
-  };
+  }, [
+    stepStates, 
+    startStep, 
+    completeStep, 
+    handleSearchStepUpdate, 
+    recognizeSubtitleAnim,
+    searchSubtitleAnim,
+    processSubtitleAnim
+  ]);
 
   // Mark API as finished
   const setAPIFinished = (finished) => {
@@ -665,73 +1057,66 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       // Disable polling when API is finished
       shouldPollRef.current = false;
       
-      // Capture current state of steps to ensure we have a consistent state to work with
-      const currentStepStates = { ...stepStates };
-      
-      // Figure out which step we're on
-      let currentActiveStep = null;
-      let lastCompletedStepIndex = -1;
+      // Get the current step or determine the last completed step
       const orderedSteps = ['recognize', 'search', 'process', 'result'];
+      let currentStepIndex = -1;
+      let lastCompletedIndex = -1;
       
-      // Find which step is active or the last completed step
+      // Find active and last completed steps
       for (let i = 0; i < orderedSteps.length; i++) {
         const step = orderedSteps[i];
-        if (currentStepStates[step] === STEP_ACTIVE) {
-          currentActiveStep = step;
-            break;
-        } else if (currentStepStates[step] === STEP_COMPLETED) {
-          lastCompletedStepIndex = i;
+        if (stepStates[step] === STEP_ACTIVE) {
+          currentStepIndex = i;
+        } else if (stepStates[step] === STEP_COMPLETED) {
+          lastCompletedIndex = Math.max(lastCompletedIndex, i);
         }
       }
       
-      console.log(`[VISUALIZER] Current active step: ${currentActiveStep}, last completed step index: ${lastCompletedStepIndex}`);
-      
-      // Complete the active step if there is one
-      if (currentActiveStep) {
-        console.log(`[VISUALIZER] Completing current active step: ${currentActiveStep}`);
-        completeStep(currentActiveStep);
-        // Update our local record of step states
-        currentStepStates[currentActiveStep] = STEP_COMPLETED;
-        
-        // Find the index of the step we just completed
-        lastCompletedStepIndex = orderedSteps.indexOf(currentActiveStep);
+      // Complete the active step
+      if (currentStepIndex >= 0) {
+        const currentStep = orderedSteps[currentStepIndex];
+        console.log(`[VISUALIZER] API finished - completing active step: ${currentStep}`);
+        completeStep(currentStep);
+        lastCompletedIndex = currentStepIndex;
       }
       
-      // Complete all remaining steps in sequence
-      let delay = 500;
+      // Complete any remaining steps in sequence
+      const completionsInOrder = [];
+      for (let i = lastCompletedIndex + 1; i < orderedSteps.length; i++) {
+        completionsInOrder.push(orderedSteps[i]);
+      }
       
-      for (let i = lastCompletedStepIndex + 1; i < orderedSteps.length; i++) {
-        const step = orderedSteps[i];
+      if (completionsInOrder.length > 0) {
+        console.log(`[VISUALIZER] API finished - scheduling completion of remaining steps:`, completionsInOrder);
         
-        if (currentStepStates[step] !== STEP_COMPLETED) {
-          console.log(`[VISUALIZER] Scheduling step ${step} after ${delay}ms`);
-          
-          // Create a closure to capture the current step
-          ((currentStep) => {
-            // Schedule start of step
+        let delay = 500;
+        completionsInOrder.forEach(step => {
             const startTimeout = setTimeout(() => {
-              console.log(`[VISUALIZER] Starting scheduled step ${currentStep}`);
-              startStep(currentStep);
+            console.log(`[VISUALIZER] Starting remaining step: ${step}`);
+            startStep(step);
             }, delay);
             timeoutRefs.current.push(startTimeout);
             
-            // Schedule completion of step
+          delay += 1000;
+          
             const completeTimeout = setTimeout(() => {
-              console.log(`[VISUALIZER] Completing scheduled step ${currentStep}`);
-              completeStep(currentStep);
+            console.log(`[VISUALIZER] Completing remaining step: ${step}`);
+            completeStep(step);
               
-              // Show accuracy box if it's the last step
-              if (currentStep === 'result') {
+            // Show accuracy box after the last step
+            if (step === orderedSteps[orderedSteps.length - 1]) {
                 setTimeout(() => {
                   showAccuracyBox();
                 }, 500);
               }
-            }, delay + 1000);
+          }, delay);
             timeoutRefs.current.push(completeTimeout);
-          })(step);
           
-          delay += 1500; // Increase delay for next step
-        }
+          delay += 500;
+        });
+      } else if (lastCompletedIndex === orderedSteps.length - 1) {
+        // All steps already completed, just show accuracy box
+        showAccuracyBox();
       }
       
       // If we're already not visible, force all steps to complete immediately
@@ -924,22 +1309,15 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   // Add a function to force completion of all steps immediately
   const forceCompleteAllSteps = () => {
     console.log('[VISUALIZER] Force completing all steps immediately');
-    const steps = ['recognize', 'search', 'process', 'result'];
     
-    // Force complete all steps in sequence with no delays
-    steps.forEach(step => {
-      if (stepStates[step] === STEP_WAITING) {
-        console.log(`[VISUALIZER] Forcing step ${step} from WAITING to ACTIVE`);
-        // Update state immediately
-        setStepStates(prev => ({ ...prev, [step]: STEP_ACTIVE }));
-      }
-      
-      if (stepStates[step] !== STEP_COMPLETED) {
-        console.log(`[VISUALIZER] Forcing step ${step} to COMPLETED`);
-        // Update state immediately
-        setStepStates(prev => ({ ...prev, [step]: STEP_COMPLETED }));
-      }
+    // Create a batch update
+    const updates = {};
+    ['recognize', 'search', 'process', 'result'].forEach(step => {
+      updates[step] = STEP_COMPLETED;
     });
+    
+    // Update state with all steps completed
+    updateStepStatesInOrder(updates);
         
         // Show accuracy box
         showAccuracyBox();
@@ -1157,6 +1535,8 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
               style={[styles.subtitleText]}
               colorScheme={isDark ? 'dark' : 'light'}
               isCompleted={stepState === STEP_COMPLETED}
+              numberOfLines={1}
+              ellipsizeMode="tail"
             />
           </Animated.View>
         </View>
@@ -1185,159 +1565,444 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     );
   };
 
-  // Handle updating both search-related steps
-  const handleSearchStepUpdate = (searchQueriesUpdated, searchResultsUpdated) => {
-    // When search queries are updated, it means we're in the search step
-    if (searchQueriesUpdated) {
-      // Make sure we complete the recognize step and activate the search step
-      if (stepStates.recognize === STEP_ACTIVE) {
-        console.log('[VISUALIZER] Search queries updated while in recognize step, completing recognize');
-        completeStep('recognize');
-      }
-      
-      // If search step isn't active, start it
-      if (stepStates.search === STEP_WAITING) {
-        console.log('[VISUALIZER] Search queries updated, starting search step');
-        startStep('search');
-      }
-    }
-    
-    // When search results are updated, we should transition to the process step
-    // BUT only after a minimum duration to ensure the search step is visible
-    if (searchResultsUpdated) {
-      // Make sure both recognize and search are complete/active
-      if (stepStates.recognize === STEP_WAITING || stepStates.recognize === STEP_ACTIVE) {
-        console.log('[VISUALIZER] Search results updated but recognize step not completed, completing it');
-        completeStep('recognize');
-      }
-      
-      if (stepStates.search === STEP_WAITING) {
-        console.log('[VISUALIZER] Search results updated but search step not started, starting it');
-        startStep('search');
-        
-        // CRITICAL: Enforce minimum search step duration before completing
-        const completeTimeout = setTimeout(() => {
-          console.log('[VISUALIZER] Enforced minimum search duration reached, completing search step');
-          completeStep('search');
-        }, MIN_SEARCH_DURATION);
-        
-        timeoutRefs.current.push(completeTimeout);
-      } else if (stepStates.search === STEP_ACTIVE) {
-        // Get the active duration of the search step
-        const stepStartTime = Date.now() - (stepStartTimeRefs.current.search || 0);
-        const remainingTime = Math.max(0, MIN_SEARCH_DURATION - stepStartTime);
-        
-        console.log(`[VISUALIZER] Search results received, search step active for ${stepStartTime}ms, remaining time: ${remainingTime}ms`);
-        
-        if (remainingTime > 0) {
-          // Enforce minimum duration for search step
-          console.log(`[VISUALIZER] Enforcing minimum search duration, waiting ${remainingTime}ms before completing`);
-          const completeTimeout = setTimeout(() => {
-            if (stepStates.search === STEP_ACTIVE) {
-              console.log('[VISUALIZER] Minimum search duration reached, completing search step');
-              completeStep('search');
-            }
-          }, remainingTime);
-          
-          timeoutRefs.current.push(completeTimeout);
-      } else {
-          console.log('[VISUALIZER] Search step already exceeded minimum duration, completing now');
-          completeStep('search');
-        }
-      }
-    }
-  };
+  // Expose methods to parent component via ref
+  useImperativeHandle(ref, () => ({
+    reset,
+    resetForNewScan,
+    updateWithFoodItems,
+    updateWithSearchQueries,
+    updateWithSearchResults,
+    updateWithScanData,
+    setAPIFinished,
+    forceCompleteAllSteps,
+    logState
+  }), [
+    reset, 
+    resetForNewScan, 
+    updateWithFoodItems, 
+    updateWithSearchQueries, 
+    updateWithSearchResults, 
+    updateWithScanData, 
+    setAPIFinished,
+    forceCompleteAllSteps,
+    logState
+  ]);
 
   // Add a specific API key reset function for external calls 
   const resetForNewScan = async () => {
     console.log('[VISUALIZER] Resetting visualization for new scan');
     
-    // Full reset
-    reset();
+    // Cancel any pending animations and timers
+    Animated.stopAnimation(containerAnim);
+    Animated.stopAnimation(recognizeAnim);
+    Animated.stopAnimation(searchAnim);
+    Animated.stopAnimation(processAnim);
+    Animated.stopAnimation(resultAnim);
+    Animated.stopAnimation(recognizeSubtitleAnim);
+    Animated.stopAnimation(searchSubtitleAnim);
+    Animated.stopAnimation(processSubtitleAnim);
+    Animated.stopAnimation(resultSubtitleAnim);
+    Animated.stopAnimation(recognizeCheckAnim);
+    Animated.stopAnimation(searchCheckAnim);
+    Animated.stopAnimation(processCheckAnim);
+    Animated.stopAnimation(resultCheckAnim);
+    Animated.stopAnimation(accuracyBoxAnim);
     
-    // Ensure all global and AsyncStorage state is reset
-    // Double-check critical keys to make sure they're reset
-    await AsyncStorage.setItem('@nutrilens:api_finished', 'false');
+    // Clear all timeouts and intervals
+    timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
+    intervalRefs.current.forEach(interval => clearInterval(interval));
+    timeoutRefs.current = [];
+    intervalRefs.current = [];
+
+    // Force clear all listeners to ensure we don't have duplicates
+    listeners.current.forEach(listener => {
+      EventRegister.removeEventListener(listener);
+    });
+    listeners.current = [];
     
-    // Directly ensure global state is reset
-    if (global.NUTRILENS_VISUALIZATION) {
-      global.NUTRILENS_VISUALIZATION.apiFinished = false;
-      global.NUTRILENS_VISUALIZATION.currentStep = null;
+    // Reset animation values to initial state
+    containerAnim.setValue(0);
+    recognizeAnim.setValue(0);
+    searchAnim.setValue(0);
+    processAnim.setValue(0);
+    resultAnim.setValue(0);
+    recognizeSubtitleAnim.setValue(0);
+    searchSubtitleAnim.setValue(0);
+    processSubtitleAnim.setValue(0);
+    resultSubtitleAnim.setValue(0);
+    recognizeCheckAnim.setValue(0);
+    searchCheckAnim.setValue(0);
+    processCheckAnim.setValue(0);
+    resultCheckAnim.setValue(0);
+    accuracyBoxAnim.setValue(0);
+    
+    // Reset spinners
+    Object.values(spinnerRefs).forEach(spinAnim => {
+      spinAnim.stopAnimation();
+      spinAnim.setValue(0);
+    });
+    
+    // Hard reset to initial state
+    setStepStates({
+      recognize: STEP_WAITING,
+      search: STEP_WAITING,
+      process: STEP_WAITING,
+      result: STEP_WAITING
+    });
+    
+    setTextAnimCompleted({
+      recognize: false,
+      search: false,
+      process: false,
+      result: false
+    });
+    
+    // Reset refs
+    currentStepRef.current = null;
+    lastCompletedStepRef.current = null;
+    stepStartTimeRefs.current = {
+      recognize: 0,
+      search: 0,
+      process: 0,
+      result: 0
+    };
+    
+    // Reset last events tracking
+    lastEventsRef.current = {
+      step_update: {},
+      step_complete: {},
+      subtitle_update: {},
+      food_detected: null,
+      api_finished: false
+    };
+    
+    // Reset subtitles
+    setRecognizeSubtitle('Analyzing image for food...');
+    setSearchSubtitle('Searching nutrition databases...');
+    setProcessSubtitle('Calculating nutritional values...');
+    setResultSubtitle('Generating personalized nutrition insights...');
+    
+    // Reset detected food and search results
+    setDetectedFood('');
+    setSearchResultsCount(0);
+    
+    // Reset API finished state
+    setIsAPIFinished(false);
+    
+    // Re-enable polling for the new scan
+    shouldPollRef.current = true;
+    
+    // Brief delay to ensure reset is processed
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Re-setup listeners if component is visible
+    if (isVisible) {
+      setupEventListeners();
     }
     
-    // Refresh the global visualization state
-    if (global.NUTRILENS_VISUALIZATION_ACCESS && global.NUTRILENS_VISUALIZATION_ACCESS.refreshVisualization) {
-      await global.NUTRILENS_VISUALIZATION_ACCESS.refreshVisualization();
+    // Animate in the container (restart animation)
+    if (isVisible) {
+      Animated.spring(containerAnim, {
+        toValue: 1,
+        tension: 50,
+        friction: 8,
+        useNativeDriver: true,
+      }).start();
     }
+    
+    // Emit reset event to ensure all components are in sync
+    EventRegister.emit('ai_visualization_reset');
     
     console.log('[VISUALIZER] Reset for new scan completed');
   };
 
-  // Validate step states to ensure proper order
-  const validateStepStates = () => {
-    if (isValidatingState) return;
-    setIsValidatingState(true);
-    
-    console.log('[VISUALIZER] Validating step states');
-    
-    try {
-      let foundIncomplete = false;
-      let lastCompletedIndex = -1;
-      
-      // Find the last completed step
-      for (let i = stepOrder.length - 1; i >= 0; i--) {
-        if (stepStates[stepOrder[i]] === STEP_COMPLETED) {
-          lastCompletedIndex = i;
-          break;
-        }
-      }
-      
-      // Find the current active step
-      let activeStepIndex = -1;
-      for (let i = 0; i < stepOrder.length; i++) {
-        if (stepStates[stepOrder[i]] === STEP_ACTIVE) {
-          activeStepIndex = i;
-          break;
-        }
-      }
-      
-      // Validate step order
-      for (let i = 0; i < stepOrder.length; i++) {
-        const step = stepOrder[i];
-        
-        if (i <= lastCompletedIndex) {
-          // All steps before the last completed step should be completed
-          if (stepStates[step] !== STEP_COMPLETED) {
-            console.log(`[VISUALIZER] Fixing inconsistency: ${step} should be completed`);
-            setStepStates(prev => ({ ...prev, [step]: STEP_COMPLETED }));
-          }
-        } else if (i === activeStepIndex) {
-          // Current active step should be active
-          if (stepStates[step] !== STEP_ACTIVE) {
-            console.log(`[VISUALIZER] Fixing inconsistency: ${step} should be active`);
-            setStepStates(prev => ({ ...prev, [step]: STEP_ACTIVE }));
-          }
-        } else if (i > activeStepIndex) {
-          // All steps after active step should be waiting
-          if (stepStates[step] !== STEP_WAITING) {
-            console.log(`[VISUALIZER] Fixing inconsistency: ${step} should be waiting`);
-            setStepStates(prev => ({ ...prev, [step]: STEP_WAITING }));
-          }
-        }
-      }
-    } catch (error) {
-      console.error('[VISUALIZER] Error during state validation:', error);
-    } finally {
-      setIsValidatingState(false);
-    }
-  };
+  // Track the last processed events to prevent duplicates
+  const lastEventsRef = useRef({
+    step_update: {},
+    step_complete: {},
+    subtitle_update: {},
+    food_detected: null,
+    api_finished: false
+  });
+
+  // Add a ref to track the current scan ID
+  const currentScanIdRef = useRef(null);
   
-  // Add validation to useEffect
+  // Setup event listeners with controlled state updates
+  const setupEventListeners = useCallback(() => {
+    console.log('[VISUALIZER] Setting up event listeners');
+    
+    // Add scan ID validation function
+    const isCurrentScan = (data) => {
+      // If we don't have a current scan ID, accept all events
+      if (!currentScanIdRef.current) return true;
+      
+      // If event doesn't have a scan ID, still accept it for backward compatibility
+      if (!data || !data.scanId) return true;
+      
+      // Only accept events matching our current scan ID
+      return data.scanId === currentScanIdRef.current;
+    };
+    
+    // Enhanced start step with controlled updates
+    const enhancedStartStep = debounce((step) => {
+      if (stepStates[step] === STEP_WAITING) {
+        console.log(`[VISUALIZER-EVENT] Enhancing start step for: ${step}`);
+        startStep(step);
+      } else {
+        console.log(`[VISUALIZER-EVENT] Not starting step ${step}, current state:`, stepStates[step]);
+      }
+    }, 100);
+    
+    // Enhanced complete step with controlled updates
+    const enhancedCompleteStep = debounce((step) => {
+      if (stepStates[step] === STEP_ACTIVE) {
+        console.log(`[VISUALIZER-EVENT] Enhancing complete step for: ${step}`);
+        completeStep(step);
+      } else if (stepStates[step] === STEP_WAITING) {
+        console.log(`[VISUALIZER-EVENT] Cannot complete waiting step ${step}, starting it first`);
+        startStep(step);
+        
+        // Schedule completion after minimum duration
+        const minDuration = 
+          step === 'recognize' ? MIN_RECOGNIZE_DURATION :
+          step === 'search' ? MIN_SEARCH_DURATION :
+          step === 'process' ? MIN_PROCESS_DURATION :
+          MIN_RESULT_DURATION;
+        
+        const completeTimeout = setTimeout(() => {
+          completeStep(step);
+        }, minDuration);
+        
+        timeoutRefs.current.push(completeTimeout);
+      } else {
+        console.log(`[VISUALIZER-EVENT] Not completing step ${step}, current state:`, stepStates[step]);
+      }
+    }, 100);
+    
+    // Other debounced handlers
+    const debouncedUpdateSubtitle = debounce((step, subtitle) => {
+      switch (step) {
+        case 'recognize':
+          setRecognizeSubtitle(subtitle);
+          break;
+        case 'search':
+          setSearchSubtitle(subtitle);
+          break;
+        case 'process':
+          setProcessSubtitle(subtitle);
+          break;
+        case 'result':
+          setResultSubtitle(subtitle);
+          break;
+      }
+    }, 150);
+    
+    const debouncedUpdateFood = debounce((foodName) => {
+      setDetectedFood(foodName);
+      setRecognizeSubtitle(`Detected ${foodName}...`);
+      setResultSubtitle(`Generating nutrition facts for ${foodName}...`);
+      
+      // If recognize step is active, schedule completion
+      if (stepStates.recognize === STEP_ACTIVE) {
+          const completeTimeout = setTimeout(() => {
+          completeStep('recognize');
+        }, 1500);
+        timeoutRefs.current.push(completeTimeout);
+      }
+    }, 150);
+    
+    const debouncedSetAPIFinished = debounce((isFinished) => {
+      if (isFinished) {
+        setAPIFinished(true);
+      }
+    }, 200);
+    
+    const debouncedUpdateSearchData = debounce((data) => {
+      if (data) {
+        if (data.queries && data.queries.length > 0) {
+          const query = data.queries[0];
+          setSearchSubtitle(`Searching "${query}"...`);
+        }
+        
+        if (data.results && data.results.length > 0) {
+          setSearchResultsCount(data.results.length);
+          
+          if (data.results[0] && data.results[0].title) {
+            const title = data.results[0].title;
+            const shortTitle = title.length > 20 ? title.substring(0, 20) + '...' : title;
+            setProcessSubtitle(`Analyzing "${shortTitle}"`);
+          }
+        }
+      }
+    }, 150);
+
+    // Listen for step updates with debouncing and duplicate prevention
+    listeners.current.push(
+      EventRegister.addEventListener(EVENTS.STEP_UPDATE, (data) => {
+        // Ignore events from other scans
+        if (!isCurrentScan(data)) {
+          console.log(`[VISUALIZER] Ignoring event from scan ${data?.scanId}, current scan: ${currentScanIdRef.current}`);
+          return;
+        }
+        
+        if (data && data.step) {
+          // Prevent duplicate processing
+          const eventKey = `${data.step}_${data.active}`;
+          if (lastEventsRef.current.step_update[eventKey]) {
+            return;
+          }
+          lastEventsRef.current.step_update[eventKey] = Date.now();
+          
+          console.log(`[VISUALIZER-EVENT] Received step update: ${data.step}, active: ${data.active}`);
+          if (data.active) {
+            enhancedStartStep(data.step);
+          }
+        }
+      })
+    );
+
+    // Listen for step completions with debouncing and duplicate prevention
+    listeners.current.push(
+      EventRegister.addEventListener(EVENTS.STEP_COMPLETE, (data) => {
+        // Ignore events from other scans
+        if (!isCurrentScan(data)) return;
+        
+        if (data && data.step) {
+          // Prevent duplicate processing
+          if (lastEventsRef.current.step_complete[data.step]) {
+            return;
+          }
+          lastEventsRef.current.step_complete[data.step] = Date.now();
+          
+          console.log(`[VISUALIZER-EVENT] Received step completion: ${data.step}`);
+          enhancedCompleteStep(data.step);
+        }
+      })
+    );
+
+    // Listen for subtitle updates with debouncing and duplicate prevention
+    listeners.current.push(
+      EventRegister.addEventListener(EVENTS.SUBTITLE_UPDATE, (data) => {
+        // Ignore events from other scans
+        if (!isCurrentScan(data)) return;
+        
+        if (data && data.step && data.subtitle) {
+          // Prevent duplicate processing
+          const eventKey = `${data.step}_${data.subtitle}`;
+          if (lastEventsRef.current.subtitle_update[eventKey]) {
+            return;
+          }
+          lastEventsRef.current.subtitle_update[eventKey] = Date.now();
+          
+          console.log(`[VISUALIZER-EVENT] Received subtitle update for ${data.step}: ${data.subtitle}`);
+          debouncedUpdateSubtitle(data.step, data.subtitle);
+        }
+      })
+    );
+
+    // Listen for food detection with debouncing and duplicate prevention
+    listeners.current.push(
+      EventRegister.addEventListener(EVENTS.FOOD_DETECTED, (data) => {
+        // Ignore events from other scans
+        if (!isCurrentScan({ scanId: data?.scanId })) return;
+        
+        const foodName = typeof data === 'object' ? data.foodName || data : data;
+        if (foodName) {
+          // Prevent duplicate processing
+          if (lastEventsRef.current.food_detected === foodName) {
+            return;
+          }
+          lastEventsRef.current.food_detected = foodName;
+          
+          console.log(`[VISUALIZER-EVENT] Received food detection: ${foodName}`);
+          debouncedUpdateFood(foodName);
+        }
+      })
+    );
+
+    // Listen for API completion with debouncing and duplicate prevention
+    listeners.current.push(
+      EventRegister.addEventListener(EVENTS.API_FINISHED, (data) => {
+        // Ignore events from other scans
+        if (!isCurrentScan(data)) return;
+        
+        const isFinished = typeof data === 'object' ? data.isFinished || true : data;
+        if (isFinished) {
+          // Prevent duplicate processing
+          if (lastEventsRef.current.api_finished) {
+            return;
+          }
+          lastEventsRef.current.api_finished = true;
+          
+          console.log('[VISUALIZER-EVENT] Received API finished');
+          debouncedSetAPIFinished(isFinished);
+        }
+      })
+    );
+
+    // Listen for search data with debouncing
+    listeners.current.push(
+      EventRegister.addEventListener(EVENTS.SEARCH_DATA, (data) => {
+        // Ignore events from other scans
+        if (!isCurrentScan(data)) return;
+        
+        if (data) {
+          console.log('[VISUALIZER-EVENT] Received search data update');
+          debouncedUpdateSearchData(data);
+        }
+      })
+    );
+  }, [stepStates, completeStep, startStep]);
+
+  // Initialize event listeners for direct component communication
   useEffect(() => {
-    if (!isValidatingState) {
-      validateStepStates();
+    if (isVisible) {
+      setupEventListeners();
+      
+      // Listen for reset events first to get current scan ID
+      const resetListener = EventRegister.addEventListener('ai_visualization_reset', (data) => {
+        console.log('[VISUALIZER] Reset event received', data);
+        
+        // Update current scan ID if provided
+        if (data && data.scanId) {
+          console.log(`[VISUALIZER] Setting current scan ID to: ${data.scanId}`);
+          currentScanIdRef.current = data.scanId;
+        } else {
+          // If no scan ID provided, generate a fallback
+          const fallbackId = `fallback_${Date.now()}`;
+          console.log(`[VISUALIZER] No scan ID provided, using fallback: ${fallbackId}`);
+          currentScanIdRef.current = fallbackId;
+        }
+        
+        // Reset component state
+        resetForNewScan();
+      });
+      
+      listeners.current.push(resetListener);
     }
-  }, [stepStates]);
+
+    // Cleanup listeners on unmount or when visibility changes
+    return () => {
+      console.log('[VISUALIZER] Removing event listeners');
+      listeners.current.forEach(listener => {
+        EventRegister.removeEventListener(listener);
+      });
+      listeners.current = [];
+      
+      // Reset last events tracking
+      lastEventsRef.current = {
+        step_update: {},
+        step_complete: {},
+        subtitle_update: {},
+        food_detected: null,
+        api_finished: false
+      };
+      
+      // Clear scan ID
+      currentScanIdRef.current = null;
+    };
+  }, [isVisible, setupEventListeners, resetForNewScan]);
 
   return (
     <View style={styles.container}>
@@ -1486,7 +2151,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: '#666',
     marginTop: 0,
-    minHeight: 18,
+    // minHeight: 18, // Removed to allow numberOfLines=1 to work properly
   },
   connector: {
     position: 'absolute',
@@ -1518,4 +2183,5 @@ const styles = StyleSheet.create({
   }
 });
 
+export { EVENTS };
 export default FunctionalAIVisualization;

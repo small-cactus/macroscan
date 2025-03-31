@@ -223,7 +223,7 @@ export default function SignInScreen({ navigation }) {
                   onPressOut={handlePressOut}
                 >
                   <LinearGradient
-                    colors={colorScheme === 'dark' ? ['#2a2a2a', '#1a1a1a'] : ['#000', '#333']}
+                    colors={colorScheme === 'dark' ? ['#0A84FF', '#0066CC'] : ['#007AFF', '#0055CC']}
                     style={styles.SignUpButton}
                     start={{ x: 0, y: 0 }}
                     end={{ x: 1, y: 1 }}
@@ -256,7 +256,6 @@ export default function SignInScreen({ navigation }) {
 
 const getDynamicStyles = (colorScheme) => {
   const isSmallScreen = height < 700;
-  
   return StyleSheet.create({
     container: {
       flex: 1,
@@ -305,7 +304,7 @@ const getDynamicStyles = (colorScheme) => {
     appIcon: {
       width: width * 0.2,
       height: width * 0.2,
-      borderRadius: 18,
+      borderRadius: 0.047 * width,
     },
     textContainer: {
       alignItems: 'center',

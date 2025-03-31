@@ -5,6 +5,44 @@ import { getModel } from './models';
 import Anthropic from '@anthropic-ai/sdk';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { EventRegister } from 'react-native-event-listeners';
+
+// Throttle helper function to limit event emission rate
+const throttle = (func, limit) => {
+  let lastFunc;
+  let lastRan;
+  return function() {
+    const context = this;
+    const args = arguments;
+    if (!lastRan) {
+      func.apply(context, args);
+      lastRan = Date.now();
+    } else {
+      clearTimeout(lastFunc);
+      lastFunc = setTimeout(function() {
+        if ((Date.now() - lastRan) >= limit) {
+          func.apply(context, args);
+          lastRan = Date.now();
+        }
+      }, limit - (Date.now() - lastRan));
+    }
+  };
+};
+
+// Create throttled event emitter for smoother visualization
+const throttledEmit = throttle((eventName, data) => {
+  EventRegister.emit(eventName, data);
+}, 200); // Limit to one event every 200ms
+
+// Import event constants from FunctionalAIVisualization
+const EVENTS = {
+  STEP_UPDATE: 'ai_visualization_step_update',
+  STEP_COMPLETE: 'ai_visualization_step_complete',
+  SUBTITLE_UPDATE: 'ai_visualization_subtitle_update',
+  FOOD_DETECTED: 'ai_visualization_food_detected',
+  API_FINISHED: 'ai_visualization_api_finished',
+  SEARCH_DATA: 'ai_visualization_search_data'
+};
 
 // Global reference to the searchTracking function
 let globalSearchTrackingFn = null;
@@ -205,9 +243,129 @@ setInterval(() => {
   }
 }, 500);
 
+// Add state tracking to prevent redundant events
+const stateTracker = {
+  steps: {
+    recognize: { active: false, completed: false },
+    search: { active: false, completed: false },
+    process: { active: false, completed: false },
+    result: { active: false, completed: false }
+  },
+  subtitles: {
+    recognize: null,
+    search: null,
+    process: null,
+    result: null
+  },
+  detectedFood: null,
+  apiFinished: false,
+  lastEventTime: {},
+  
+  // Only emit events if state has actually changed
+  hasChanged(type, value) {
+    const now = Date.now();
+    const key = `${type}_${JSON.stringify(value)}`;
+    
+    // Prevent duplicate events within 300ms
+    if (this.lastEventTime[key] && (now - this.lastEventTime[key]) < 300) {
+      return false;
+    }
+    
+    this.lastEventTime[key] = now;
+    return true;
+  },
+  
+  // Reset all tracked state
+  reset() {
+    this.steps = {
+      recognize: { active: false, completed: false },
+      search: { active: false, completed: false },
+      process: { active: false, completed: false },
+      result: { active: false, completed: false }
+    };
+    this.subtitles = {
+      recognize: null,
+      search: null,
+      process: null,
+      result: null
+    };
+    this.detectedFood = null;
+    this.apiFinished = false;
+    this.lastEventTime = {};
+  }
+};
+
+// Make the throttledEmit smarter with state tracking
+const smartEmit = (eventName, data) => {
+  // Get current scan ID
+  const scanId = global.CURRENT_SCAN_ID || null;
+  
+  // Add scan ID to data if available
+  const eventData = scanId ? { ...data, scanId } : data;
+  
+  // Track different event types
+  switch (eventName) {
+    case EVENTS.STEP_UPDATE:
+      if (data && data.step) {
+        if (stateTracker.steps[data.step].active === data.active) {
+          return; // State hasn't changed, don't emit
+        }
+        if (!stateTracker.hasChanged('step_update', data)) {
+          return; // Duplicate event, don't emit
+        }
+        stateTracker.steps[data.step].active = data.active;
+      }
+      break;
+      
+    case EVENTS.STEP_COMPLETE:
+      if (data && data.step) {
+        if (stateTracker.steps[data.step].completed) {
+          return; // Already completed, don't emit
+        }
+        if (!stateTracker.hasChanged('step_complete', data)) {
+          return; // Duplicate event, don't emit
+        }
+        stateTracker.steps[data.step].completed = true;
+      }
+      break;
+      
+    case EVENTS.SUBTITLE_UPDATE:
+      if (data && data.step && data.subtitle) {
+        if (stateTracker.subtitles[data.step] === data.subtitle) {
+          return; // Same subtitle, don't emit
+        }
+        if (!stateTracker.hasChanged('subtitle', data)) {
+          return; // Duplicate event, don't emit
+        }
+        stateTracker.subtitles[data.step] = data.subtitle;
+      }
+      break;
+      
+    case EVENTS.FOOD_DETECTED:
+      if (stateTracker.detectedFood === data) {
+        return; // Same food, don't emit
+      }
+      if (!stateTracker.hasChanged('food', data)) {
+        return; // Duplicate event, don't emit
+      }
+      stateTracker.detectedFood = data;
+      break;
+      
+    case EVENTS.API_FINISHED:
+      if (stateTracker.apiFinished) {
+        return; // Already marked as finished, don't emit
+      }
+      stateTracker.apiFinished = true;
+      break;
+  }
+  
+  // Use the throttled emit function with scan ID
+  throttledEmit(eventName, eventData);
+};
+
 // UPDATED - Simple Direct Function for Updating Step States
 /**
- * Updates a step's state in both global state and AsyncStorage
+ * Updates a step's state in both global state and via events
  * @param {string} step The step to update (recognize, search, process, result)
  * @param {Object} state Object with active and/or completed status
  */
@@ -224,7 +382,10 @@ const updateStepState = async (step, state) => {
         global.NUTRILENS_VISUALIZATION.currentStep = step;
       }
       
-      // Store in AsyncStorage
+      // Emit event for step activation using smart emitter
+      smartEmit(EVENTS.STEP_UPDATE, { step, active: state.active });
+      
+      // Also update AsyncStorage for backwards compatibility
       const key = step === STEP_RECOGNIZE ? RECOGNIZE_STEP_ACTIVE_KEY :
                   step === STEP_SEARCH ? SEARCH_STEP_ACTIVE_KEY :
                   step === STEP_PROCESS ? PROCESS_STEP_ACTIVE_KEY :
@@ -244,7 +405,12 @@ const updateStepState = async (step, state) => {
     if (state.hasOwnProperty('completed')) {
       global.NUTRILENS_VISUALIZATION.stepStates[step].completed = state.completed;
       
-      // Store in AsyncStorage
+      // Emit event for step completion using smart emitter
+      if (state.completed) {
+        smartEmit(EVENTS.STEP_COMPLETE, { step });
+      }
+      
+      // Store in AsyncStorage for backwards compatibility
       const key = step === STEP_RECOGNIZE ? RECOGNIZE_STEP_COMPLETED_KEY :
                   step === STEP_SEARCH ? SEARCH_STEP_COMPLETED_KEY :
                   step === STEP_PROCESS ? PROCESS_STEP_COMPLETED_KEY :
@@ -277,7 +443,13 @@ const updateStepSubtitles = async (step, subtitles) => {
   global.NUTRILENS_VISUALIZATION.subtitles[step] = subtitles;
   global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
   
-  // Store in AsyncStorage 
+  // Emit event with latest subtitle using smart emitter
+  smartEmit(EVENTS.SUBTITLE_UPDATE, { 
+    step, 
+    subtitle: subtitles[subtitles.length - 1] 
+  });
+  
+  // Store in AsyncStorage for backwards compatibility
   try {
     const key = `@nutrilens:${step}_subtitles`;
     await AsyncStorage.setItem(key, JSON.stringify(subtitles));
@@ -299,7 +471,10 @@ const updateDetectedFood = async (foodName) => {
   global.NUTRILENS_VISUALIZATION.detectedFood = foodName;
   global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
   
-  // Store in AsyncStorage
+  // Emit event for food detection using smart emitter
+  smartEmit(EVENTS.FOOD_DETECTED, foodName);
+  
+  // Store in AsyncStorage for backwards compatibility
   try {
     await AsyncStorage.setItem(DETECTED_FOOD_KEY, foodName);
   } catch (error) {
@@ -373,7 +548,10 @@ const completeStep = async (step) => {
   try {
     console.log(`Completing step: ${step}`);
     
-    // Store the step's completed status in AsyncStorage
+    // Emit event for step completion using smart emitter
+    smartEmit(EVENTS.STEP_COMPLETE, { step });
+    
+    // Store the step's completed status in AsyncStorage for backwards compatibility
     switch(step) {
       case STEP_RECOGNIZE:
         await AsyncStorage.setItem(RECOGNIZE_STEP_COMPLETED_KEY, 'true');
@@ -389,7 +567,7 @@ const completeStep = async (step) => {
         break;
     }
     
-    // Verify completion status was set correctly
+    // Verify completion status was set correctly (for backwards compatibility)
     let verificationKey;
     switch(step) {
       case STEP_RECOGNIZE: verificationKey = RECOGNIZE_STEP_COMPLETED_KEY; break;
@@ -398,7 +576,7 @@ const completeStep = async (step) => {
       case STEP_RESULT: verificationKey = RESULT_STEP_COMPLETED_KEY; break;
     }
     
-    // Verify the completion was saved (critical)
+    // Verify the completion was saved (for backwards compatibility)
     const isCompleted = await AsyncStorage.getItem(verificationKey);
     if (isCompleted !== 'true') {
       console.error(`Failed to set completion status for ${step}. Retrying...`);
@@ -449,7 +627,10 @@ const activateStep = async (step) => {
     
     console.log(`Activating step: ${step}`);
     
-    // Store the step's active status in AsyncStorage
+    // Emit event for step activation using smart emitter
+    smartEmit(EVENTS.STEP_UPDATE, { step, active: true });
+    
+    // Store the step's active status in AsyncStorage for backwards compatibility
     switch(step) {
       case STEP_RECOGNIZE:
         await AsyncStorage.setItem(RECOGNIZE_STEP_ACTIVE_KEY, 'true');
@@ -472,22 +653,11 @@ const activateStep = async (step) => {
     const timestamp = Date.now().toString();
     await AsyncStorage.setItem(STEP_TIMESTAMP_KEY, timestamp);
     
-    // Verify activation status was set correctly
-    let verificationKey;
-    switch(step) {
-      case STEP_RECOGNIZE: verificationKey = RECOGNIZE_STEP_ACTIVE_KEY; break;
-      case STEP_SEARCH: verificationKey = SEARCH_STEP_ACTIVE_KEY; break;
-      case STEP_PROCESS: verificationKey = PROCESS_STEP_ACTIVE_KEY; break;
-      case STEP_RESULT: verificationKey = RESULT_STEP_ACTIVE_KEY; break;
-    }
-    
-    // Verify the activation was saved (critical)
-    const isActive = await AsyncStorage.getItem(verificationKey);
-    if (isActive !== 'true') {
-      console.error(`Failed to set active status for ${step}. Retrying...`);
-      await AsyncStorage.setItem(verificationKey, 'true');
-    } else {
-      console.log(`Verified activation status for ${step}`);
+    // Update global state for immediate effect
+    if (global.NUTRILENS_VISUALIZATION) {
+      global.NUTRILENS_VISUALIZATION.currentStep = step;
+      global.NUTRILENS_VISUALIZATION.stepStates[step].active = true;
+      global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
     }
     
     return true;
@@ -626,7 +796,7 @@ const performWebSearch = async (query) => {
   }
 };
 
-// Function to store search data directly to AsyncStorage
+// Function to store search data directly
 const storeSearchData = async (queries = [], results = []) => {
   try {
     // Check if API is finished
@@ -636,7 +806,7 @@ const storeSearchData = async (queries = [], results = []) => {
       return false;
     }
     
-    console.log('Storing search data to AsyncStorage:', { queries: queries.length, results: results.length });
+    console.log('Storing search data:', { queries: queries.length, results: results.length });
     
     // Update current processing step based on what we're storing
     const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY) || STEP_RECOGNIZE;
@@ -682,11 +852,8 @@ const storeSearchData = async (queries = [], results = []) => {
         await AsyncStorage.setItem(SEARCH_QUERIES_KEY, JSON.stringify(updatedQueries));
         console.log('Updated queries in AsyncStorage:', updatedQueries.length);
         
-        // DIRECTLY update global state for instant visualization updates
-        if (global.NUTRILENS_VISUALIZATION) {
-          global.NUTRILENS_VISUALIZATION.subtitles.search = updatedQueries.map(q => `Searching "${q}"...`);
-          global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
-        }
+        // Emit search data event using smart emitter
+        smartEmit(EVENTS.SEARCH_DATA, { queries: updatedQueries });
         
         // Extract food data from queries
         const foodKeywords = ['nutrition facts for', 'calories in'];
@@ -697,17 +864,12 @@ const storeSearchData = async (queries = [], results = []) => {
               if (match && match[1]) {
                 const foodName = match[1].trim();
                 if (foodName.length > 2) {
-                  // Save detected food to AsyncStorage and update global state
+                  // Emit food detected event using smart emitter
+                  smartEmit(EVENTS.FOOD_DETECTED, foodName);
+                  
+                  // Save detected food to AsyncStorage for backwards compatibility
                   await AsyncStorage.setItem(DETECTED_FOOD_KEY, foodName);
                   console.log('Stored detected food in AsyncStorage:', foodName);
-                  
-                  // DIRECTLY update global state
-                  if (global.NUTRILENS_VISUALIZATION) {
-                    global.NUTRILENS_VISUALIZATION.detectedFood = foodName;
-                    global.NUTRILENS_VISUALIZATION.subtitles.recognize = [`Detected ${foodName}...`];
-                    global.NUTRILENS_VISUALIZATION.subtitles.result = [`Nutrition facts for ${foodName}`];
-                    global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
-                  }
                   
                   break;
                 }
@@ -753,18 +915,10 @@ const storeSearchData = async (queries = [], results = []) => {
         await AsyncStorage.setItem(SEARCH_RESULTS_KEY, JSON.stringify(updatedResults));
         console.log('Updated results in AsyncStorage:', updatedResults.length);
         
-        // DIRECTLY update global state for instant visualization updates
-        if (global.NUTRILENS_VISUALIZATION) {
-          global.NUTRILENS_VISUALIZATION.subtitles.process = updatedResults
-            .slice(0, 3)
-            .map(r => `Analyzing "${r.title?.substring(0, 20) || 'results'}..."`);
-          global.NUTRILENS_VISUALIZATION.updateTime = Date.now();
-        }
+        // Emit search data results event using smart emitter
+        smartEmit(EVENTS.SEARCH_DATA, { results: updatedResults });
       }
     }
-    
-    // Directly update global state with step states for immediate visualization
-    await global.NUTRILENS_VISUALIZATION_ACCESS.refreshVisualization();
     
     // Progressive updates for visualization
     await manageVisualizationSteps({
@@ -1105,8 +1259,11 @@ const handleApiCompletion = async (data) => {
     // IMMEDIATELY mark as processing complete for any waiting clients
     global._isNutrilensProcessingComplete = true;
     
-    // CRITICAL: First, mark API as finished in AsyncStorage - this will prevent further updates
+    // CRITICAL: First, mark API as finished in AsyncStorage
     await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
+    
+    // Emit API finished event
+    smartEmit(EVENTS.API_FINISHED, true);
     
     // Also update global state
     if (global.NUTRILENS_VISUALIZATION) {
@@ -1275,10 +1432,87 @@ const forceCompleteAllSteps = async () => {
   }
 };
 
-/**
- * Generic handler for web search mode across all providers
- * This will route to the appropriate provider but with web search capabilities
- */
+// Add a new function for complete state reset that aggressively clears all state
+const forceResetAllState = async () => {
+  console.log('FORCE RESET: Aggressively clearing all visualization state');
+  
+  try {
+    // Generate new scan ID
+    const scanId = generateNewScanId();
+    console.log(`FORCE RESET: Using new scan ID: ${scanId}`);
+    
+    // Store globally for consistent events
+    global.CURRENT_SCAN_ID = scanId;
+    
+    // Clear all AsyncStorage keys related to visualization
+    const keysToRemove = [
+      SEARCH_QUERIES_KEY,
+      SEARCH_RESULTS_KEY,
+      API_FINISHED_KEY,
+      DETECTED_FOOD_KEY,
+      PROCESSING_STEP_KEY,
+      STEP_TIMESTAMP_KEY,
+      RECOGNIZE_STEP_ACTIVE_KEY,
+      SEARCH_STEP_ACTIVE_KEY,
+      PROCESS_STEP_ACTIVE_KEY,
+      RESULT_STEP_ACTIVE_KEY,
+      RECOGNIZE_STEP_COMPLETED_KEY,
+      SEARCH_STEP_COMPLETED_KEY,
+      PROCESS_STEP_COMPLETED_KEY,
+      RESULT_STEP_COMPLETED_KEY,
+      '@nutrilens:scan_start_time',
+      '@nutrilens:recognize_subtitles',
+      '@nutrilens:search_subtitles',
+      '@nutrilens:process_subtitles',
+      '@nutrilens:result_subtitles'
+    ];
+    
+    await AsyncStorage.multiRemove(keysToRemove);
+    
+    // Reset our state tracker to pristine state
+    stateTracker.reset();
+    
+    // Reset critical global state flags
+    global._isNutrilensProcessingComplete = false;
+    
+    // Reset global visualization state completely
+    if (global.NUTRILENS_VISUALIZATION) {
+      global.NUTRILENS_VISUALIZATION = {
+        currentStep: null,
+        stepStates: {
+          recognize: { active: false, completed: false },
+          search: { active: false, completed: false },
+          process: { active: false, completed: false },
+          result: { active: false, completed: false }
+        },
+        subtitles: {
+          recognize: [],
+          search: [],
+          process: [],
+          result: []
+        },
+        detectedFood: "",
+        updateTime: Date.now(),
+        apiFinished: false
+      };
+    }
+    
+    console.log('FORCE RESET: State cleared successfully');
+    return scanId;
+  } catch (error) {
+    console.error('FORCE RESET: Error clearing state:', error);
+    return null;
+  }
+};
+
+// Add a scan ID generator to track individual scans
+let currentScanId = 0;
+const generateNewScanId = () => {
+  currentScanId++;
+  return `scan_${Date.now()}_${currentScanId}`;
+};
+
+// Update the handleWebSearch function to use scan IDs
 export const handleWebSearch = async ({
   provider,
   selectedModel,
@@ -1300,33 +1534,21 @@ export const handleWebSearch = async ({
   setActiveTab,
 }) => {
   try {
-    // Clear previous search data when starting a new search
-    try {
-      await AsyncStorage.removeItem(SEARCH_QUERIES_KEY);
-      await AsyncStorage.removeItem(SEARCH_RESULTS_KEY);
-      await AsyncStorage.removeItem(API_FINISHED_KEY);
-      await AsyncStorage.removeItem(DETECTED_FOOD_KEY);
-      await AsyncStorage.removeItem(PROCESSING_STEP_KEY);
-      await AsyncStorage.removeItem(STEP_TIMESTAMP_KEY);
-      await AsyncStorage.removeItem(RECOGNIZE_STEP_ACTIVE_KEY);
-      await AsyncStorage.removeItem(SEARCH_STEP_ACTIVE_KEY);
-      await AsyncStorage.removeItem(PROCESS_STEP_ACTIVE_KEY);
-      await AsyncStorage.removeItem(RESULT_STEP_ACTIVE_KEY);
-      await AsyncStorage.removeItem(RECOGNIZE_STEP_COMPLETED_KEY);
-      await AsyncStorage.removeItem(SEARCH_STEP_COMPLETED_KEY);
-      await AsyncStorage.removeItem(PROCESS_STEP_COMPLETED_KEY);
-      await AsyncStorage.removeItem(RESULT_STEP_COMPLETED_KEY);
-      console.log('Cleared previous search data from AsyncStorage');
-      
-      // Initialize the visualization with the recognize step
-      await activateStep(STEP_RECOGNIZE);
-      
-      // Store start time for overall process timing
-      await AsyncStorage.setItem('@nutrilens:scan_start_time', Date.now().toString());
-      console.log('Initialized visualization with recognize step');
-    } catch (clearError) {
-      console.error('Error clearing previous search data:', clearError);
-    }
+    // Generate a unique scan ID
+    const scanId = generateNewScanId();
+    console.log(`[SCAN ${scanId}] Starting new scan with ${provider} provider`);
+    
+    // First, ensure all previous state is completely cleared
+    await forceResetAllState();
+    
+    // Then emit the reset event to notify visualization component
+    EventRegister.emit('ai_visualization_reset', { scanId });
+    
+    // Brief delay to ensure reset is processed
+    await new Promise(resolve => setTimeout(resolve, 50));
+    
+    // Store scan ID in AsyncStorage for reference
+    await AsyncStorage.setItem('@nutrilens:current_scan_id', scanId);
     
     // Store the search tracking function in the global reference (legacy)
     globalSearchTrackingFn = handleSearchTracking;
@@ -1362,6 +1584,13 @@ export const handleWebSearch = async ({
         return handleSuccessfulScan(...args);
       }
     };
+    
+    // Initialize with the recognize step
+    await activateStep(STEP_RECOGNIZE);
+    
+    // Store start time for overall process timing
+    await AsyncStorage.setItem('@nutrilens:scan_start_time', Date.now().toString());
+    console.log('Initialized visualization with recognize step');
     
     // Route to the appropriate provider-specific web search function with enhanced error handling
     try {
@@ -1448,6 +1677,20 @@ export const handleWebSearch = async ({
     return false;
   }
 };
+
+// Update the event listener for reset events to use our more thorough reset function
+let resetEventListener = null;
+
+// Remove previous listener if it exists
+if (resetEventListener) {
+  EventRegister.removeEventListener(resetEventListener);
+}
+
+// Set up new reset event listener
+resetEventListener = EventRegister.addEventListener('ai_visualization_reset', async () => {
+  console.log('EVENT: Reset event received, performing complete reset');
+  await forceResetAllState();
+});
 
 /**
  * Handles web search using Anthropic's API

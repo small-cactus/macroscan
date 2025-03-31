@@ -945,6 +945,7 @@ const OnboardingScreen = () => {
   const navigation = useNavigation();
   const [currentIndex, setCurrentIndex] = useState(0);
   const [hasAnimated, setHasAnimated] = useState(false);
+  const [progressAnimationComplete, setProgressAnimationComplete] = useState(false);
   const flatListRef = useRef(null);
   const colorScheme = Appearance.getColorScheme();
   const isDark = colorScheme === 'dark';
@@ -1875,6 +1876,11 @@ const calculateGoals = (data) => {
     const currentStep = ONBOARDING_STEPS[currentIndex];
     const data = userData;
     
+    // For progress visualization step, require animation completion
+    if (currentStep.id === '3') {
+      return progressAnimationComplete;
+    }
+
     if (!currentStep.field && !currentStep.showWeightChangeOptions) return true;
 
     if (currentStep.showWeightChangeOptions) {
@@ -2077,6 +2083,7 @@ const calculateGoals = (data) => {
           <ProgressVisualization 
             isDark={isDark} 
             isVisible={currentIndex === index}
+            onAnimationComplete={() => setProgressAnimationComplete(true)}
           />
         </View>
       );
@@ -3675,6 +3682,68 @@ const calculateGoals = (data) => {
     }
   }, [currentIndex, filteredSteps, isCalculatingGoals, featureAnimations]);
 
+  // Reset progress animation state when leaving the step
+  useEffect(() => {
+    if (currentIndex !== 2) { // Assuming step with id '3' is at index 2
+      setProgressAnimationComplete(false);
+    }
+  }, [currentIndex]);
+
+  // Add this function to check if the current step has a start button
+  const hasStartButton = (stepId) => {
+    // Add the IDs of steps that have start buttons here
+    const stepsWithStartButtons = ['3.5', '10c']; 
+    return stepsWithStartButtons.includes(stepId);
+  };
+
+  // Improved function to determine if scrolling should be disabled
+  const shouldDisableScroll = () => {
+    if (!filteredSteps || filteredSteps.length === 0) return true;
+    
+    const currentStep = filteredSteps[currentIndex];
+    if (!currentStep) return true;
+    
+    // Always disable during calculations
+    if (isCalculatingGoals) return true;
+    
+    // Disable on steps with start buttons
+    if (hasStartButton(currentStep.id)) return true;
+    
+    // Disable when continue button is disabled
+    if (isContinueDisabled) return true;
+    
+    // Disable when current step is invalid
+    if (!isCurrentStepValid()) return true;
+    
+    // Allow scrolling in all other cases
+    return false;
+  };
+
+  // Add this new function to create a bouncing effect for better feedback
+  const createBounceAnimation = () => {
+    // Get current slide position
+    const startPosition = currentIndex * width;
+    
+    // Create sequence of small movements to simulate a bounce
+    Animated.sequence([
+      // Move slightly in the direction of the attempted scroll
+      Animated.timing(new Animated.Value(startPosition), {
+        toValue: startPosition + 15,
+        duration: 100,
+        useNativeDriver: true
+      }),
+      // Bounce back to original position
+      Animated.timing(new Animated.Value(startPosition + 15), {
+        toValue: startPosition,
+        duration: 150,
+        useNativeDriver: true
+      })
+    ]).start();
+    
+    // Provide haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={StyleSheet.absoluteFill}>
@@ -3713,7 +3782,7 @@ const calculateGoals = (data) => {
           renderItem={renderItem}
           horizontal
           pagingEnabled
-          scrollEnabled={!isCalculatingGoals}
+          scrollEnabled={!shouldDisableScroll()}
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id}
           getItemLayout={getItemLayout}
@@ -3726,14 +3795,42 @@ const calculateGoals = (data) => {
             setCurrentIndex(safeIndex);
           }}
           onScrollBeginDrag={(event) => {
-            // Prevent scrolling forward if current step is invalid
+            const currentStep = filteredSteps[currentIndex];
             const xOffset = event.nativeEvent.contentOffset.x;
-            if (xOffset < currentIndex * width && !isCurrentStepValid()) {
+            // Fix the direction detection logic
+            // If xOffset < currentIndex * width, user is scrolling backward (to the left)
+            // If xOffset > currentIndex * width, user is scrolling forward (to the right)
+            const isScrollingForward = xOffset <= currentIndex * width ? false : true;
+            
+            // Determine if this scroll attempt should be blocked
+            let shouldBlockScroll = false;
+            let validationMessage = '';
+            
+            // Check various conditions that should prevent scrolling
+            if (isScrollingForward && !isCurrentStepValid()) {
+              shouldBlockScroll = true;
+              validationMessage = 'Please complete this step first';
+            } else if (isScrollingForward && isContinueDisabled) {
+              shouldBlockScroll = true;
+              validationMessage = 'Please wait for this step to complete';
+            } else if (isScrollingForward && hasStartButton(currentStep?.id)) {
+              shouldBlockScroll = true;
+              validationMessage = 'Please use the button to continue';
+            }
+            
+            // If scrolling should be blocked, prevent it and show feedback
+            if (shouldBlockScroll) {
+              // Add bounce animation and vibration feedback
+              createBounceAnimation();
+              
+              // Ensure we stay on the current index
               flatListRef.current?.scrollToIndex({
                 index: currentIndex,
                 animated: true
               });
-              showValidation('Please complete this step first');
+              
+              // Show validation message
+              showValidation(validationMessage);
             }
           }}
           onScrollToIndexFailed={(info) => {

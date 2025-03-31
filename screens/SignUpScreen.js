@@ -165,7 +165,7 @@ export default function SignUpScreen({ navigation }) {
       <View style={styles.contentContainer}>
         <View style={styles.logoContainer}>
           <View style={styles.logoBackground}>
-            <Image source={require('../assets/icon.png')} style={styles.logo} />
+            <Image source={require('../assets/logo4.jpg')} style={styles.logo} />
           </View>
         </View>
 
@@ -254,21 +254,22 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
   },
   logoContainer: {
     alignItems: 'center',
-    marginTop: (Platform.OS === 'ios' ? 100 : 0) * scale,
+    marginTop: height * 0.1, // 10% of screen height
   },
   logoBackground: {
     backgroundColor: '#FFF',
-    borderRadius: 32 * scale,
+    borderRadius: 28,
     padding: 0,
     shadowColor: colorScheme === 'dark' ? '#fff' : '#000',
-    shadowOffset: { width: 0, height: 15 * scale },
-    shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.25,
-    shadowRadius: 15.84 * scale,
+    shadowOffset: { width: 0, height: height * 0.02 }, // 2% of height
+    shadowOpacity: colorScheme === 'dark' ? 0.15 : 0.35,
+    shadowRadius: height * 0.02, // 2% of height
     elevation: 10,
   },
   logo: {
-    width: 125 * scale,
-    height: 125 * scale,
+    width: width * 0.3, // 30% of screen width
+    height: width * 0.3,
+    borderRadius: 28,
   },
   SignUpButton: {
     borderRadius: 16 * scale,

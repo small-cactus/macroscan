@@ -42,6 +42,7 @@ import { FadeInDown } from 'react-native-reanimated';
 import { handleWebSearch } from './providers/WebSearchProvider';
 import WebSearchProvider from './providers/WebSearchProvider';
 import FunctionalAIVisualization from './FunctionalAIVisualization';
+import SearchModeInfoSheet from './SearchModeInfoSheet';
 const useOpenAI = false; // Set to true to use OpenAI, false rto use Anthropic
 
 const { width, height } = Dimensions.get('window');
@@ -3760,6 +3761,32 @@ const stopLoadingAnimation = () => {
     }
   };
 
+  // Add these new state variables near other state declarations
+  const [showSearchInfoSheet, setShowSearchInfoSheet] = useState(false);
+  const [hasSeenSearchInfoSheetThisSession, setHasSeenSearchInfoSheetThisSession] = useState(false);
+
+  // Update the useEffect that depends on selectedMode
+  useEffect(() => {
+    const handleModeChange = async () => {
+      // Existing logic for loading texts...
+      if (isLoading) {
+        setLoadingTextQueue(getLoadingTextsByMode(selectedMode));
+      }
+
+      // New logic to show the info sheet for Search Mode
+      if (selectedMode === 'search' && !hasSeenSearchInfoSheetThisSession) {
+        // Optionally check AsyncStorage if you want it shown only once ever
+        // const hasSeenEver = await AsyncStorage.getItem('@has_seen_search_info_sheet');
+        // if (hasSeenEver !== 'true') {
+          setShowSearchInfoSheet(true);
+          setHasSeenSearchInfoSheetThisSession(true);
+          // await AsyncStorage.setItem('@has_seen_search_info_sheet', 'true');
+        // }
+      }
+    };
+    handleModeChange();
+  }, [selectedMode, isLoading]); // Keep existing dependencies
+
   return (
     <ScrollView 
       ref={mainScrollViewRef}
@@ -3990,17 +4017,24 @@ const stopLoadingAnimation = () => {
                     size={16}
                     color={chipAppearance === 'dark' ? '#fff' : '#444'}
                   />
-                  <Animated.Text
-                    style={[
-                      styles.chipText,
-                      {
-                        opacity: chipTextOpacity,
-                        color: chipAppearance === 'dark' ? '#fff' : '#444'
-                      }
-                    ]}
-                  >
-                    {selectedMode === 'fast' ? 'Fast' : selectedMode === 'accurate' ? 'Accurate' : 'Search'}
-                  </Animated.Text>
+                  <View style={styles.chipTextContainer}>
+                    <Animated.Text
+                      style={[
+                        styles.chipText,
+                        {
+                          opacity: chipTextOpacity,
+                          color: chipAppearance === 'dark' ? '#fff' : '#444'
+                        }
+                      ]}
+                    >
+                      {selectedMode === 'fast' ? 'Fast' : selectedMode === 'accurate' ? 'Accurate' : 'Search'}
+                    </Animated.Text>
+                    {selectedMode === SEARCH_MODE && (
+                      <View style={styles.betaTagContainer}>
+                        <Text style={styles.betaTagText}>BETA</Text>
+                      </View>
+                    )}
+                  </View>
                 </View>
               </BlurView>
             </TouchableOpacity>
@@ -4455,6 +4489,12 @@ const stopLoadingAnimation = () => {
           </TouchableOpacity>
         </Animated.View>
       )}
+
+      {/* Add the SearchModeInfoSheet modal */}
+      <SearchModeInfoSheet
+        visible={showSearchInfoSheet}
+        onClose={() => setShowSearchInfoSheet(false)}
+      />
     </ScrollView>
   );
 };
@@ -4965,6 +5005,24 @@ const scale = Math.min(scaleWidth, scaleHeight);
       alignItems: 'center',
       gap: 6 * scale,
       justifyContent: 'center', // Add this to keep content centered during animation
+    },
+    chipTextContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 4 * scale,
+    },
+    betaTagContainer: {
+      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#E5E5EA',
+      borderRadius: 8 * scale,
+      overflow: 'hidden',
+      marginLeft: 4 * scale,
+    },
+    betaTagText: {
+      fontSize: 11 * scale,
+      color: '#007AFF',
+      fontWeight: '600',
+      paddingHorizontal: 11 * scale,
+      paddingVertical: 3 * scale,
     },
     chipLabel: {
       fontSize: 14 * scale,

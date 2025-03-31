@@ -6,7 +6,7 @@ import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
-const ProgressVisualization = ({ isDark, isVisible = false }) => {
+const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete }) => {
   // Create animated values for each day
   const dayAnimations = useRef(Array(10).fill(0).map(() => new Animated.Value(0))).current;
   const connectorAnimations = useRef(Array(9).fill(0).map(() => new Animated.Value(0))).current;
@@ -140,10 +140,7 @@ const ProgressVisualization = ({ isDark, isVisible = false }) => {
     });
 
     // Start the 30-day challenge animation sequence
-    Animated.stagger(50, dayAnimationsArray).start();
-    
-    // After a delay, start the transition
-    setTimeout(() => {
+    Animated.stagger(50, dayAnimationsArray).start(() => {
       // Provide haptic feedback for transition to graph
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       
@@ -172,8 +169,11 @@ const ProgressVisualization = ({ isDark, isVisible = false }) => {
         })
       ]).start(() => {
         setActiveView('graph');
+        if (onAnimationComplete) {
+          onAnimationComplete();
+        }
       });
-    }, 2000);
+    });
   };
 
   // Trigger animation when isVisible changes to true

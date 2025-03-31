@@ -1,7 +1,7 @@
 // App.js
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import {
@@ -29,6 +29,7 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler'; // **Impo
 import Superwall from '@superwall/react-native-superwall';
 import WhatsNew from './screens/WhatsNew';
 import DataMigrationScreen from './screens/DataMigrationScreen';
+// import FoodScanScreenRedesigned from './screens/FoodScanScreenRedesigned';
 
 // Screens
 import WelcomeScreen from './screens/WelcomeScreen';
@@ -57,7 +58,12 @@ import CameraScreen from './screens/CameraScreen';
 import ChatWithImageTest from './screens/ChatWithImageTest';
 import LandscapeCarouselScreen from './screens/LandscapeCarouselScreen';
 import InsightsV2 from './screens/InsightsV2';
+// import MealPlanCameraScreen from './screens/MealPlanCameraScreen';
+// import MealPlanScreen from './screens/MealPlanScreen';
+import MultiFoodScanScreen from './screens/MultiFoodScanScreen';
+import FoodDetailsScreen from './screens/FoodDetailsScreen';
 import SearchScreen from './screens/SearchScreen';
+
 const { width, height } = Dimensions.get('window');
 
 const isIphoneSE = () => {
@@ -112,6 +118,9 @@ function HomeTabs() {
             case 'Beta':
               iconName = focused ? 'scan' : 'scan-outline';
               break;
+            case 'Search (BETA)':
+              iconName = focused ? 'search' : 'search-outline';
+              break;
           }
           return <Icon name={iconName} size={size} color={color} />;
         },
@@ -124,7 +133,14 @@ function HomeTabs() {
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
       <Tab.Screen name="Account" component={AccountScreen} />
-      <Tab.Screen name="Beta" component={SearchScreen} />
+      <Tab.Screen 
+        name="Search (BETA)" 
+        component={SearchScreen}
+        options={{ 
+          tabBarLabel: 'Search (BETA)',
+          tabBarTestID: 'search-beta-tab'
+        }}
+      />
     </Tab.Navigator>
   );
 }
@@ -135,7 +151,7 @@ function App() {
   const [theme, setTheme] = useState(systemScheme);
   const [initialRoute, setInitialRoute] = useState(null);
   const [isConnected, setIsConnected] = useState(true);
-  const [showWhatsNew, setShowWhatsNew] = useState(true);
+  const [showWhatsNew, setShowWhatsNew] = useState(false);
   const [needsMigration, setNeedsMigration] = useState(false);
 
   const generateChecksum = (data) => {
@@ -230,7 +246,9 @@ function App() {
   if (needsMigration) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <DataMigrationScreen onComplete={handleMigrationComplete} />
+        <TimeZoneProvider>
+          <DataMigrationScreen onComplete={handleMigrationComplete} />
+        </TimeZoneProvider>
       </GestureHandlerRootView>
     );
   }
@@ -238,9 +256,11 @@ function App() {
   if (initialRoute === null) {
     return (
       <GestureHandlerRootView style={{ flex: 1 }}>
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color="#ccc" />
-        </View>
+        <TimeZoneProvider>
+          <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+            <ActivityIndicator size="large" color="#ccc" />
+          </View>
+        </TimeZoneProvider>
       </GestureHandlerRootView>
     );
   }
@@ -249,15 +269,17 @@ function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
-      <NavigationContainer ref={navigationRef} theme={theme === 'dark' ? DarkTheme : DefaultTheme}>
-        <UserProvider>
-          <IAPProvider>
-            <TimeZoneProvider>
+      <TimeZoneProvider>
+        <NavigationContainer ref={navigationRef}>
+          <UserProvider
+            navigation={navigationRef.current}
+          >
+            <IAPProvider>
               <Stack.Navigator
                 initialRouteName={initialRoute}
                 screenOptions={{
                   headerStyle: styles.headerStyle,
-                  headerTintColor: theme === 'dark' ? '#fff' : '#000',
+                  headerTintColor: '#fff',
                   headerTitleStyle: styles.headerTitleStyle,
                   headerTitleAlign: 'center',
                 }}
@@ -373,18 +395,28 @@ function App() {
                   options={{ headerShown: false }}
                 />
                 <Stack.Screen
-                  name="SearchScreen"
-                  component={SearchScreen}
+                  name="ChatWithImageTest"
+                  component={ChatWithImageTest}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="MultiFoodScanScreen"
+                  component={MultiFoodScanScreen}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="FoodDetailsScreen"
+                  component={FoodDetailsScreen}
                   options={{ headerShown: false }}
                 />
               </Stack.Navigator>
               <StatusBar
                 style={theme === 'dark' ? 'light-content' : 'dark-content'}
               />
-            </TimeZoneProvider>
-          </IAPProvider>
-        </UserProvider>
-      </NavigationContainer>
+            </IAPProvider>
+          </UserProvider>
+        </NavigationContainer>
+      </TimeZoneProvider>
     </GestureHandlerRootView>
   );
 }
