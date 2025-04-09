@@ -4,7 +4,7 @@ import { useRoute } from '@react-navigation/native';
 import {
   View, Text, Image, TouchableOpacity, ScrollView, StyleSheet, ActivityIndicator,
   Modal, Alert, useColorScheme, Animated, Linking, TextInput, Dimensions, Platform, AppState,
-  LayoutAnimation,
+  LayoutAnimation, Easing,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { manipulateAsync, SaveFormat } from 'expo-image-manipulator';
@@ -43,6 +43,9 @@ import { handleWebSearch } from './providers/WebSearchProvider';
 import WebSearchProvider from './providers/WebSearchProvider';
 import FunctionalAIVisualization from './FunctionalAIVisualization';
 import SearchModeInfoSheet from './SearchModeInfoSheet';
+import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
+import { Audio } from 'expo-av'; // Added import
+
 const useOpenAI = false; // Set to true to use OpenAI, false rto use Anthropic
 
 const { width, height } = Dimensions.get('window');
@@ -99,7 +102,7 @@ const isIphoneSE = () => {
 const MODE_LABELS = {
   fast: 'Fast Mode',
   accurate: 'Accurate Mode',
-  search: 'Search Mode (BETA)',
+  search: 'Deep Search',
 };
 
 // Add search mode constant
@@ -111,13 +114,16 @@ const FoodScanScreen = () => {
   // Add debug flag at the top of the component
   const DEBUG_MODE = false; // Set to false for production
 
+  // Add a global variable to track when search should be cancelled
+  global.NUTRILENS_CANCEL_SEARCH = false;
+
   // Move useState inside the component
   const [showModeChip, setShowModeChip] = useState(true);
   const [image, setImage] = useState(null);
   const [processingImage, setProcessingImage] = useState(null);
   const [isLoading, setIsLoading] = useState(false);
   const [foodData, setFoodData] = useState(null);
-  const [activeTab, setActiveTab] = useState('Nutrition');
+  const [activeTab, setActiveTab] = useState('');
   const colorScheme = useColorScheme();
   const styles = getDynamicStyles(colorScheme);
   const fadeAnim = useRef(new Animated.Value(0)).current;
@@ -181,6 +187,8 @@ const FoodScanScreen = () => {
   const [prevMode, setPrevMode] = useState(selectedMode);
   const chipTextOpacity = useRef(new Animated.Value(1)).current;
   const modeChipWidth = useRef(new Animated.Value(100)).current;
+  // Add new animated value for chip pulse effect
+  const chipPulseAnim = useRef(new Animated.Value(0)).current;
 
   // Add this new Animated Value near your other animation refs
   const longLoadingTextAnim = useRef(new Animated.Value(0)).current;
@@ -2434,7 +2442,7 @@ const stopLoadingAnimation = () => {
     const modeDescriptions = {
       fast: 'Fast Mode provides quick results and is great for packaged foods.',
       accurate: 'Accurate Mode uses detailed analysis and is best for complex meals.',
-      search: 'Search Mode (BETA) is our experimental feature for advanced search capabilities.',
+      search: 'Deep Seach Mode is our experimental feature for advanced search capabilities.',
     };
     
     Alert.alert(
@@ -2508,22 +2516,10 @@ const stopLoadingAnimation = () => {
                   );
                   return;
                 }
-                Alert.alert(
-                  'Heads Up!',
-                  'You only get one search scan a day on the free plan, so make it count!',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await AsyncStorage.setItem('selectedMode', 'search');
-                        crossfadeChipText('search');
-                        Haptics.selectionAsync();
-                      },
-                    },
-                  ],
-                  { cancelable: false }
-                );
+                // Remove heads-up alert and directly change the mode
+                await AsyncStorage.setItem('selectedMode', 'search');
+                crossfadeChipText('search');
+                Haptics.selectionAsync();
               }
             }
           },
@@ -2743,6 +2739,14 @@ const stopLoadingAnimation = () => {
       triggerMacroAnimations();
       setActivePage(0);
       lastKnownPage.current = 0;
+
+      // Play sound only for non-search modes
+      if (selectedMode !== SEARCH_MODE && scanCompleteSoundRef.current) {
+        console.log('[FoodScanScreen] Playing scan complete sound for non-search mode.');
+        scanCompleteSoundRef.current.replayAsync().catch(error => console.error('[FoodScanScreen] Error playing scan complete sound:', error));
+      } else {
+        console.log(`[FoodScanScreen] Skipping sound playback for mode: ${selectedMode}`);
+      }
 
       await storeProductDetails({
         productName: parsedData.food.name,
@@ -3750,10 +3754,23 @@ const stopLoadingAnimation = () => {
           {
             text: "Cancel Anyway",
             onPress: () => {
-              // Stop the scan
+              // Set the global cancellation flag to true
+              global.NUTRILENS_CANCEL_SEARCH = true;
+              
+              // Stop the scan UI
               setIsLoading(false);
               stopLoadingAnimation();
               clearInterval(scanTimerRef.current);
+              
+              // Mark the API as finished in visualization component
+              if (visualizationRef.current && visualizationRef.current.setAPIFinished) {
+                visualizationRef.current.setAPIFinished(true);
+              }
+              
+              // Reset the cancellation flag after a delay to ensure it's caught by search process
+              setTimeout(() => {
+                global.NUTRILENS_CANCEL_SEARCH = false;
+              }, 500);
             },
             style: "destructive"
           }
@@ -3761,9 +3778,23 @@ const stopLoadingAnimation = () => {
       );
     } else {
       // Just cancel without warning if under 4 seconds
+      // Set the global cancellation flag to true
+      global.NUTRILENS_CANCEL_SEARCH = true;
+      
+      // Stop the scan UI
       setIsLoading(false);
       stopLoadingAnimation();
       clearInterval(scanTimerRef.current);
+      
+      // Mark the API as finished in visualization component
+      if (visualizationRef.current && visualizationRef.current.setAPIFinished) {
+        visualizationRef.current.setAPIFinished(true);
+      }
+      
+      // Reset the cancellation flag after a delay to ensure it's caught by search process
+      setTimeout(() => {
+        global.NUTRILENS_CANCEL_SEARCH = false;
+      }, 500);
     }
   };
 
@@ -3796,6 +3827,73 @@ const stopLoadingAnimation = () => {
     };
     handleModeChange();
   }, [selectedMode, isLoading, prevMode, hasSeenSearchInfoSheetThisSession]);
+
+  // Add this function to start the pulsing animation for the mode chip
+  const startChipPulseAnimation = () => {
+    // Reset animation value
+    chipPulseAnim.setValue(0);
+    
+    // Create a single smooth pulse animation
+    Animated.sequence([
+      // Fade in quickly
+      Animated.timing(chipPulseAnim, {
+        toValue: 1,
+        duration: 300,
+        easing: Easing.out(Easing.cubic),
+        useNativeDriver: false,
+      }),
+      // Fade out with longer, smoother curve
+      Animated.timing(chipPulseAnim, {
+        toValue: 0,
+        duration: 900,
+        easing: Easing.bezier(0.25, 0.1, 0.25, 1),
+        useNativeDriver: false,
+      }),
+    ]).start();
+    
+    // Play haptic feedback
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+  };
+
+  // Add ref for the completion sound
+  const scanCompleteSoundRef = useRef(null);
+
+  // Add this effect to load/unload the scan completion sound
+  useEffect(() => {
+    let soundObject = null;
+    const loadSound = async () => {
+      try {
+        console.log('[FoodScanScreen] Loading scan complete sound...');
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true });
+
+        const { sound } = await Audio.Sound.createAsync(
+           require('../assets/scan_complete_TRIMMED.mp3')
+        );
+        scanCompleteSoundRef.current = sound;
+        soundObject = sound; // Keep local ref for cleanup
+        console.log('[FoodScanScreen] Scan complete sound loaded');
+      } catch (error) {
+        console.error('[FoodScanScreen] Error loading scan complete sound:', error);
+      }
+    };
+
+    loadSound();
+
+    // Cleanup function
+    return () => {
+      console.log('[FoodScanScreen] Unloading scan complete sound...');
+      if (scanCompleteSoundRef.current) {
+        try {
+          scanCompleteSoundRef.current.unloadAsync();
+        } catch (e) { console.error('[FoodScanScreen] Error unloading sound:', e); }
+        scanCompleteSoundRef.current = null;
+      }
+      // Also unload local ref if it exists
+      if (soundObject) {
+        try { soundObject.unloadAsync(); } catch (e) {}
+      }
+    };
+  }, []); // Empty dependency array ensures this runs only on mount/unmount
 
   return (
     <ScrollView 
@@ -4007,46 +4105,69 @@ const stopLoadingAnimation = () => {
               style={[styles.chipContainer, { position: 'relative' }]}
               onPress={handleModeChipPress}
             >
-              <BlurView
-                intensity={50}
-                tint={chipAppearance}
+              {/* Add wrapper Animated.View to handle the pulse animation */}
+              <Animated.View
                 style={[
-                  styles.chip,
-                  selectedMode === 'accurate' && styles.chipAccurate,
-                  selectedMode === SEARCH_MODE && styles.chipSearch,
-                  { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' }
+                  // Add pulsing shadow animation for the Search mode chip
+                  selectedMode === SEARCH_MODE && {
+                    shadowColor: '#8A2BE2', // Bright purple for the glow
+                    shadowOffset: { width: 0, height: 0 },
+                    shadowOpacity: chipPulseAnim, // Use chipPulseAnim to control opacity
+                    shadowRadius: chipPulseAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [0, 15]
+                    }),
+                    elevation: Platform.OS === 'android' ? 8 : 0,
+                    borderWidth: 1.5,
+                    borderColor: chipPulseAnim.interpolate({
+                      inputRange: [0, 0.5, 1],
+                      outputRange: ['transparent', '#9932CC', '#8A2BE2']
+                    }),
+                    borderRadius: 15 * scale,
+                  }
                 ]}
               >
-                <View style={styles.chipContent}>
-                  <Icon
-                    name={
-                      selectedMode === 'fast' ? 'flash' : 
-                      selectedMode === 'accurate' ? 'shield-checkmark' : 
-                      'search'
-                    }
-                    size={16}
-                    color={chipAppearance === 'dark' ? '#fff' : '#444'}
-                  />
-                  <View style={styles.chipTextContainer}>
-                    <Animated.Text
-                      style={[
-                        styles.chipText,
-                        {
-                          opacity: chipTextOpacity,
-                          color: chipAppearance === 'dark' ? '#fff' : '#444'
-                        }
-                      ]}
-                    >
-                      {selectedMode === 'fast' ? 'Fast' : selectedMode === 'accurate' ? 'Accurate' : 'Search'}
-                    </Animated.Text>
-                    {selectedMode === SEARCH_MODE && (
-                      <View style={styles.betaTagContainer}>
-                        <Text style={styles.betaTagText}>BETA</Text>
-                      </View>
-                    )}
+                <BlurView
+                  intensity={50}
+                  tint={chipAppearance}
+                  style={[
+                    styles.chip,
+                    selectedMode === 'accurate' && styles.chipAccurate,
+                    selectedMode === SEARCH_MODE && styles.chipSearch,
+                    { borderColor: chipAppearance === 'dark' ? '#666' : '#ddd' }
+                  ]}
+                >
+                  <View style={styles.chipContent}>
+                    <Icon
+                      name={
+                        selectedMode === 'fast' ? 'flash' : 
+                        selectedMode === 'accurate' ? 'shield-checkmark' : 
+                        'search'
+                      }
+                      size={16}
+                      color={chipAppearance === 'dark' ? '#fff' : '#444'}
+                    />
+                    <View style={styles.chipTextContainer}>
+                      <Animated.Text
+                        style={[
+                          styles.chipText,
+                          {
+                            opacity: chipTextOpacity,
+                            color: chipAppearance === 'dark' ? '#fff' : '#444'
+                          }
+                        ]}
+                      >
+                        {selectedMode === 'fast' ? 'Fast' : selectedMode === 'accurate' ? 'Accurate' : 'Deep Search'}
+                      </Animated.Text>
+                      {selectedMode === SEARCH_MODE && (
+                        <View style={styles.betaTagContainer}>
+                          <Text style={styles.betaTagText}>BETA</Text>
+                        </View>
+                      )}
+                    </View>
                   </View>
-                </View>
-              </BlurView>
+                </BlurView>
+              </Animated.View>
             </TouchableOpacity>
           </View>
         </View>
@@ -4177,6 +4298,38 @@ const stopLoadingAnimation = () => {
       style={styles.modalBackground}
     >
       <View style={styles.searchLoadingContainer}>
+        {/* Add the header container here */}
+        <View style={styles.searchHeaderContainer}>
+          <View style={styles.searchHeaderIconGradient}>
+            <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+              <Defs>
+                <RadialGradient id="grad1" cx="25%" cy="25%" r="80%" gradientUnits="userSpaceOnUse">
+                  <Stop offset="0%" stopColor="#FFB74D" stopOpacity="1" />
+                  <Stop offset="100%" stopColor="#FFB74D" stopOpacity="0" />
+                </RadialGradient>
+                <RadialGradient id="grad2" cx="75%" cy="30%" r="70%" gradientUnits="userSpaceOnUse">
+                  <Stop offset="0%" stopColor="#FF5252" stopOpacity="1" />
+                  <Stop offset="100%" stopColor="#FF5252" stopOpacity="0" />
+                </RadialGradient>
+                <RadialGradient id="grad3" cx="50%" cy="60%" r="75%" gradientUnits="userSpaceOnUse">
+                  <Stop offset="0%" stopColor="#42A5F5" stopOpacity="0.9" />
+                  <Stop offset="100%" stopColor="#42A5F5" stopOpacity="0" />
+                </RadialGradient>
+                <RadialGradient id="grad4" cx="65%" cy="75%" r="60%" gradientUnits="userSpaceOnUse">
+                  <Stop offset="0%" stopColor="#AB47BC" stopOpacity="0.8" />
+                  <Stop offset="100%" stopColor="#AB47BC" stopOpacity="0" />
+                </RadialGradient>
+              </Defs>
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad1)" />
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad2)" />
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad3)" />
+              <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad4)" />
+            </Svg>
+            <Icon name="search" size={28 * scale} color="#FFFFFF" style={styles.searchHeaderIconOverlay} />
+          </View>
+          <Text style={styles.searchHeaderText}>Deep Search Mode</Text>
+        </View>
+
         <FunctionalAIVisualization
           isDark={colorScheme === 'dark'}
           isVisible={isLoading}
@@ -4187,8 +4340,17 @@ const stopLoadingAnimation = () => {
           onPress={handleCancelScan}
           activeOpacity={0.7}
         >
-          <BlurView intensity={50} style={styles.cancelButtonBlur}>
-            <Text style={styles.cancelButtonText}>Cancel</Text>
+          <BlurView intensity={50} style={[
+            styles.cancelButtonBlur,
+            {
+              borderColor: colorScheme === 'dark' ? 'rgba(51, 51, 51, 0.5)' : '#bbb',
+              backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.85)',
+            }
+          ]}>
+            <View style={styles.cancelButtonContent}>
+              <Icon name="close" size={18} color="rgb(255, 59, 48)" />
+              <Text style={styles.cancelButtonText}>Cancel</Text>
+            </View>
           </BlurView>
         </TouchableOpacity>
       </View>
@@ -4351,7 +4513,16 @@ const stopLoadingAnimation = () => {
           intensity={30}
           tint={colorScheme === 'dark' ? 'dark' : 'light'}
           style={[
+            StyleSheet.absoluteFillObject,
             styles.overlayContainer,
+            {
+              position: 'absolute',
+              width: width,
+              height: height, 
+              top: 0,
+              left: 0,
+              zIndex: 1001,
+            }
           ]}
         >
           <Animated.View
@@ -4511,6 +4682,10 @@ const stopLoadingAnimation = () => {
           setHasSeenSearchInfoSheetThisSession(false);
           AsyncStorage.setItem('selectedMode', prevMode);
         }}
+        onGetStarted={() => {
+          // Trigger the pulse animation when user clicks Get Started
+          startChipPulseAnimation();
+        }}
       />
     </ScrollView>
   );
@@ -4557,6 +4732,7 @@ const scale = Math.min(scaleWidth, scaleHeight);
       flex: 1,
       justifyContent: 'center', // Changed from 'space-between' to 'center'
       alignItems: 'center',
+      marginTop: 100 * scale,
       paddingHorizontal: 35 * scale,
       gap: 160 * scale, // Add gap to create space between text and buttons
     },
@@ -4799,12 +4975,12 @@ const scale = Math.min(scaleWidth, scaleHeight);
       fontWeight: '500',
     },
     tabContentContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#1C1C1E' : '#F0F0F0',
+      backgroundColor: colorScheme === 'dark' ? '#131314' : '#F0F0F0',
       borderRadius: 24 * scale,
       overflow: 'hidden',
       marginBottom: 16 * scale,
       borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+      borderColor: colorScheme === 'dark' ? '#222' : '#ddd',
     },
     separator: {
       height: 2, // Reduced from 4
@@ -5389,16 +5565,17 @@ const scale = Math.min(scaleWidth, scaleHeight);
       padding: 3 * scale,
     },
     overlayContainer: {
-      width: '100%',
-      height: '100%',
       position: 'absolute',
       top: 0,
-      bottom: 0,
       left: 0,
       right: 0,
+      bottom: 0,
+      width: '100%',
+      height: '100%',
       justifyContent: 'center',
       alignItems: 'center',
       zIndex: 1000,
+      elevation: 5, // For Android
     },
     overlayText: {
       fontSize: 18,
@@ -5413,7 +5590,10 @@ const scale = Math.min(scaleWidth, scaleHeight);
       fontWeight: '600',
     },
     errorCard: {
-      width: '80%',
+      width: '85%',
+      maxWidth: 400,
+      marginHorizontal: 'auto',
+      alignSelf: 'center',
       borderRadius: 30,
       overflow: 'hidden',
       borderWidth: 1,
@@ -5502,7 +5682,7 @@ const scale = Math.min(scaleWidth, scaleHeight);
       paddingHorizontal: 16,
       marginTop: 16,
       alignItems: 'center',
-      backgroundColor: colorScheme === 'dark' ? 'rgba(30, 30, 30, 0.6)' : 'rgba(255, 255, 255, 0.7)',
+      backgroundColor: colorScheme === 'dark' ? 'rgba(30, 30, 30, 0.6)' : 'rgba(255, 255, 255, 0.85)',
       borderRadius: 12,
       padding: 16,
       shadowColor: '#000',
@@ -6186,22 +6366,63 @@ const scale = Math.min(scaleWidth, scaleHeight);
     },
     cancelButton: {
       marginTop: 20 * scale,
-      borderRadius: 20 * scale,
-      overflow: 'hidden',
+      borderRadius: 200 * scale,
       width: 120 * scale,
     },
     cancelButtonBlur: {
       paddingVertical: 12 * scale,
       paddingHorizontal: 20 * scale,
-      borderRadius: 20 * scale,
-      borderWidth: 1,
-      borderColor: 'rgba(255, 59, 48, 0.5)',
+      borderRadius: 100 * scale,
+      borderWidth: 2, // Match border width
+      overflow: 'hidden',
+      // Use the same border color as the header
+      borderColor: colorScheme === 'dark' ? 'rgba(51, 51, 51, 0.5)' : '#bbb',
+      // Apply a semi-transparent background similar to the header
+      backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.7)',
     },
     cancelButtonText: {
       color: 'rgb(255, 59, 48)',
       fontSize: 16 * scale,
       fontWeight: '600',
       textAlign: 'center',
+    },
+    cancelButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: 6 * scale,
+    },
+    // Styles for the new search header
+    searchHeaderContainer: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: 16 * scale, // Space below the header
+      padding: 15 * scale, // Adjusted padding
+      backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.85)', // Match visualization background
+      borderColor: colorScheme === 'dark' ? 'rgba(51, 51, 51, 0.5)' : '#bbb', // Match visualization border color
+      borderWidth: 2, // Match visualization border width
+      borderRadius: 28, // Match visualization border radius
+      overflow: 'hidden', // Ensure content stays within rounded corners
+    },
+    searchHeaderIconGradient: {
+      width: 40 * scale,
+      height: 40 * scale,
+      borderRadius: 12 * scale, // Rounded square
+      alignItems: 'center',
+      justifyContent: 'center',
+      overflow: 'hidden',
+      position: 'relative',
+      marginRight: 12 * scale, // Space between icon and text
+    },
+    searchHeaderIconOverlay: {
+      position: 'absolute',
+      zIndex: 1,
+    },
+    searchHeaderText: {
+      fontSize: 20 * scale,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
     },
   });
 

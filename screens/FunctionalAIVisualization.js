@@ -6,6 +6,7 @@ import AIAnimatedText from './AIAnimatedText';
 import AIAnimatedSubtitle from './AIAnimatedSubtitle';
 import ShimmerText from '../components/ShimmerText';
 import { EventRegister } from 'react-native-event-listeners';
+import { Audio } from 'expo-av'; // Added import
 
 const { width } = Dimensions.get('window');
 
@@ -15,11 +16,35 @@ const STEP_ACTIVE = 'active';
 const STEP_COMPLETED = 'completed';
 
 // Define minimum durations for each step
-const MIN_RECOGNIZE_DURATION = 2000; // Increased for smoother transition
-const MIN_SEARCH_DURATION = 3000; // Increased to ensure search step visibility
-const MIN_PROCESS_DURATION = 2500; // Increased for smoother transition
+const MIN_RECOGNIZE_DURATION = 1000; // Increased for smoother transition
+const MIN_SEARCH_DURATION = 2000; // Increased to ensure search step visibility
+const MIN_PROCESS_DURATION = 3000; // Increased for smoother transition
 const MIN_RESULT_DURATION = 2000; // Increased for smoother transition
-const STEP_TRANSITION_DELAY = 500; // Added delay between steps
+const STEP_TRANSITION_DELAY = 1000; // Added delay between steps
+
+// Flavor text subtitles for cycling
+const recognizeSubtitles = [
+  'Analyzing image for food...',
+  'Detecting prominent items...',
+  'Checking angles and lighting...',
+  'Isolating food portions...',
+];
+
+const searchSubtitles = [
+  'Searching nutrition databases...',
+  'Querying USDA FoodData Central...',
+  'Checking Open Food Facts...',
+  'Cross-referencing sources...',
+  'Looking for matching items...',
+];
+
+const processSubtitles = [
+  'Calculating nutritional values...',
+  'Aggregating data points...',
+  'Applying nutritional models...',
+  'Evaluating confidence levels...',
+  'Compiling results...',
+];
 
 // Create global event channel names
 const EVENTS = {
@@ -51,6 +76,13 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     process: STEP_WAITING,
     result: STEP_WAITING
   });
+  // Ref to hold the latest stepStates for polling without causing effect re-runs
+  const stepStatesRef = useRef(stepStates);
+
+  // Keep the ref updated whenever stepStates changes
+  useEffect(() => {
+    stepStatesRef.current = stepStates;
+  }, [stepStates]);
   
   // Track if text animation is completed for each step
   const [textAnimCompleted, setTextAnimCompleted] = useState({
@@ -98,7 +130,13 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Animation cleanup references
   const timeoutRefs = useRef([]);
-  const intervalRefs = useRef([]);
+  const intervalRefs = useRef([]); // General intervals (keep for now?)
+  // Refs for subtitle cycling intervals
+  const recognizeCycleIntervalRef = useRef(null);
+  const searchCycleIntervalRef = useRef(null);
+  const processCycleIntervalRef = useRef(null);
+  // Ref to store pending completion timeouts, keyed by step name
+  const completionTimeoutRefs = useRef({});
   
   // API finished state
   const [isAPIFinished, setIsAPIFinished] = useState(false);
@@ -132,6 +170,21 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   // Add event listeners ref to help with cleanup
   const listeners = useRef([]);
 
+  // Add refs for sound objects
+  const stepCompleteSoundRef = useRef(null);
+  const scanCompleteSoundRef = useRef(null);
+
+  // Add ref to track if sound has played for a step
+  const stepSoundPlayedRef = useRef({
+    recognize: false,
+    search: false,
+    process: false,
+    result: false,
+  });
+
+  // Add ref to track if final completion sound has played
+  const scanCompleteSoundPlayedRef = useRef(false);
+
   // Start a spinner animation
   const spinnerRefs = {
     recognize: useRef(new Animated.Value(0)).current,
@@ -161,26 +214,33 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   const triggerHaptic = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
+
+  // Add haptic feedback for subtitle changes
+  const triggerSubtitleHaptic = () => {
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+  };
   
   const triggerCompletionHaptic = () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
   };
 
   // Add a controlled state update function that enforces proper step order
+  // This function should be stable and not depend on stepStates directly.
   const updateStepStatesInOrder = useCallback((updates) => {
     console.log('[VISUALIZER] Updating step states with enforced ordering:', updates);
     
+    // Use functional update form of setStepStates
     setStepStates((prevStates) => {
-      // Make a copy of the current states
+       // Make a copy of the *previous* states
       const newStates = { ...prevStates };
       
-      // Apply requested updates
+      // Apply requested updates to the copy
       Object.entries(updates).forEach(([step, newState]) => {
         newStates[step] = newState;
       });
       
-      // Find the active step (if any)
-      const orderedSteps = ['recognize', 'search', 'process', 'result'];
+      // Find the active step (if any) in the potential new state
+      const orderedSteps = stepOrder; // Use stepOrder directly (constant)
       let activeStepIndex = -1;
       
       for (let i = 0; i < orderedSteps.length; i++) {
@@ -190,39 +250,28 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         }
       }
       
-      // Enforce proper state ordering: 
+      // Enforce proper state ordering on the newStates copy:
       // - Steps before active step must be COMPLETED
       // - Current step must be ACTIVE
       // - Steps after active step must be WAITING
       if (activeStepIndex >= 0) {
         for (let i = 0; i < orderedSteps.length; i++) {
           const step = orderedSteps[i];
-          
-          if (i < activeStepIndex) {
-            // All steps before active must be completed
-            if (newStates[step] !== STEP_COMPLETED) {
-              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be COMPLETED (before active step)`);
-              newStates[step] = STEP_COMPLETED;
-            }
-          } else if (i === activeStepIndex) {
-            // Current step must be active
-            if (newStates[step] !== STEP_ACTIVE) {
-              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be ACTIVE (current step)`);
-              newStates[step] = STEP_ACTIVE;
-            }
-          } else {
-            // All steps after active must be waiting
-            if (newStates[step] !== STEP_WAITING) {
-              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be WAITING (after active step)`);
-              newStates[step] = STEP_WAITING;
-            }
+          if (i < activeStepIndex && newStates[step] !== STEP_COMPLETED) {
+            console.log(`[VISUALIZER-ORDERING] Enforcing: ${step} must be COMPLETED (before active)`);
+            newStates[step] = STEP_COMPLETED;
+          } else if (i === activeStepIndex && newStates[step] !== STEP_ACTIVE) {
+            console.warn(`[VISUALIZER-ORDERING] Warning: Requested update seems inconsistent. Forcing ${step} to ACTIVE.`);
+            newStates[step] = STEP_ACTIVE;
+          } else if (i > activeStepIndex && newStates[step] !== STEP_WAITING) {
+            console.log(`[VISUALIZER-ORDERING] Enforcing: ${step} must be WAITING (after active)`);
+            newStates[step] = STEP_WAITING;
           }
         }
       } else {
-        // If no active step, either all steps are waiting or some steps are completed
-        // Find the last completed step
+        // If no active step, either all steps are waiting or some are completed
+        // Find the last completed step in the potential new state
         let lastCompletedIndex = -1;
-        
         for (let i = orderedSteps.length - 1; i >= 0; i--) {
           if (newStates[orderedSteps[i]] === STEP_COMPLETED) {
             lastCompletedIndex = i;
@@ -233,165 +282,174 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         if (lastCompletedIndex >= 0) {
           // Ensure all steps before the last completed step are also completed
           for (let i = 0; i < lastCompletedIndex; i++) {
-            const step = orderedSteps[i];
-            if (newStates[step] !== STEP_COMPLETED) {
-              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be COMPLETED (before last completed step)`);
-              newStates[step] = STEP_COMPLETED;
+            if (newStates[orderedSteps[i]] !== STEP_COMPLETED) {
+              console.log(`[VISUALIZER-ORDERING] Enforcing: ${orderedSteps[i]} must be COMPLETED (before last completed)`);
+              newStates[orderedSteps[i]] = STEP_COMPLETED;
             }
           }
-          
           // Ensure all steps after the last completed step are waiting
           for (let i = lastCompletedIndex + 1; i < orderedSteps.length; i++) {
-            const step = orderedSteps[i];
-            if (newStates[step] !== STEP_WAITING) {
-              console.log(`[VISUALIZER] Enforcing consistency: ${step} must be WAITING (after last completed step)`);
-              newStates[step] = STEP_WAITING;
+            if (newStates[orderedSteps[i]] !== STEP_WAITING) {
+              console.log(`[VISUALIZER-ORDERING] Enforcing: ${orderedSteps[i]} must be WAITING (after last completed)`);
+              newStates[orderedSteps[i]] = STEP_WAITING;
             }
           }
         }
+        // If lastCompletedIndex is -1, all steps should be WAITING (unless explicitly set otherwise in updates)
+        // The initial `newStates = { ...prevStates }` and update application handles this.
       }
       
+      // Return the corrected new state object for setStepStates
       return newStates;
     });
-  }, []);
+  // Dependency: stepOrder (constant), setStepStates (stable from useState)
+  // This function itself is now stable.
+  }, [stepOrder]);
 
   // Replace the startStep and completeStep functions to use the controlled update
   const startStep = useCallback((step) => {
-      // *** NEW: Stricter check for previous step completion ***
-      const currentStepIndex = stepOrder.indexOf(step);
-      const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
-      if (previousStep && stepStates[previousStep] !== STEP_COMPLETED) {
-          console.warn(`[VISUALIZER] Attempted to start step ${step} but previous step ${previousStep} is not completed (${stepStates[previousStep]}). Aborting start.`);
-          // Optionally, try to recover by completing the previous step first
-          // completeStep(previousStep); // Be careful with potential infinite loops or race conditions here
-          return; // Prevent starting the step
-      }
-      // *** END NEW CHECK ***
+    // *** Read the latest state from the ref ***
+    const currentStates = stepStatesRef.current;
+    console.log(`[VISUALIZER] Attempting to start step: ${step}. Current states from ref:`, currentStates);
 
-      console.log(`[VISUALIZER] Starting step: ${step}, current states:`, stepStates);
-      if (stepStates[step] !== STEP_WAITING) {
-        console.log(`[VISUALIZER] Cannot start step ${step} - not in WAITING state`, { current: stepStates[step] });
-        return;
-      }
-      
-      currentStepRef.current = step;
-      
-      // Record the start time for this step
-      stepStartTimeRefs.current[step] = Date.now();
-      console.log(`[VISUALIZER] Recorded start time for ${step}: ${stepStartTimeRefs.current[step]}`);
-      
-      // Ensure proper state ordering
-      updateStepStatesInOrder({ [step]: STEP_ACTIVE });
-      
-      // Start spinner
-      startSpinner(step);
-      
-      // Animate in the step
-      let stepAnim;
-      let subtitleAnim;
-      
-      switch (step) {
-        case 'recognize':
-          stepAnim = recognizeAnim;
-          subtitleAnim = recognizeSubtitleAnim;
-          break;
-        case 'search':
-          stepAnim = searchAnim;
-          subtitleAnim = searchSubtitleAnim;
-          break;
-        case 'process':
-          stepAnim = processAnim;
-          subtitleAnim = processSubtitleAnim;
-          break;
-        case 'result':
-          stepAnim = resultAnim;
-          subtitleAnim = resultSubtitleAnim;
-          break;
-      }
-      
-      // Animate the step in
-          Animated.spring(stepAnim, {
-            toValue: 1,
-        tension: 50,
-        friction: 7,
-            useNativeDriver: true,
-      }).start();
-      
-      // Animate the subtitle in after a short delay
-      const subtitleTimeout = setTimeout(() => {
-          Animated.timing(subtitleAnim, {
-            toValue: 1,
-          duration: 300,
-            useNativeDriver: true,
-        }).start();
-      }, 200);
-      
-      timeoutRefs.current.push(subtitleTimeout);
-      
-      // Set text animation as completed after a delay
-      const textTimeout = setTimeout(() => {
-        setTextAnimCompleted(prev => ({ ...prev, [step]: true }));
-      }, 1000);
-      
-      timeoutRefs.current.push(textTimeout);
-      
-      // Trigger haptic feedback
-      triggerHaptic();
-    }, [stepStates, updateStepStatesInOrder]);
+    // Check if the step is already active or completed
+    if (currentStates[step] !== STEP_WAITING) {
+      console.log(`[VISUALIZER] Cannot start step ${step} - not in WAITING state (current: ${currentStates[step]})`);
+      return; // Exit function, no state change needed
+    }
 
-  const completeStep = useCallback((step) => {
-    console.log(`[VISUALIZER] Completing step: ${step}, current states:`, stepStates);
-    
-    // Validate step order
+    // Check if the previous step is completed
     const currentStepIndex = stepOrder.indexOf(step);
     const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
-    
-    // Check if previous steps are completed
-    if (previousStep && stepStates[previousStep] !== STEP_COMPLETED) {
-      console.log(`[VISUALIZER] Cannot complete ${step} - previous step ${previousStep} not completed. Fixing this first.`);
-      // First complete all previous steps
-      for (let i = 0; i < currentStepIndex; i++) {
-        if (stepStates[stepOrder[i]] !== STEP_COMPLETED) {
-          completeStep(stepOrder[i]);
+    if (previousStep && currentStates[previousStep] !== STEP_COMPLETED) {
+        console.warn(`[VISUALIZER] Cannot start step ${step} because previous step ${previousStep} is not completed (${currentStates[previousStep]}). Aborting start.`);
+        return; // Exit function, no state change needed
+    }
+
+    console.log(`[VISUALIZER] Conditions met. Starting step: ${step}`);
+
+    // Record the start time for this step *before* updating state
+    stepStartTimeRefs.current[step] = Date.now();
+    console.log(`[VISUALIZER] Recorded start time for ${step}: ${stepStartTimeRefs.current[step]}`);
+
+    // Update state: Set current step to ACTIVE
+    currentStepRef.current = step;
+    const newStateUpdate = { [step]: STEP_ACTIVE };
+    // Call the state setter function (passed via dependency)
+    updateStepStatesInOrder(newStateUpdate);
+
+    // Start spinner
+    startSpinner(step);
+
+    // *** Set default subtitle when step starts ***
+    let defaultSubtitle = '';
+    let subtitleSetter = null;
+    switch (step) {
+      case 'recognize': defaultSubtitle = 'Analyzing image for food...'; subtitleSetter = setRecognizeSubtitle; break;
+      case 'search': defaultSubtitle = 'Searching nutrition databases...'; subtitleSetter = setSearchSubtitle; break;
+      case 'process': defaultSubtitle = 'Calculating nutritional values...'; subtitleSetter = setProcessSubtitle; break;
+      case 'result': defaultSubtitle = 'Generating personalized nutrition insights...'; subtitleSetter = setResultSubtitle; break;
+    }
+    if (subtitleSetter && defaultSubtitle) {
+        console.log(`[VISUALIZER] Setting default subtitle for ${step}: "${defaultSubtitle}"`);
+        subtitleSetter(defaultSubtitle);
+    }
+
+    // --- Animation Logic --- (Doesn't directly depend on stepStates)
+    let stepAnim, subtitleAnim;
+    switch (step) {
+      case 'recognize': stepAnim = recognizeAnim; subtitleAnim = recognizeSubtitleAnim; break;
+      case 'search': stepAnim = searchAnim; subtitleAnim = searchSubtitleAnim; break;
+      case 'process': stepAnim = processAnim; subtitleAnim = processSubtitleAnim; break;
+      case 'result': stepAnim = resultAnim; subtitleAnim = resultSubtitleAnim; break;
+    }
+    Animated.spring(stepAnim, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }).start();
+    const subtitleTimeout = setTimeout(() => {
+      Animated.timing(subtitleAnim, { toValue: 1, duration: 300, useNativeDriver: true }).start();
+    }, 200);
+    timeoutRefs.current.push(subtitleTimeout);
+    const textTimeout = setTimeout(() => {
+      // Use direct state setter for text animation completion
+      setTextAnimCompleted(prev => ({ ...prev, [step]: true }));
+    }, 1000);
+    timeoutRefs.current.push(textTimeout);
+    triggerHaptic();
+
+    // --- Start Subtitle Cycling Interval --- 
+    let subtitlesArray = null;
+    let cycleIntervalRef = null;
+    let intervalDuration = 1500; // Default duration
+
+    switch (step) {
+        case 'recognize':
+            subtitlesArray = recognizeSubtitles;
+            cycleIntervalRef = recognizeCycleIntervalRef;
+            intervalDuration = 1800;
+            break;
+        case 'search':
+            subtitlesArray = searchSubtitles;
+            cycleIntervalRef = searchCycleIntervalRef;
+            intervalDuration = 1500;
+            break;
+        case 'process':
+            subtitlesArray = processSubtitles;
+            cycleIntervalRef = processCycleIntervalRef;
+            intervalDuration = 1600;
+            break;
+        // 'result' step doesn't cycle subtitles
+    }
+
+    if (subtitlesArray && cycleIntervalRef && subtitleSetter) {
+        // Clear any existing interval for this step first
+        if (cycleIntervalRef.current) {
+            clearInterval(cycleIntervalRef.current);
         }
-      }
+        // Start new interval
+        let subtitleIndex = 0;
+        cycleIntervalRef.current = setInterval(() => {
+            subtitleIndex = (subtitleIndex + 1) % subtitlesArray.length;
+            const nextSubtitle = subtitlesArray[subtitleIndex];
+            // Update subtitle state
+            console.log(`[VISUALIZER-CYCLE] Cycling ${step} subtitle to: "${nextSubtitle}"`);
+            subtitleSetter(nextSubtitle);
+            triggerSubtitleHaptic();
+        }, intervalDuration);
     }
-    
-    if (stepStates[step] !== STEP_ACTIVE) {
-      console.log(`[VISUALIZER] Cannot complete step ${step} - not in ACTIVE state (current: ${stepStates[step]})`);
-      
-      // If we're trying to complete a step that's not active, we'll first need to start it
-      if (stepStates[step] === STEP_WAITING) {
-        console.log(`[VISUALIZER] Step ${step} is in WAITING state - starting it first`);
-        startStep(step);
-        
-        // Get minimum duration for this step
-        const minDuration = 
-          step === 'recognize' ? MIN_RECOGNIZE_DURATION :
-          step === 'search' ? MIN_SEARCH_DURATION :
-          step === 'process' ? MIN_PROCESS_DURATION :
-          MIN_RESULT_DURATION;
-          
-        // Schedule completion after the minimum duration
-        const completeTimeout = setTimeout(() => {
-          console.log(`[VISUALIZER] Now completing previously waiting step ${step} after minimum duration`);
-          completeStep(step);
-        }, minDuration);
-        
-        timeoutRefs.current.push(completeTimeout);
-        return;
+
+  // Dependencies: updateStepStatesInOrder (stable), stepOrder (constant)
+  // No longer depends on stepStates directly.
+  }, [updateStepStatesInOrder, stepOrder]);
+
+  const completeStep = useCallback((step) => {
+    // *** Read the latest state from the ref ***
+    const currentStates = stepStatesRef.current;
+    console.log(`[VISUALIZER] Attempting to complete step: ${step}. Current states from ref:`, currentStates);
+
+    // 1. Check if already completed
+    if (currentStates[step] === STEP_COMPLETED) {
+      console.log(`[VISUALIZER] Step ${step} already COMPLETED`);
+      // Clear any lingering completion timeout for this step
+      if (completionTimeoutRefs.current[step]) {
+          clearTimeout(completionTimeoutRefs.current[step]);
+          delete completionTimeoutRefs.current[step];
       }
-      
-      // If it's already completed, nothing to do
-      if (stepStates[step] === STEP_COMPLETED) {
-        console.log(`[VISUALIZER] Step ${step} already COMPLETED`);
-        return;
-      }
-      
-      return;
+      return; // No change needed
     }
-    
-    // Check if minimum duration has elapsed for this step
+
+    // 2. Check if the step is ACTIVE (required for completion)
+    if (currentStates[step] !== STEP_ACTIVE) {
+      console.log(`[VISUALIZER] Cannot complete step ${step} - not in ACTIVE state (current: ${currentStates[step]})`);
+      return; // No change needed
+    }
+
+    // 3. Check if previous step is completed (redundant but safe)
+    const currentStepIndex = stepOrder.indexOf(step);
+    const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
+    if (previousStep && currentStates[previousStep] !== STEP_COMPLETED) {
+      console.warn(`[VISUALIZER] Attempting to complete ${step} but previous step ${previousStep} is not COMPLETED (${currentStates[previousStep]}). State inconsistency?`);
+    }
+
+    // 4. Check minimum duration
     const startTime = stepStartTimeRefs.current[step] || 0;
     const elapsed = Date.now() - startTime;
     const minDuration = 
@@ -399,107 +457,103 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       step === 'search' ? MIN_SEARCH_DURATION :
       step === 'process' ? MIN_PROCESS_DURATION :
       MIN_RESULT_DURATION;
-      
+
     if (elapsed < minDuration) {
       const remaining = minDuration - elapsed;
-      console.log(`[VISUALIZER] Step ${step} hasn't reached minimum duration, waiting ${remaining}ms before completing`);
-      
-      const delayedComplete = setTimeout(() => {
-        console.log(`[VISUALIZER] Minimum duration reached for ${step}, now completing`);
-        completeStep(step);
+      // *** Check if a completion timeout is already running for this step ***
+      if (completionTimeoutRefs.current[step]) {
+          console.log(`[VISUALIZER] Minimum duration check for ${step} already scheduled, waiting.`);
+          return; // Already waiting, do nothing
+      }
+      console.log(`[VISUALIZER] Step ${step} hasn't reached minimum duration, scheduling re-attempt in ${remaining}ms`);
+      // *** Store the new timeout ID ***
+      completionTimeoutRefs.current[step] = setTimeout(() => {
+        // Clear the stored ref *before* re-calling completeStep
+        delete completionTimeoutRefs.current[step];
+        completeStep(step); // Re-call completeStep
       }, remaining);
-      
-      timeoutRefs.current.push(delayedComplete);
-      return;
+      // Do NOT add to general timeoutRefs, handled by completionTimeoutRefs
+      return; // No state change *yet*
     }
-    
-    // Update state with enforced ordering
-    updateStepStatesInOrder({ [step]: STEP_COMPLETED });
+
+    // --- MINIMUM DURATION MET --- 
+    console.log(`[VISUALIZER] Conditions met. Completing step: ${step}`);
+
+    // Clear any potentially existing (but now irrelevant) completion timeout for this step
+    if (completionTimeoutRefs.current[step]) {
+        clearTimeout(completionTimeoutRefs.current[step]);
+        delete completionTimeoutRefs.current[step];
+    }
+
+    // Perform the completion actions (stopping spinner etc.)
     lastCompletedStepRef.current = step;
-    
-    // Stop spinner
     stopSpinner(step);
-    
-    // Animate checkmark in
-    let checkAnim;
-    let nextStepSubtitleSetter; // Variable to hold the next step's subtitle setter
 
-    switch (step) {
-      case 'recognize':
-        checkAnim = recognizeCheckAnim;
-        nextStepSubtitleSetter = setSearchSubtitle; // Prepare to update search subtitle
-        break;
-      case 'search':
-        checkAnim = searchCheckAnim;
-        nextStepSubtitleSetter = setProcessSubtitle; // Prepare to update process subtitle
-        break;
-      case 'process':
-        checkAnim = processCheckAnim;
-        nextStepSubtitleSetter = setResultSubtitle; // Prepare to update result subtitle
-        break;
-      case 'result':
-        checkAnim = resultCheckAnim;
-        nextStepSubtitleSetter = null; // No next step subtitle to set
-        break;
+    // --- Play Sound and Haptic Immediately ---
+    triggerCompletionHaptic();
+    // Play step complete sound only once per step
+    if (stepCompleteSoundRef.current && !stepSoundPlayedRef.current[step]) {
+      stepSoundPlayedRef.current[step] = true; // Set flag immediately
+      stepCompleteSoundRef.current.replayAsync().catch(error => {
+        console.error('[VISUALIZER] Error playing step complete sound:', error);
+        stepSoundPlayedRef.current[step] = false; // Reset flag on error
+      });
     }
 
-    Animated.spring(checkAnim, {
-      toValue: 1,
-      tension: 50,
-      friction: 7,
-      useNativeDriver: true,
-    }).start(() => {
-      triggerCompletionHaptic();
+    // --- Stop Subtitle Cycling Interval --- 
+    let cycleIntervalRef = null;
+    switch (step) {
+        case 'recognize': cycleIntervalRef = recognizeCycleIntervalRef; break;
+        case 'search': cycleIntervalRef = searchCycleIntervalRef; break;
+        case 'process': cycleIntervalRef = processCycleIntervalRef; break;
+    }
+    if (cycleIntervalRef && cycleIntervalRef.current) {
+        console.log(`[VISUALIZER] Clearing subtitle cycle interval for ${step}`);
+        clearInterval(cycleIntervalRef.current);
+        cycleIntervalRef.current = null;
+    }
 
-      // Find the next step
+    // Update state to COMPLETED
+    const newStateUpdate = { [step]: STEP_COMPLETED };
+    updateStepStatesInOrder(newStateUpdate); // Call stable state updater
+
+    // --- Animation & Next Step Logic --- (Doesn't directly depend on stepStates)
+    let checkAnim, nextStepSubtitleSetter;
+    switch (step) {
+      case 'recognize': checkAnim = recognizeCheckAnim; nextStepSubtitleSetter = setSearchSubtitle; break;
+      case 'search': checkAnim = searchCheckAnim; nextStepSubtitleSetter = setProcessSubtitle; break;
+      case 'process': checkAnim = processCheckAnim; nextStepSubtitleSetter = setResultSubtitle; break;
+      case 'result': checkAnim = resultCheckAnim; nextStepSubtitleSetter = null; break;
+    }
+
+    Animated.spring(checkAnim, { toValue: 1, tension: 50, friction: 7, useNativeDriver: true }).start(() => {
       const nextStepIndex = currentStepIndex + 1;
       if (nextStepIndex < stepOrder.length) {
         const nextStep = stepOrder[nextStepIndex];
-
-        // *** NEW: Update the next step's subtitle proactively ***
-        // This might make it appear slightly sooner, closer to when the checkmark appears.
-        // We get the default subtitle text here. Actual content updates (like search query)
-        // will still come from events/polling later if needed.
         if (nextStepSubtitleSetter) {
+           // Simplified subtitle setting logic
           let defaultNextSubtitle = '';
           switch (nextStep) {
             case 'search': defaultNextSubtitle = 'Searching nutrition databases...'; break;
             case 'process': defaultNextSubtitle = 'Calculating nutritional values...'; break;
             case 'result': defaultNextSubtitle = 'Generating personalized nutrition insights...'; break;
           }
-          if (defaultNextSubtitle) {
-              console.log(`[VISUALIZER] Proactively setting subtitle for next step ${nextStep}`);
-              nextStepSubtitleSetter(defaultNextSubtitle);
-          }
+          if (defaultNextSubtitle) nextStepSubtitleSetter(defaultNextSubtitle);
         }
-
-
-        // Start next step ONLY AFTER the current one is fully marked COMPLETED
-        // and after the transition delay.
+        // Start next step after delay (using the stable startStep)
         const startNextTimeout = setTimeout(() => {
-          // Double-check the state before starting the next step
-          // Read the latest state directly inside the timeout callback
-          setStepStates(currentStates => {
-              if (currentStates[step] === STEP_COMPLETED && currentStates[nextStep] === STEP_WAITING) {
-                console.log(`[VISUALIZER] Starting next step ${nextStep} after completion delay and state check`);
-                startStep(nextStep);
-              } else {
-                 console.log(`[VISUALIZER] Condition not met to start next step ${nextStep}. Current step state: ${currentStates[step]}, Next step state: ${currentStates[nextStep]}`);
-              }
-              return currentStates; // No state change here, just reading
-          });
-        }, STEP_TRANSITION_DELAY); // Use the defined delay
+           console.log(`[VISUALIZER] Triggering start for next step ${nextStep} after completion delay`);
+           startStep(nextStep);
+        }, STEP_TRANSITION_DELAY);
         timeoutRefs.current.push(startNextTimeout);
-      } else {
-         // If this was the last step ('result'), show the accuracy box
-         if (step === 'result' && isAPIFinished) {
-            setTimeout(() => {
-               showAccuracyBox();
-            }, 500); // Show after a short delay
-         }
+      } else if (step === 'result' && isAPIFinished) {
+         setTimeout(() => showAccuracyBox(), 200);
       }
     });
-  }, [stepStates, stepOrder, updateStepStatesInOrder, isAPIFinished, startStep]); // Added startStep dependency
+
+  // Dependencies: updateStepStatesInOrder, startStep (stable), stepOrder, isAPIFinished (props/state)
+  // Does not depend on stepStates directly.
+  }, [updateStepStatesInOrder, startStep, stepOrder, isAPIFinished]);
 
   // Replace the validation function with a simplified version that just logs but doesn't update state
   const validateStepStates = useCallback(() => {
@@ -597,13 +651,23 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   
   // Show the accuracy box
   const showAccuracyBox = () => {
+    // --- Play Sound and Haptic Immediately ---
+    triggerCompletionHaptic();
+    // Play scan complete sound here, only once
+    if (scanCompleteSoundRef.current && !scanCompleteSoundPlayedRef.current) {
+      scanCompleteSoundPlayedRef.current = true; // Set flag immediately
+      scanCompleteSoundRef.current.replayAsync().catch(error => {
+        console.error('[VISUALIZER] Error playing scan complete sound:', error);
+        scanCompleteSoundPlayedRef.current = false; // Reset flag on error
+      });
+    }
+
     Animated.spring(accuracyBoxAnim, {
       toValue: 1,
       tension: 50,
       friction: 7,
       useNativeDriver: true
     }).start(() => {
-      triggerCompletionHaptic();
     });
   };
 
@@ -613,7 +677,18 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     
     // Clear all timeouts and intervals
     timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
-    intervalRefs.current.forEach(interval => clearInterval(interval));
+    intervalRefs.current.forEach(interval => clearInterval(interval)); // Clear general intervals if any
+    // Clear subtitle cycle intervals
+    if (recognizeCycleIntervalRef.current) clearInterval(recognizeCycleIntervalRef.current);
+    if (searchCycleIntervalRef.current) clearInterval(searchCycleIntervalRef.current);
+    if (processCycleIntervalRef.current) clearInterval(processCycleIntervalRef.current);
+    recognizeCycleIntervalRef.current = null;
+    searchCycleIntervalRef.current = null;
+    processCycleIntervalRef.current = null;
+    // Clear pending completion timeouts
+    Object.values(completionTimeoutRefs.current).forEach(timeout => clearTimeout(timeout));
+    completionTimeoutRefs.current = {};
+
     timeoutRefs.current = [];
     intervalRefs.current = [];
     
@@ -698,78 +773,91 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Improve transition handling in the handleSearchStepUpdate function
   const handleSearchStepUpdate = useCallback((queriesUpdated, resultsUpdated) => {
+    // *** Read latest local state from ref ***
+    const currentLocalStates = stepStatesRef.current;
+
     // When search queries are updated, it means we're in the search step
     if (queriesUpdated) {
       console.log('[VISUALIZER] Search queries updated, handling step transitions');
-      
+
       // Make sure we complete the recognize step and activate the search step
-      if (stepStates.recognize === STEP_ACTIVE) {
+      // *** Use ref state ***
+      if (currentLocalStates.recognize === STEP_ACTIVE) {
         console.log('[VISUALIZER] Search queries updated while in recognize step, completing recognize');
-        completeStep('recognize');
+        completeStep('recognize'); // completeStep is safe now
       }
-      
+
       // If search step isn't active, start it
-      if (stepStates.search === STEP_WAITING) {
+      // *** Use ref state ***
+      if (currentLocalStates.search === STEP_WAITING) {
         console.log('[VISUALIZER] Search queries updated, starting search step');
-        startStep('search');
+        startStep('search'); // startStep is safe now
       }
     }
-    
+
     // When search results are updated, we should transition to the process step
     // BUT only after a minimum duration to ensure the search step is visible
     if (resultsUpdated) {
       console.log('[VISUALIZER] Search results updated, handling step transitions');
-      
+
       // Make sure both recognize and search are complete/active
-      if (stepStates.recognize === STEP_WAITING || stepStates.recognize === STEP_ACTIVE) {
+      // *** Use ref state ***
+      if (currentLocalStates.recognize === STEP_WAITING || currentLocalStates.recognize === STEP_ACTIVE) {
         console.log('[VISUALIZER] Search results updated but recognize step not completed, completing it');
         completeStep('recognize');
       }
-      
+
       // CRITICAL: Explicitly complete search and start process
-      if (stepStates.search === STEP_WAITING) {
+      // *** Use ref state ***
+      if (currentLocalStates.search === STEP_WAITING) {
         console.log('[VISUALIZER] Search results updated but search step not started, starting it');
         startStep('search');
-        
+
         // After a proper delay, complete search and start process
         const transitionTimeout = setTimeout(() => {
           console.log('[VISUALIZER] Enforced minimum search duration reached, completing search step');
           // IMPORTANT: First mark search as complete
           completeStep('search');
-          
+
           // Then explicitly start the process step
           setTimeout(() => {
-            startStep('process');
+            // *** Use ref state for check ***
+            if (stepStatesRef.current.process === STEP_WAITING) {
+                startStep('process');
+            }
           }, 300);
         }, MIN_SEARCH_DURATION);
-        
+
         timeoutRefs.current.push(transitionTimeout);
-      } else if (stepStates.search === STEP_ACTIVE) {
+      // *** Use ref state ***
+      } else if (currentLocalStates.search === STEP_ACTIVE) {
         // Calculate how long search has been active
         const searchStartTime = stepStartTimeRefs.current.search || 0;
         const searchActiveDuration = Date.now() - searchStartTime;
         const remainingTime = Math.max(300, MIN_SEARCH_DURATION - searchActiveDuration);
-        
+
         console.log(`[VISUALIZER] Search results received, search active for ${searchActiveDuration}ms, remaining: ${remainingTime}ms`);
-        
+
         // Ensure search is visible for minimum duration before transitioning
         const transitionTimeout = setTimeout(() => {
           console.log('[VISUALIZER] Completing search step after minimum duration');
           // IMPORTANT: First mark search as complete
           completeStep('search');
-          
+
           // Then explicitly start the process step after a short delay
           setTimeout(() => {
-            if (stepStates.process === STEP_WAITING) {
+             // *** Use ref state for check ***
+            if (stepStatesRef.current.process === STEP_WAITING) {
               startStep('process');
             }
           }, 300);
         }, remainingTime);
-        
+
         timeoutRefs.current.push(transitionTimeout);
       }
     }
-  }, [stepStates, completeStep, startStep]);
+  // Remove stepStates dependency, keep completeStep and startStep
+  }, [completeStep, startStep]);
 
   // Improve food detection update to make subtitle changes immediate
   const updateWithFoodItems = useCallback((items) => {
@@ -1107,7 +1195,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
             if (step === orderedSteps[orderedSteps.length - 1]) {
                 setTimeout(() => {
                   showAccuracyBox();
-                }, 500);
+                }, 200);
               }
           }, delay);
             timeoutRefs.current.push(completeTimeout);
@@ -1194,117 +1282,188 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         // Get the latest visualization data
         const latestData = global.NUTRILENS_VISUALIZATION_ACCESS.getData();
         
+        // --- BEGIN DETAILED LOGGING ---
+        console.log('[VISUALIZER-POLL-DEBUG] Raw latestData:', JSON.stringify(latestData));
+        if (latestData) {
+            console.log('[VISUALIZER-POLL-DEBUG] latestData.stepStates:', JSON.stringify(latestData.stepStates));
+            console.log('[VISUALIZER-POLL-DEBUG] latestData.subtitles:', JSON.stringify(latestData.subtitles));
+            console.log('[VISUALIZER-POLL-DEBUG] latestData.updateTime:', latestData.updateTime);
+            console.log('[VISUALIZER-POLL-DEBUG] lastPollTimeRef.current:', lastPollTimeRef.current);
+        }
+        // --- END DETAILED LOGGING ---
+
         // Check if data has been updated since our last poll
         if (latestData && latestData.updateTime > lastPollTimeRef.current) {
           console.log('[VISUALIZER] Found new data in global state at timestamp:', latestData.updateTime);
           lastPollTimeRef.current = latestData.updateTime;
-          
-          // *** Add critical logging of global step states ***
-          console.log('[VISUALIZER] Global step states:', {
-            recognize: latestData.stepStates.recognize,
-            search: latestData.stepStates.search,
-            process: latestData.stepStates.process,
-            result: latestData.stepStates.result,
-            current: latestData.currentStep
-          });
-          
+
+          // *** Guard against undefined stepStates ***
+          if (!latestData.stepStates) {
+            console.warn('[VISUALIZER-POLL] Global data is missing stepStates, skipping state update.');
+          } else {
+            // *** Add critical logging of global step states ***
+            console.log('[VISUALIZER] Global step states:', {
+              recognize: latestData.stepStates.recognize,
+              search: latestData.stepStates.search,
+              process: latestData.stepStates.process,
+              result: latestData.stepStates.result,
+              current: latestData.currentStep
+            });
+          }
+
           // Check for new food detection
           let foodUpdated = false;
           if (latestData.detectedFood && latestData.detectedFood !== detectedFood) {
+             // NOTE: Still use direct state setters here as they don't affect the polling effect
             setDetectedFood(latestData.detectedFood);
             setRecognizeSubtitle(`Detected ${latestData.detectedFood}...`);
             setResultSubtitle(`Generating nutrition facts for ${latestData.detectedFood}...`);
             foodUpdated = true;
           }
-          
+
           // Check for search queries and results changes
           let queriesUpdated = false;
           let resultsUpdated = false;
-          
-          // Process subtitles for search queries
-          if (latestData.subtitles && latestData.subtitles.search && latestData.subtitles.search.length > 0) {
-            const searchSubtitles = latestData.subtitles.search;
-            const latestSubtitle = searchSubtitles[searchSubtitles.length - 1];
-            if (latestSubtitle && latestSubtitle !== searchSubtitle) {
-              setSearchSubtitle(latestSubtitle);
-              queriesUpdated = true;
-            }
+
+          // *** Guard against undefined subtitles ***
+          if (latestData.subtitles) {
+              // Process subtitles for search queries
+              if (latestData.subtitles.search && latestData.subtitles.search.length > 0) {
+                const searchSubtitles = latestData.subtitles.search;
+                const latestSubtitle = searchSubtitles[searchSubtitles.length - 1];
+                if (latestSubtitle && latestSubtitle !== searchSubtitle) {
+                  // NOTE: Still use direct state setters here
+                  setSearchSubtitle(latestSubtitle);
+                  queriesUpdated = true;
+                }
+              }
+
+              // Process subtitles for search results
+              if (latestData.subtitles.process && latestData.subtitles.process.length > 0) {
+                const processSubtitles = latestData.subtitles.process;
+                const latestSubtitle = processSubtitles[processSubtitles.length - 1];
+                if (latestSubtitle && latestSubtitle !== processSubtitle) {
+                   // NOTE: Still use direct state setters here
+                  setProcessSubtitle(latestSubtitle);
+                  resultsUpdated = true;
+                }
+              }
+
+              // Process result subtitles separately
+              if (latestData.subtitles.result && latestData.subtitles.result.length > 0) {
+                const resultSubtitles = latestData.subtitles.result;
+                const latestSubtitle = resultSubtitles[resultSubtitles.length - 1];
+                if (latestSubtitle) {
+                   // NOTE: Still use direct state setters here
+                  setResultSubtitle(latestSubtitle);
+                }
+              }
+          } else {
+            console.warn('[VISUALIZER-POLL] Global data is missing subtitles, skipping subtitle update.');
           }
-          
-          // Process subtitles for search results
-          if (latestData.subtitles && latestData.subtitles.process && latestData.subtitles.process.length > 0) {
-            const processSubtitles = latestData.subtitles.process;
-            const latestSubtitle = processSubtitles[processSubtitles.length - 1];
-            if (latestSubtitle && latestSubtitle !== processSubtitle) {
-              setProcessSubtitle(latestSubtitle);
-              resultsUpdated = true;
-            }
-          }
-          
-          // Process result subtitles separately
-          if (latestData.subtitles && latestData.subtitles.result && latestData.subtitles.result.length > 0) {
-            const resultSubtitles = latestData.subtitles.result;
-            const latestSubtitle = resultSubtitles[resultSubtitles.length - 1];
-            if (latestSubtitle) {
-              setResultSubtitle(latestSubtitle);
-            }
-          }
-          
+
           // If food, queries, or results were updated, make sure step transitions happen
           if (foodUpdated) {
+             // Read local state from ref here
+            const currentLocalState = stepStatesRef.current;
             // If food was detected, ensure recognize step is started
-            if (stepStates.recognize === STEP_WAITING) {
+            if (currentLocalState.recognize === STEP_WAITING) {
               startStep('recognize');
             }
-            
+
             // Schedule recognize to complete after a short delay if it's active
-            if (stepStates.recognize === STEP_ACTIVE) {
+             if (currentLocalState.recognize === STEP_ACTIVE) {
               const completeTimeout = setTimeout(() => {
               completeStep('recognize');
               }, 1500);
               timeoutRefs.current.push(completeTimeout);
             }
           }
-          
+
           // Handle search-related updates
           if (queriesUpdated || resultsUpdated) {
             handleSearchStepUpdate(queriesUpdated, resultsUpdated);
           }
-          
+
           // Process step states - only if no specific updates were detected
-          if (!foodUpdated && !queriesUpdated && !resultsUpdated) {
-            // For each step, check if we need to update our local state
-            Object.entries(latestData.stepStates).forEach(([step, state]) => {
-              if (state.active && stepStates[step] === STEP_WAITING) {
-                console.log(`[VISUALIZER-POLL] Step ${step} is now active in global state, starting it locally`);
-                startStep(step);
-              } else if (state.completed && stepStates[step] !== STEP_COMPLETED) {
-                console.log(`[VISUALIZER-POLL] Step ${step} is now completed in global state, completing it locally`);
-                completeStep(step);
+          // *** Guard against undefined stepStates here too ***
+          if (!foodUpdated && !queriesUpdated && !resultsUpdated && latestData.stepStates) {
+            
+            // --- REVISED STATE SYNC LOGIC ---
+            let actionTaken = false;
+            for (const step of stepOrder) {
+              const globalState = latestData.stepStates[step];
+              const localState = stepStatesRef.current[step]; // *** Read current local state from ref ***
+
+              // Check if 'globalState' exists before accessing properties
+              if (globalState) {
+                 // Priority 1: Start a step if it's active globally but waiting locally
+                 if (globalState.active && localState === STEP_WAITING) {
+                   console.log(`[VISUALIZER-POLL] Step ${step} needs starting (Globally Active, Locally Waiting). Scheduling start.`);
+                   // Schedule startStep for the next event loop tick
+                   setTimeout(() => startStep(step), 0);
+                   actionTaken = true;
+                   break; // Only perform one action per poll cycle
+                 }
+
+                 // Priority 2: Complete a step if it's completed globally but not locally
+                 // We only complete if it's currently ACTIVE locally to ensure minimum duration logic runs
+                 if (globalState.completed && localState === STEP_ACTIVE) {
+                    console.log(`[VISUALIZER-POLL] Step ${step} needs completing (Globally Completed, Locally Active). Scheduling complete.`);
+                    // Schedule completeStep for the next event loop tick
+                    setTimeout(() => completeStep(step), 0);
+                    actionTaken = true;
+                    break; // Only perform one action per poll cycle
+                 }
+                 
+                 // Optional: Handle case where global is completed but local is waiting (less common, might indicate a skip)
+                 if (globalState.completed && localState === STEP_WAITING) {
+                    console.warn(`[VISUALIZER-POLL] Step ${step} is COMPLETED globally but WAITING locally. Attempting to schedule start.`);
+                    // Schedule startStep for the next event loop tick
+                    setTimeout(() => startStep(step), 0); // Start it, completion will be handled later
+                    actionTaken = true;
+                    break;
+                 }
+                 
+              } else {
+                 console.warn(`[VISUALIZER-POLL] Global state for step '${step}' is missing or invalid.`);
               }
+            }
+            if (!actionTaken) {
+                console.log("[VISUALIZER-POLL] No step state actions required in this cycle.");
+            }
+            // --- END REVISED LOGIC ---
+            
+            /* --- OLD LOOP (commented out) ---
+            Object.entries(latestData.stepStates).forEach(([step, state]) => {
+               // ... existing loop logic ...
             });
+            */
           }
-          
+
           // Check if API finished
           if (latestData.apiFinished && !isAPIFinished) {
             console.log('[VISUALIZER] API marked as finished in global state, updating local state');
             // Small delay before setting API as finished to allow current step animations to complete
+            // Use direct state setter here
             setTimeout(() => {
-              setAPIFinished(true);
+              setIsAPIFinished(true);
             }, 1000);
           }
         }
       } catch (error) {
         console.error('[VISUALIZER] Error polling global state:', error);
       }
-    }, 250);
+    }, 250); // Poll interval 250ms
     
     intervalRefs.current.push(pollInterval);
     
     return () => {
       clearInterval(pollInterval);
     };
-  }, [isVisible, isAPIFinished, stepStates, detectedFood, searchSubtitle, processSubtitle]);
+  // *** REMOVED stepStates, startStep, completeStep, handleSearchStepUpdate from dependencies ***
+  // Keep only props/state values that should actually trigger a restart of the polling
+  }, [isVisible, isAPIFinished, detectedFood, searchSubtitle, processSubtitle]);
   
   // Add a function to force completion of all steps immediately
   const forceCompleteAllSteps = () => {
@@ -1357,24 +1516,29 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   };
 
   // Add an effect to handle transitions from global state when they might be missed by polling
+  // Renamed to recovery effect
   useEffect(() => {
+    // Only run if visible and API is not finished
     if (!isVisible || isAPIFinished) return;
+
+    // Read the latest state using the ref
+    const currentLocalStates = stepStatesRef.current;
     
-    // Handle case where step sequence might be out of order
-    const orderedSteps = ['recognize', 'search', 'process', 'result'];
-    
-    for (let i = 0; i < orderedSteps.length - 1; i++) {
-      const currentStep = orderedSteps[i];
-      const nextStep = orderedSteps[i + 1];
+    // Check for state inconsistencies (e.g., completed step followed by waiting step)
+    for (let i = 0; i < stepOrder.length - 1; i++) {
+      const currentStep = stepOrder[i];
+      const nextStep = stepOrder[i + 1];
       
-      // If this step is completed but the next isn't started, start it
-      if (stepStates[currentStep] === STEP_COMPLETED && stepStates[nextStep] === STEP_WAITING) {
-        console.log(`[VISUALIZER-RECOVERY] Found completed step ${currentStep} with waiting next step ${nextStep}, starting next step`);
-        startStep(nextStep);
-        break; // Only handle one transition at a time
+      // If this step is completed but the next isn't started, log it for polling to handle.
+      if (currentLocalStates[currentStep] === STEP_COMPLETED && currentLocalStates[nextStep] === STEP_WAITING) {
+        console.log(`[VISUALIZER-RECOVERY] Detected completed step ${currentStep} with waiting next step ${nextStep}. Polling will handle start.`);
+        // No longer directly calling startStep here - let polling manage it.
+        // startStep(nextStep);
+        break; // Only detect one inconsistency at a time
       }
     }
-  }, [stepStates, isVisible, isAPIFinished]);
+  // Depend only on isVisible and isAPIFinished - state checks use the ref
+  }, [isVisible, isAPIFinished]);
   
   // Render a step
   const renderStep = (icon, text, step, isLast = false) => {
@@ -1613,7 +1777,21 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     intervalRefs.current.forEach(interval => clearInterval(interval));
     timeoutRefs.current = [];
     intervalRefs.current = [];
+     // Clear subtitle cycle intervals
+    if (recognizeCycleIntervalRef.current) clearInterval(recognizeCycleIntervalRef.current);
+    if (searchCycleIntervalRef.current) clearInterval(searchCycleIntervalRef.current);
+    if (processCycleIntervalRef.current) clearInterval(processCycleIntervalRef.current);
+    recognizeCycleIntervalRef.current = null;
+    searchCycleIntervalRef.current = null;
+    processCycleIntervalRef.current = null;
+    // Clear pending completion timeouts
+    Object.values(completionTimeoutRefs.current).forEach(timeout => clearTimeout(timeout));
+    completionTimeoutRefs.current = {};
 
+    // Reset ref arrays
+    timeoutRefs.current = [];
+    intervalRefs.current = [];
+    
     // Force clear all listeners to ensure we don't have duplicates
     listeners.current.forEach(listener => {
       EventRegister.removeEventListener(listener);
@@ -1676,6 +1854,15 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       api_finished: false
     };
     
+    // Reset the sound played flags
+    stepSoundPlayedRef.current = {
+      recognize: false,
+      search: false,
+      process: false,
+      result: false,
+    };
+    scanCompleteSoundPlayedRef.current = false; // Reset final sound flag
+
     // Reset subtitles
     setRecognizeSubtitle('Analyzing image for food...');
     setSearchSubtitle('Searching nutrition databases...');
@@ -1729,6 +1916,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   const currentScanIdRef = useRef(null);
   
   // Setup event listeners with controlled state updates
+  // Wrap in useCallback to stabilize its identity
   const setupEventListeners = useCallback(() => {
     console.log('[VISUALIZER] Setting up event listeners');
     
@@ -1953,7 +2141,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         }
       })
     );
-  }, [stepStates, completeStep, startStep]);
+  }, [startStep, completeStep, setRecognizeSubtitle, setSearchSubtitle, setProcessSubtitle, setResultSubtitle, setDetectedFood, setSearchResultsCount, setAPIFinished, handleSearchStepUpdate]); // Only stable functions/setters
 
   // Initialize event listeners for direct component communication
   useEffect(() => {
@@ -2004,15 +2192,81 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     };
   }, [isVisible, setupEventListeners, resetForNewScan]);
 
+  // Add useEffect to load/unload sounds based on visibility
+  useEffect(() => {
+    let stepSoundObject = null;
+    let scanSoundObject = null;
+
+    const loadSounds = async () => {
+      try {
+        console.log('[VISUALIZER] Loading sounds...');
+        await Audio.setAudioModeAsync({ playsInSilentModeIOS: true }); // Allow playing sound in silent mode
+
+        // Load step complete sound
+        const { sound: stepSound } = await Audio.Sound.createAsync(
+           require('../assets/scan_intermediate_TRIMMED.mp3') // progress sound
+        );
+        stepCompleteSoundRef.current = stepSound;
+        stepSoundObject = stepSound; // Keep local ref for cleanup
+        console.log('[VISUALIZER] Step complete sound loaded');
+
+        // Load scan complete sound
+        const { sound: scanSound } = await Audio.Sound.createAsync(
+           require('../assets/scan_complete_TRIMMED.mp3') // complete sound
+        );
+        scanCompleteSoundRef.current = scanSound;
+        scanSoundObject = scanSound; // Keep local ref for cleanup
+        console.log('[VISUALIZER] Scan complete sound loaded');
+
+      } catch (error) {
+        console.error('[VISUALIZER] Error loading sounds:', error);
+      }
+    };
+
+    const unloadSounds = async () => {
+       console.log('[VISUALIZER] Unloading sounds...');
+       if (stepCompleteSoundRef.current) {
+         try {
+           await stepCompleteSoundRef.current.unloadAsync();
+           console.log('[VISUALIZER] Step complete sound unloaded');
+         } catch (e) { console.error('[VISUALIZER] Error unloading step sound:', e); }
+         stepCompleteSoundRef.current = null;
+       }
+       if (scanCompleteSoundRef.current) {
+         try {
+           await scanCompleteSoundRef.current.unloadAsync();
+           console.log('[VISUALIZER] Scan complete sound unloaded');
+         } catch (e) { console.error('[VISUALIZER] Error unloading scan sound:', e); }
+         scanCompleteSoundRef.current = null;
+       }
+       // Also unload local refs if they exist
+       if (stepSoundObject) {
+          try { await stepSoundObject.unloadAsync(); } catch(e) {}
+       }
+       if (scanSoundObject) {
+          try { await scanSoundObject.unloadAsync(); } catch(e) {}
+       }
+    };
+
+    if (isVisible) {
+      loadSounds();
+    }
+
+    // Cleanup function
+    return () => {
+      unloadSounds();
+    };
+  }, [isVisible]); // Reload sounds when visibility changes
+
   return (
     <View style={styles.container}>
       <Animated.View
         style={[
           styles.content,
           {
-            backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.3)',
+            backgroundColor: isDark ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.7)',
             borderColor: isDark ? 'rgba(51, 51, 51, 0.5)' : '#bbb',
-            borderWidth: 1,
+            borderWidth: 2,
             opacity: containerAnim,
             transform: [
               { 
@@ -2072,7 +2326,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
             <Text
               style={[styles.accuracyText, { color: isDark ? '#CCC' : '#333' }]}
             >
-              We verify multiple websites and databases to ensure accuracy, every single time.
+              Deep Search has been completed. We checked multiple websites and are now loading the final data for you.
             </Text>
           </View>
         </Animated.View>
@@ -2151,7 +2405,7 @@ const styles = StyleSheet.create({
     letterSpacing: -0.2,
     color: '#666',
     marginTop: 0,
-    // minHeight: 18, // Removed to allow numberOfLines=1 to work properly
+    // Remove minHeight to prevent forcing multiple lines
   },
   connector: {
     position: 'absolute',

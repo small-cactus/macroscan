@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Animated, StyleSheet, Text } from 'react-native';
 
-const AIAnimatedSubtitle = ({ text, style, colorScheme, isCompleted }) => {
+const AIAnimatedSubtitle = ({ text, style, colorScheme, isCompleted, numberOfLines = 1, ellipsizeMode = 'tail' }) => {
   const [prevText, setPrevText] = useState('');
   const [currentText, setCurrentText] = useState(text);
   
@@ -131,8 +131,8 @@ const AIAnimatedSubtitle = ({ text, style, colorScheme, isCompleted }) => {
           ]
         }
       ]}
-      numberOfLines={2}
-      ellipsizeMode="tail"
+      numberOfLines={numberOfLines}
+      ellipsizeMode={ellipsizeMode}
     >
       {currentText}
     </Animated.Text>

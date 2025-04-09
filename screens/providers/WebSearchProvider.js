@@ -941,6 +941,13 @@ const storeSearchData = async (queries = [], results = []) => {
  */
 const processWebSearchToolCall = async (toolCall) => {
   try {
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Web search tool call cancelled.');
+      return { query: '', results: [], cancelled: true };
+    }
+    // *** END CANCELLATION CHECK ***
+
     // Extract the query from the tool call parameters
     let query = '';
     if (toolCall.function && toolCall.function.name === 'search_web') {
@@ -1050,8 +1057,22 @@ const processWebSearchToolCall = async (toolCall) => {
       };
     }
     
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Web search perform cancelled before search.');
+      return { query, results: [], cancelled: true };
+    }
+    // *** END CANCELLATION CHECK ***
+
     // Perform the web search
     const results = await performWebSearch(query);
+
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Web search perform cancelled after search.');
+      return { query, results, cancelled: true };
+    }
+    // *** END CANCELLATION CHECK ***
     
     // Process the search results
     if (results && Array.isArray(results) && results.length > 0) {
@@ -1715,6 +1736,14 @@ const handleAnthropicWebSearch = async ({
   setActiveTab,
 }) => {
   try {
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Anthropic web search cancelled at start.');
+      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData); // Use handleError for consistency
+      return false;
+    }
+    // *** END CANCELLATION CHECK ***
+
     const anthropic = new Anthropic({ apiKey });
     let foodFound = false;
     const searchInfo = {
@@ -1724,12 +1753,21 @@ const handleAnthropicWebSearch = async ({
     
     // Ensure we have a valid model string - fall back to Claude 3.5 Sonnet if null
     const actualModel = selectedModel || 'claude-3-haiku-20240307';
+    // const actualModel = selectedModel || 'claude-3-5-sonnet-20240620';
+
     
     console.log("Using search mode with Anthropic. Sending request to API");
     console.log("Debug - handleAnthropicWebSearch - Selected model:", selectedModel);
     console.log("Debug - handleAnthropicWebSearch - Actual model being used:", actualModel);
     
     // Initial message to identify the food and determine what to search for
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Anthropic web search cancelled before initial API call.');
+      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+      return false;
+    }
+    // *** END CANCELLATION CHECK ***
     const initialResponse = await anthropic.messages.create({
       model: actualModel,
       max_tokens: 4096,
@@ -1741,7 +1779,7 @@ const handleAnthropicWebSearch = async ({
           content: [
             {
               type: "text",
-              text: "Analyze this image and tell me what food this is. Look very carefully at all visual details including packaging, branding, logos, and size references. Pay close attention to portion size relative to other objects in the image. Only after thoroughly analyzing what you see, use the search_web tool if needed to gather accurate nutritional information."
+              text: "Analyze this image and tell me what food this is. Look very carefully at all visual details including packaging, branding, logos, and size references. Pay close attention to portion size relative to other objects in the image. Only after thoroughly analyzing what you see, use the search_web tool if needed to gather accurate nutritional information. When you identify the food, format its name like this: <foodname>Your Food Name Here</foodname>. Think carefully about the most accurate name before writing it down."
             },
             {
               type: "image",
@@ -1771,7 +1809,14 @@ const handleAnthropicWebSearch = async ({
         }
       ]
     });
-    
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Anthropic web search cancelled after initial API call.');
+      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+      return false;
+    }
+    // *** END CANCELLATION CHECK ***
+
     console.log('Anthropic initial response:', JSON.stringify(initialResponse, null, 2));
     
     // Process the initial response
@@ -1801,39 +1846,54 @@ const handleAnthropicWebSearch = async ({
       if (textContent) {
         // Extract potential food items from the initial text response
         if (textContent.text) {
-          // Parse the structured format first
+          // Initialize foodMatches array
           const foodMatches = [];
-          const formattedData = {};
-          
-          // Look for the structured format pattern we defined
-          const lines = textContent.text.split('\n');
-          let foundStructuredFormat = false;
-          
+          const formattedData = {}; // Keep this for structured data parsing
+
+          // --- NEW: Prioritize extracting food name from <foodname> tags ---
+          const foodNameMatch = textContent.text.match(/<foodname>(.*?)<\/foodname>/i); // Corrected escaping
+          if (foodNameMatch && foodNameMatch[1]) {
+            const extractedName = foodNameMatch[1].trim();
+            if (extractedName.length > 2) {
+              console.log('Extracted food name using <foodname> tag:', extractedName);
+              foodMatches.push(extractedName);
+            }
+          }
+          // --- END NEW ---
+
+          // Look for the structured format pattern we defined (as fallback or for additional info)
+          const lines = textContent.text.split('\\n');
+          let foundStructuredFormat = false; // Flag to track if structured data was found
+
           for (let i = 0; i < lines.length; i++) {
             const line = lines[i].trim();
-            
-            // Try to extract key-value pairs
-            const match = line.match(/^(Food item\(s\)|Brand\/Restaurant|Portion size|Packaging|Distinguishing features):\s*(.+)$/i);
+
+            // Try to extract key-value pairs (excluding food name if already found)
+            const match = line.match(/^(Brand\/Restaurant|Portion size|Packaging|Distinguishing features):\s*(.+)$/i); // Corrected escaping
             if (match) {
               foundStructuredFormat = true;
               const [_, key, value] = match;
               formattedData[key] = value.trim();
-              
-              // Extract food items from the dedicated field
-              if (key === 'Food item(s)') {
-                // Split by commas or 'and' to get individual items
-                const items = value.split(/,|\s+and\s+/).map(item => item.trim());
-                items.forEach(item => {
-                  if (item.length > 2 && !foodMatches.includes(item)) {
-                    foodMatches.push(item);
-                  }
-                });
+            } else if (line.match(/^Food item\(s\):/i) && foodMatches.length === 0) { // Corrected escaping
+              // Only parse 'Food item(s)' if <foodname> tag wasn't found
+              const foodItemMatch = line.match(/^Food item\(s\):\s*(.+)$/i); // Corrected escaping
+              if (foodItemMatch) {
+                  foundStructuredFormat = true; // Still counts as finding structured format
+                  const value = foodItemMatch[1].trim();
+                  // Split by commas or 'and' to get individual items
+                  const items = value.split(/,|\s+and\s+/).map(item => item.trim()); // Corrected split regex usage
+                  items.forEach(item => {
+                    if (item.length > 2 && !foodMatches.includes(item)) {
+                      foodMatches.push(item);
+                    }
+                  });
               }
             }
           }
-          
-          // If we didn't find the structured format, fall back to regex patterns
-          if (!foundStructuredFormat) {
+
+          // If we didn't find the <foodname> tag AND didn't find structured food item(s), fall back to regex patterns
+          if (foodMatches.length === 0 && !foundStructuredFormat) {
+            console.log('Falling back to regex patterns for food extraction.');
             // Common patterns of AI describing food in images
             const patterns = [
               /(?:this is|I can see|the image shows|appears to be|visible is|we can see)\s+(?:a|an|some)?\s+([\w\s\-\'\,]+)(?:\.|,|\s+in\s+the\s+image|\s+on\s+a\s+plate|\s+with\s+)/i,
@@ -1912,69 +1972,90 @@ const handleAnthropicWebSearch = async ({
     
     // Check for tool calls and process them
     while (currentResponse.tool_calls && currentResponse.tool_calls.length > 0 && iterations < maxIterations) {
+      // *** ADD CANCELLATION CHECK ***
+      if (global.NUTRILENS_CANCEL_SEARCH === true) {
+        console.log('[CANCEL] Anthropic web search cancelled during tool call loop.');
+        handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+        return false;
+      }
+      // *** END CANCELLATION CHECK ***
+
       iterations++;
       console.log(`Processing tool call iteration ${iterations}`);
       
+      // Prepare tool results array
+      const toolResults = [];
+
       // Process each tool call
       for (const toolCall of currentResponse.tool_calls) {
         if (toolCall.type !== 'function' || toolCall.function.name !== 'search_web') continue;
-        
-        // Track the search query
-        try {
-          const args = JSON.parse(toolCall.function.arguments);
-          if (args.query) {
-            searchInfo.queries.push(args.query);
-            
-            // Call handleSearchTracking if available
-            if (globalSearchTrackingFn && typeof globalSearchTrackingFn === 'function') {
-              globalSearchTrackingFn([args.query], []);
-            }
-            
-            // Make sure we're in search step when actively performing searches
-            const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-            if (currentStep !== STEP_SEARCH && currentStep === STEP_RECOGNIZE) {
-              // Complete recognize step and move to search step
-              await completeStep(STEP_RECOGNIZE);
-              await activateStep(STEP_SEARCH);
-            }
-          }
-        } catch (e) {
-          console.error("Error parsing tool arguments:", e);
-        }
-        
-        // Perform the web search
+
+        // Perform the web search and process the result
         const searchResult = await processWebSearchToolCall(toolCall);
+
+        // *** ADD CANCELLATION CHECK from tool call ***
+        if (searchResult.cancelled) {
+            console.log('[CANCEL] Anthropic web search cancelled via tool call result.');
+            handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+            return false;
+        }
+        // *** END CANCELLATION CHECK ***
+
         console.log('Search result:', searchResult);
-        
+
         // Track the search results
         if (searchResult.results && Array.isArray(searchResult.results)) {
           searchInfo.results.push(...searchResult.results);
-          
+
           // Call handleSearchTracking if available
           if (globalSearchTrackingFn && typeof globalSearchTrackingFn === 'function') {
-            globalSearchTrackingFn([], searchResult.results);
+            globalSearchTrackingFn(searchResult.query ? [searchResult.query] : [], searchResult.results);
           }
-          
+
           // After processing search results, we should be transitioning to process step
           const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
           if (currentStep === STEP_SEARCH) {
             // Complete search step and move to process step
-            setTimeout(async () => {
-              await completeStep(STEP_SEARCH);
-              await activateStep(STEP_PROCESS);
-            }, MIN_SEARCH_DURATION);
+            // Use a timeout only if NOT cancelling
+            if (!global.NUTRILENS_CANCEL_SEARCH) {
+                setTimeout(async () => {
+                    if (!global.NUTRILENS_CANCEL_SEARCH) { // Double check inside timeout
+                        await completeStep(STEP_SEARCH);
+                        await activateStep(STEP_PROCESS);
+                    }
+                }, MIN_SEARCH_DURATION);
+            }
           }
         }
-        
-        // Add the search result to the messages
-        messages.push({
-          role: "tool",
-          tool_call_id: toolCall.id,
-          name: "search_web",
-          content: JSON.stringify(searchResult),
+
+        // Add the search result to the tool results array
+        toolResults.push({
+            type: "tool_result", // Use 'tool_result' type for Anthropic API
+            tool_use_id: toolCall.id, // Use tool_use_id for Anthropic
+            content: JSON.stringify(searchResult),
+            // Add is_error flag if needed based on searchResult.error
+            is_error: !!searchResult.error
         });
       }
-      
+
+      // Add the assistant's previous message and the tool results to the messages list
+      messages.push({
+        role: "assistant",
+        content: currentResponse.content // Include the previous assistant message that contained the tool_calls
+      });
+      messages.push({
+        role: "user", // Role is 'user' when providing tool results back to Anthropic
+        content: toolResults // Send the array of tool results
+      });
+
+      // *** ADD CANCELLATION CHECK ***
+      if (global.NUTRILENS_CANCEL_SEARCH === true) {
+        console.log('[CANCEL] Anthropic web search cancelled before next API call in loop.');
+        handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+        return false;
+      }
+      // *** END CANCELLATION CHECK ***
+
       // Continue the conversation with the search results
       currentResponse = await anthropic.messages.create({
         model: actualModel,
@@ -2058,6 +2139,13 @@ Now, provide the complete nutritional information in the JSON format exactly as 
     await activateStep(STEP_RESULT);
     
     // Get the final JSON response
+    // *** ADD CANCELLATION CHECK ***
+     if (global.NUTRILENS_CANCEL_SEARCH === true) {
+        console.log('[CANCEL] Anthropic web search cancelled before final API call.');
+        handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+        return false;
+    }
+    // *** END CANCELLATION CHECK ***
     const finalResponse = await anthropic.messages.create({
       model: actualModel,
       max_tokens: 4096,
@@ -2065,7 +2153,15 @@ Now, provide the complete nutritional information in the JSON format exactly as 
       system: systemPrompts.searchMode(hasDrawing, barcodeData),
       messages: messages
     });
-    
+
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Anthropic web search cancelled after final API call.');
+      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
+      return false;
+    }
+    // *** END CANCELLATION CHECK ***
+
     console.log('Final response:', JSON.stringify(finalResponse, null, 2));
     
     // Extract the response text

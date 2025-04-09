@@ -6,7 +6,7 @@
 // 3. It takes a long time sometimes
 // 4. It is in beta so results may not be good all the time
 
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useCallback } from 'react';
 import { 
   View, 
   Text, 
@@ -14,9 +14,9 @@ import {
   TouchableOpacity, 
   Dimensions, 
   Modal,
-  Animated,
   SafeAreaView,
-  Platform
+  Platform,
+  NativeModules
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,6 +26,18 @@ import { useColorScheme } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 import { PanGestureHandler } from 'react-native-gesture-handler';
+import Animated, {
+  useSharedValue,
+  useAnimatedStyle,
+  useAnimatedGestureHandler,
+  withSpring,
+  withTiming,
+  interpolate,
+  Extrapolate,
+  runOnJS,
+  useDerivedValue,
+  cancelAnimation,
+} from 'react-native-reanimated';
 
 const { width, height } = Dimensions.get('window');
 
@@ -36,134 +48,179 @@ const scaleWidth = width / baseWidth;
 const scaleHeight = height / baseHeight;
 const scale = Math.min(scaleWidth, scaleHeight);
 
-const SearchModeInfoSheet = ({ visible, onClose, onRevertChip }) => {
+const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) => {
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
-  const slideAnim = useRef(new Animated.Value(height)).current;
-  const overlayOpacity = useRef(new Animated.Value(0)).current;
   
-  // Blur animation refs
-  const blurAnim = useRef(new Animated.Value(0)).current;
-  const [blurIntensity, setBlurIntensity] = React.useState(0);
-
-  // Pan gesture refs
-  const panY = useRef(new Animated.Value(0)).current;
-  const lastGestureDy = useRef(0);
-
-  // Blur animation listener
+  // Set iOS display to 120Hz for animations if available
   useEffect(() => {
-    const listener = blurAnim.addListener(({ value }) => {
-      setBlurIntensity(Math.round(value));
-    });
-    return () => blurAnim.removeListener(listener);
+    if (Platform.OS === 'ios') {
+      if (NativeModules.DisplayLink) {
+        // Request 120hz refresh rate on ProMotion devices
+        NativeModules.DisplayLink.setPreferredFramesPerSecond(120);
+      }
+    }
+    
+    return () => {
+      // Reset to default when component unmounts
+      if (Platform.OS === 'ios' && NativeModules.DisplayLink) {
+        NativeModules.DisplayLink.setPreferredFramesPerSecond(60);
+      }
+    };
+  }, []);
+  
+  // Reanimated shared values for animations
+  const slideAnim = useSharedValue(height);
+  const overlayOpacity = useSharedValue(0);
+  const blurAnim = useSharedValue(0);
+  const panY = useSharedValue(0);
+  
+  // Track blur intensity in state
+  const [blurIntensity, setBlurIntensity] = React.useState(0);
+  
+  // Update blur intensity when blurAnim changes
+  useDerivedValue(() => {
+    runOnJS(setBlurIntensity)(Math.round(blurAnim.value));
   }, [blurAnim]);
 
-  useEffect(() => {
-    if (visible) {
-      Animated.parallel([
-        Animated.spring(slideAnim, {
-          toValue: 0,
-          velocity: 3,
-          tension: 70,
-          friction: 12,
-          useNativeDriver: true
-        }),
-        Animated.timing(overlayOpacity, {
-          toValue: 0.3,
-          duration: 400,
-          useNativeDriver: true
-        }),
-        Animated.timing(blurAnim, {
-          toValue: 10,
-          duration: 400,
-          useNativeDriver: false
-        })
-      ]).start();
-    } else {
-      Animated.parallel([
-        Animated.timing(slideAnim, {
-          toValue: height,
-          duration: 300,
-          useNativeDriver: true
-        }),
-        Animated.timing(overlayOpacity, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: true
-        }),
-        Animated.timing(blurAnim, {
-          toValue: 0,
-          duration: 300,
-          useNativeDriver: false
-        })
-      ]).start(() => {
-        slideAnim.setValue(height);
-        overlayOpacity.setValue(0);
-        blurAnim.setValue(0);
-        onClose();
-      });
-    }
-  }, [visible, slideAnim, overlayOpacity, blurAnim]);
-
+  // handleClose now triggers the animation first
   const handleClose = (revert = true) => {
-    // Remove haptic feedback
-    Animated.parallel([
-      Animated.timing(slideAnim, {
-        toValue: height,
-        duration: 300,
-        useNativeDriver: true
-      }),
-      Animated.timing(overlayOpacity, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: true
-      }),
-      Animated.timing(blurAnim, {
-        toValue: 0,
-        duration: 300,
-        useNativeDriver: false
-      })
-    ]).start(() => {
-      if (revert && onRevertChip) {
-        onRevertChip();
+    if (revert && onRevertChip) {
+      onRevertChip();
+    } else {
+      // Play success haptic when "Get Started" is clicked
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      // Call onGetStarted callback when "Get Started" is clicked
+      if (onGetStarted) {
+        onGetStarted();
       }
-      onClose();
+    }
+    
+    // Make sure we complete the animation before calling onClose
+    // First animate down
+    slideAnim.value = withTiming(height, {
+      duration: 300,
+    }, (finished) => {
+      if (finished) {
+        // Only call onClose after animation completes
+        runOnJS(onClose)();
+      }
+    });
+    
+    // Also animate opacity and blur
+    overlayOpacity.value = withTiming(0, { 
+      duration: 300 
+    });
+    blurAnim.value = withTiming(0, { 
+      duration: 300 
     });
   };
+  
+  // Separate animateOut function now only used for gesture dismissal
+  const animateOut = useCallback((callback) => {
+    // Use the right timing configuration for 120hz
+    const animConfig = {
+      duration: 300,
+    };
+    
+    // Run all animations in parallel
+    slideAnim.value = withTiming(height, animConfig);
+    overlayOpacity.value = withTiming(0, animConfig);
+    blurAnim.value = withTiming(0, animConfig);
+    panY.value = withTiming(0, animConfig, (finished) => {
+      if (finished && callback) {
+        // Reset values after animation completes
+        slideAnim.value = height;
+        overlayOpacity.value = 0;
+        blurAnim.value = 0;
+        panY.value = 0;
+        
+        runOnJS(callback)();
+      }
+    });
+  }, [slideAnim, overlayOpacity, blurAnim, panY]);
 
-  // Gesture handler functions
-  const onGestureEvent = Animated.event(
-    [{ nativeEvent: { translationY: panY } }],
-    { useNativeDriver: true }
-  );
-
-  const onHandlerStateChange = event => {
-    if (event.nativeEvent.oldState === 4) { // State.ACTIVE = 4
-      lastGestureDy.current = 0;
-      const { translationY } = event.nativeEvent;
+  // useEffect for handling visibility changes
+  useEffect(() => {
+    if (visible) {
+      // Reset values before animating in
+      slideAnim.value = height;
+      overlayOpacity.value = 0;
+      blurAnim.value = 0;
+      panY.value = 0;
       
-      if (translationY > height * 0.2) { // If dragged down more than 20% of screen height
-        // Remove haptic feedback
-        handleClose(true); // Revert to previous chip when swiped down
+      // Spring animation for the slide, configured for 120Hz with less bounce
+      slideAnim.value = withSpring(0, {
+        velocity: 20,
+        stiffness: 125,
+        damping: 20,
+        overshootClamping: false,
+        restDisplacementThreshold: 0.1,
+        restSpeedThreshold: 0.1,
+      });
+      
+      // Timing animations for opacity and blur
+      overlayOpacity.value = withTiming(0.3, { duration: 400 });
+      blurAnim.value = withTiming(10, { duration: 400 });
+    }
+  }, [visible, slideAnim, overlayOpacity, blurAnim, panY]);
+
+  // Gesture handler with Reanimated
+  const gestureHandler = useAnimatedGestureHandler({
+    onStart: (_, ctx) => {
+      ctx.startY = panY.value;
+    },
+    onActive: (event, ctx) => {
+      // Only allow downward dragging or slight upward movement
+      if (event.translationY >= -height * 0.1) {
+        panY.value = ctx.startY + event.translationY;
+      }
+    },
+    onEnd: (event, ctx) => {
+      if (event.translationY > height * 0.2) {
+        // If dragged down far enough, close the sheet
+        if (onRevertChip) {
+          runOnJS(onRevertChip)();
+        }
+        runOnJS(animateOut)(onClose);
       } else {
-        // Reset to original position with spring animation
-        Animated.spring(panY, {
-          toValue: 0,
-          velocity: 3,
-          tension: 70,
-          friction: 12,
-          useNativeDriver: true
-        }).start();
+        // Spring back to original position
+        panY.value = withSpring(0, {
+          velocity: event.velocityY,
+          stiffness: 70,
+          damping: 12,
+          overshootClamping: false,
+          restDisplacementThreshold: 0.1,
+          restSpeedThreshold: 0.1,
+        });
       }
     }
-  };
+  });
 
-  // Combine panY and slideAnim for total translation
-  const translateY = Animated.add(slideAnim, panY);
+  // Create animated styles
+  const sheetAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      transform: [{ 
+        translateY: slideAnim.value + panY.value 
+      }],
+      opacity: interpolate(
+        overlayOpacity.value,
+        [0, 0.3],
+        [0.8, 1],
+        Extrapolate.CLAMP
+      )
+    };
+  });
+
+  const overlayAnimatedStyle = useAnimatedStyle(() => {
+    return {
+      opacity: overlayOpacity.value
+    };
+  });
 
   // Skip rendering if not visible
-  if (!visible) return null;
+  if (!visible && blurIntensity === 0) return null;
 
   // Define colors based on theme
   const bgColor = isDark ? '#1C1C1E' : '#FFFFFF';
@@ -190,25 +247,20 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip }) => {
         <Animated.View 
           style={[
             StyleSheet.absoluteFill, 
-            { 
-              backgroundColor: 'black',
-              opacity: overlayOpacity
-            }
+            { backgroundColor: 'black' },
+            overlayAnimatedStyle
           ]} 
         />
       </View>
-      <View style={styles.modalContainer}>
+      <View style={styles.modalContainer} pointerEvents={visible ? 'auto' : 'none'}>
         <PanGestureHandler
-          onGestureEvent={onGestureEvent}
-          onHandlerStateChange={onHandlerStateChange}
+          onGestureEvent={gestureHandler}
         >
           <Animated.View 
             style={[
               styles.sheetContainer, 
-              { 
-                backgroundColor: bgColor,
-                transform: [{ translateY: translateY }]
-              }
+              { backgroundColor: bgColor },
+              sheetAnimatedStyle
             ]}
           >
             {/* Handle indicator */}
@@ -252,17 +304,17 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip }) => {
               </View>
 
               {/* Title */}
-              <Text style={[styles.title, { color: textColor }]}>Enhanced Search Mode</Text>
+              <Text style={[styles.title, { color: textColor }]}>Deep Search Mode</Text>
 
               {/* Subtitle */}
-              <Text style={[styles.subtitle, { color: secondaryTextColor }]}>Automatically find nutrition info for your food from across the web</Text>
+              <Text style={[styles.subtitle, { color: secondaryTextColor }]}>Automatically find nutrition info for your food from across the web.</Text>
 
               {/* Feature list */}
               <View style={styles.featureList}>
                 <FeatureItem 
                   icon="globe" 
-                  title="Smart Web Searching" 
-                  description="AI identifies your food and searches the internet for the real nutrition data"
+                  title="Deep Web Search" 
+                  description="We'll search every website for the best nutrition info about your food."
                   iconBg={featureIconBg}
                   textColor={textColor}
                   secondaryTextColor={secondaryTextColor}
@@ -270,8 +322,8 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip }) => {
                 
                 <FeatureItem 
                   icon="library" 
-                  title="Multiple Sources" 
-                  description="Combines information from databases, websites, and government sources"
+                  title="Multiple Types of Sources" 
+                  description="We combine data from food databases, websites, and government sources."
                   iconBg={featureIconBg}
                   textColor={textColor}
                   secondaryTextColor={secondaryTextColor}
