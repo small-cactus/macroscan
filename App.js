@@ -63,6 +63,7 @@ import InsightsV2 from './screens/InsightsV2';
 import MultiFoodScanScreen from './screens/MultiFoodScanScreen';
 import FoodDetailsScreen from './screens/FoodDetailsScreen';
 import SearchScreen from './screens/SearchScreen';
+import ProfileScreen from './screens/ProfileScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -112,7 +113,7 @@ function HomeTabs() {
             case 'Settings':
               iconName = focused ? 'settings' : 'settings-outline';
               break;
-            case 'Account':
+            case 'Profile':
               iconName = focused ? 'person' : 'person-outline';
               break;
             case 'Beta':
@@ -132,7 +133,7 @@ function HomeTabs() {
       <Tab.Screen name="Insights" component={InsightsV2} />
       <Tab.Screen name="History" component={HistoryScreen} />
       <Tab.Screen name="Settings" component={SettingsScreen} />
-      <Tab.Screen name="Account" component={AccountScreen} />
+      <Tab.Screen name="Profile" component={ProfileScreen} />
       {/* <Tab.Screen 
         name="Search (BETA)" 
         component={SearchScreen}

@@ -20,18 +20,24 @@ import {
   Modal,
   FlatList,
   Switch,
+  StatusBar,
 } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { Ionicons } from '@expo/vector-icons';
+import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import * as RNIap from 'react-native-iap';
-import { useIAP } from '../IAPContext'; 
+import { useIAP } from '../IAPContext';
 import { BlurView } from 'expo-blur';
+import { LinearGradient } from 'expo-linear-gradient';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AnimatedCenteredText from './AnimatedCenteredText';
+import AnimatedTextOnboarding from './AnimatedTextOnboarding';
 import { MODELS, getModel } from './providers/models';
 import Superwall from '@superwall/react-native-superwall';
 import { useUser } from '../userContext';
+import SearchModeInfoSheet from './SearchModeInfoSheet';
+import TipsInfoSheet from './TipsInfoSheet';
 
 if (
   Platform.OS === 'android' &&
@@ -42,6 +48,13 @@ if (
 
 const DEBUG_MOCK_UNLIMITED = false;
 const { width, height } = Dimensions.get('window');
+
+// Calculate scale factor based on screen size for consistent UI
+const baseWidth = 430; // iPhone 14 Pro Max width
+const baseHeight = 932; // iPhone 14 Pro Max height
+const scaleWidth = width / baseWidth;
+const scaleHeight = height / baseHeight;
+const scale = Math.min(scaleWidth, scaleHeight);
 
 // Helper function to detect older iPhone sizes
 const isIphoneSE = () => {
@@ -63,12 +76,37 @@ const isIphoneSE = () => {
   );
 };
 
+// Modern background component with blur and gradient effects
+const Background = ({ isDark }) => {
+  return (
+    <View style={StyleSheet.absoluteFill}>
+      <LinearGradient
+        colors={
+          isDark
+            ? ['#121212', '#262626', '#121212']
+            : ['#f8f9fa', '#e9ecef', '#f8f9fa']
+        }
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 1 }}
+        style={StyleSheet.absoluteFill}
+      />
+      <BlurView
+        style={StyleSheet.absoluteFill}
+        tint={isDark ? 'dark' : 'light'}
+        intensity={20}
+      />
+    </View>
+  );
+};
+
 const FeaturesScreen = () => {
   const navigation = useNavigation();
   const colorScheme = Appearance.getColorScheme();
+  const isDark = colorScheme === 'dark';
   const styles = getDynamicStyles(colorScheme);
   const { isIAPEnabled } = useIAP();
   const { user } = useUser();
+  const insets = useSafeAreaInsets(); // Get safe area insets
 
   // Models: 'Complex Processing' is paywalled in the UI,
   // but we'll force it behind the scenes when user picks Accurate Mode.
@@ -80,79 +118,44 @@ const FeaturesScreen = () => {
   // Basic state
   const [selectedProvider, setSelectedProvider] = useState('anthropic');
   const [selectedMode, setSelectedMode] = useState('fast');
-  const [selectedProcessing, setSelectedProcessing] = useState('default');
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [debugUnlocked] = useState(DEBUG_MOCK_UNLIMITED);
-  const [showAndroidPicker, setShowAndroidPicker] = useState(false);
   const [foodSelectionEnabled, setFoodSelectionEnabled] = useState(false);
   const [isFirstDayUnlimited, setIsFirstDayUnlimited] = useState(false);
   const initialCheckDoneRef = useRef(false);
+  const [showSearchModeInfo, setShowSearchModeInfo] = useState(false);
+  const previousModeRef = useRef(selectedMode);
+  const [showTipsInfoSheet, setShowTipsInfoSheet] = useState(false); // Renamed state variable
+
+  // For splash animation when screen appears
+  const splashAnim = useRef(new Animated.Value(0)).current;
+
+  // Individual item animations
+  const descTextAnim = useRef(new Animated.Value(0)).current;
+  const modeButtonFastAnim = useRef(new Animated.Value(0)).current;
+  const modeButtonAccurateAnim = useRef(new Animated.Value(0)).current;
+  const modeButtonSearchAnim = useRef(new Animated.Value(0)).current;
+  const separatorAnim = useRef(new Animated.Value(0)).current; // Animate separator too
+  const magicHeaderAnim = useRef(new Animated.Value(0)).current;
+  const circleToggleAnim = useRef(new Animated.Value(0)).current;
+  const tipsTouchableAnim = useRef(new Animated.Value(0)).current;
 
   // For animating the mode buttons
   const scaleValues = {
     fast: useRef(new Animated.Value(1)).current,
     accurate: useRef(new Animated.Value(1)).current,
+    search: useRef(new Animated.Value(1)).current,
   };
   const buttonBackgroundColors = {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
+    search: useRef(new Animated.Value(0)).current,
   };
   const buttonBorderColors = {
     fast: useRef(new Animated.Value(0)).current,
     accurate: useRef(new Animated.Value(0)).current,
+    search: useRef(new Animated.Value(0)).current,
   };
-
-  // Tutorial
-  const [showTutorial, setShowTutorial] = useState(false);
-  const [debugShowTutorialAlways, setDebugShowTutorialAlways] = useState(false);
-  const tutorialOpacityAnim = useRef(new Animated.Value(0)).current;
-  const tutorialData = [
-    {
-      key: '1',
-      title: 'Welcome to Scanner Settings',
-      description:
-        'Adjust how our intelligence features scan your meals to get the most accurate macro information.',
-      icon: 'restaurant',
-    },
-    {
-      key: '2',
-      title: 'Fast Mode (Default)',
-      description:
-        'Provides instant results without in-depth analysis. Great for packaged or well-known foods.',
-      icon: 'flash',
-    },
-    {
-      key: '3',
-      title: 'Accurate Mode',
-      description:
-        'Accurate Mode uses specialized reasoning with multiple runs for high accuracy. You only get one free scan a day!',
-      icon: 'shield-checkmark',
-      isBeta: true,
-    },
-    {
-      key: '4',
-      title: 'Processing Models',
-      description:
-        'Pick the intelligence model for detection. Complex is normally locked for subscribers, but is used behind the scenes in Accurate Mode.',
-      icon: 'settings',
-    },
-  ];
-  const [tutorialIndex, setTutorialIndex] = useState(0);
-  const [currentTutorialIndex, setCurrentTutorialIndex] = useState(0);
-  const flatListRef = useRef(null);
-
-  // Viewability config for the tutorial slides
-  const viewabilityConfig = {
-    itemVisiblePercentThreshold: 50,
-  };
-  const onViewableItemsChanged = useRef(({ viewableItems }) => {
-    if (viewableItems.length > 0) {
-      const index = viewableItems[0].index;
-      if (index !== null && index !== undefined) {
-        setCurrentTutorialIndex(index);
-      }
-    }
-  }).current;
 
   // Subscription IDs to check
   const SUBSCRIPTION_IDS = [
@@ -160,6 +163,83 @@ const FeaturesScreen = () => {
     'macroscan_plusplus_yearly',
     'macroscan_unlimited',
   ];
+
+  // Status bar configuration
+  useEffect(() => {
+    StatusBar.setBarStyle(isDark ? 'light-content' : 'dark-content');
+    if (Platform.OS === 'android') {
+      StatusBar.setBackgroundColor('transparent');
+      StatusBar.setTranslucent(true);
+    }
+    
+    // Entrance animation
+    Animated.timing(splashAnim, {
+      toValue: 1,
+      duration: 700,
+      useNativeDriver: true,
+    }).start(); // Start splash animation immediately
+
+    // Start staggered animation after a short delay (e.g., 300ms)
+    const staggerTimeout = setTimeout(() => {
+      Animated.stagger(80, [ // Shorten stagger delay for more items
+        Animated.spring(descTextAnim, { // Animate description text
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(modeButtonFastAnim, { // Animate fast mode button
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(modeButtonAccurateAnim, { // Animate accurate mode button
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(modeButtonSearchAnim, { // Animate search mode button
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(separatorAnim, { // Animate separator
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(magicHeaderAnim, { // Animate magic header
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(circleToggleAnim, { // Animate circle toggle
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+        Animated.spring(tipsTouchableAnim, { // Animate tips touchable
+          toValue: 1,
+          tension: 50,
+          friction: 7,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }, 300);
+
+    return () => {
+      // Reset animation when component unmounts
+      splashAnim.setValue(0);
+      // Clear the timeout if the component unmounts before it fires
+      clearTimeout(staggerTimeout);
+    };
+  }, [isDark, splashAnim]);
 
   useEffect(() => {
     const initializeFeatures = async () => {
@@ -181,14 +261,16 @@ const FeaturesScreen = () => {
         const savedMode = await AsyncStorage.getItem('selectedMode') || 'fast';
         setSelectedMode(savedMode);
 
-        // Load saved model and set display text
-        const savedModel = await AsyncStorage.getItem('selectedModel') || MODELS[selectedProvider].regular;
-        setSelectedProcessing(savedModel === MODELS[selectedProvider].complex ? MODEL_TYPES.COMPLEX : MODEL_TYPES.DEFAULT);
-
         // Load food selection setting
         const foodSelection = await AsyncStorage.getItem('foodSelectionEnabled');
         setFoodSelectionEnabled(foodSelection === 'true');
 
+        // Animate the selected mode button after loading
+        setTimeout(() => {
+          Object.keys(buttonBackgroundColors).forEach((mode) => {
+            animateButtonSelection(mode, mode === savedMode);
+          });
+        }, 100);
       } catch (error) {
         console.error('Error initializing features:', error);
       }
@@ -295,76 +377,21 @@ const FeaturesScreen = () => {
     Object.keys(buttonBackgroundColors).forEach((mode) => {
       animateButtonSelection(mode, mode === selectedMode);
     });
-  }, [selectedMode, colorScheme]);
-
-  useEffect(() => {
-    checkTutorial();
-  }, [debugShowTutorialAlways]);
-
-  // Check if user has seen tutorial
-  const checkTutorial = async () => {
-    try {
-      const hasViewedTutorial = await AsyncStorage.getItem(
-        'hasViewedFeaturesTutorial'
-      );
-      if (!hasViewedTutorial || debugShowTutorialAlways) {
-        setShowTutorial(true);
-        Animated.timing(tutorialOpacityAnim, {
-          toValue: 1,
-          duration: 500,
-          useNativeDriver: true,
-        }).start();
-      }
-    } catch (error) {
-      console.error('Error checking tutorial status:', error);
-    }
-  };
-
-  // Dismiss the tutorial
-  const dismissTutorial = async () => {
-    try {
-      await AsyncStorage.setItem('hasViewedFeaturesTutorial', 'true');
-    } catch (error) {
-      console.error('Error setting tutorial status:', error);
-    }
-    Animated.timing(tutorialOpacityAnim, {
-      toValue: 0,
-      duration: 500,
-      useNativeDriver: true,
-    }).start(() => {
-      setShowTutorial(false);
-      tutorialOpacityAnim.setValue(0);
-      setTutorialIndex(0);
-    });
-  };
-
-  // Add function to reset everything to default state
-  const resetToDefaultState = async () => {
-    try {
-      console.log('Resetting features to default state...');
-      
-      // Reset mode to fast
-      setSelectedMode('fast');
-      await AsyncStorage.setItem('selectedMode', 'fast');
-
-      // Disable food selection
-      setFoodSelectionEnabled(false);
-      await AsyncStorage.setItem('foodSelectionEnabled', 'false');
-
-      // Trigger animations for mode buttons
-      Object.keys(buttonBackgroundColors).forEach((mode) => {
-        animateButtonSelection(mode, mode === 'fast');
-      });
-
-      console.log('Features reset complete');
-    } catch (error) {
-      console.error('Error resetting to default state:', error);
-    }
-  };
+  }, [selectedMode]);
 
   // Add this new function to handle the toggle
   const handleFoodSelectionToggle = async (value) => {
     try {
+      // Check for incompatibility with Deep Search Mode
+      if (value === true && selectedMode === 'search') {
+        Alert.alert(
+          'Incompatible Features',
+          'Circle to Scan cannot be used with Deep Search Mode while in beta.',
+          [{ text: 'OK' }]
+        );
+        return; // Prevent enabling
+      }
+
       if (!isUnlocked && !isFirstDayUnlimited && value) {
         // Show upgrade alert with paywall
         Alert.alert(
@@ -390,109 +417,71 @@ const FeaturesScreen = () => {
     }
   };
 
-  const handleTitlePress = () => {
-    setShowTutorial(true);
-    Animated.timing(tutorialOpacityAnim, {
-      toValue: 1,
-      duration: 500,
-      useNativeDriver: true,
-    }).start();
-  };
-
   // Handle changing the scanning mode
   const handleModeChange = async (mode) => {
+    const currentMode = selectedMode;
+    previousModeRef.current = currentMode;
+
     try {
+      if (mode === 'search') {
+        // Directly activate Search Mode 
+        await AsyncStorage.setItem('selectedMode', mode);
+        setSelectedMode(mode);
+        await AsyncStorage.removeItem('selectedModel'); // Search mode doesn't need model
+        
+        // Disable Circle to Scan if it was enabled
+        if (foodSelectionEnabled) {
+          setFoodSelectionEnabled(false);
+          await AsyncStorage.setItem('foodSelectionEnabled', 'false');
+          console.log('Disabled Circle to Scan due to switching to Deep Search Mode.');
+        }
+
+        Haptics.selectionAsync();
+        // Animate the button selection
+        animateButtonSelection(mode, true);
+        animateButtonSelection(currentMode, false);
+        return; // Exit early
+      }
+
       if (mode === 'accurate') {
-        if (isUnlocked) {
-          // Subscribers get unlimited accurate scans
+        if (isUnlocked || isFirstDayUnlimited) {
           await AsyncStorage.setItem('selectedMode', mode);
           setSelectedMode(mode);
-          // Force complex model for accurate mode
           await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].complex);
           Haptics.selectionAsync();
-        } else if (isFirstDayUnlimited) {
-          // First day users get a special message
-          Alert.alert(
-            'First Day Unlimited Access',
-            "Today you have unlimited accurate scans! Starting tomorrow, you'll only get one accurate scan per day unless you upgrade.",
-            [
-              { 
-                text: 'Cancel', 
-                style: 'cancel',
-                onPress: async () => {
-                  // Revert to fast mode
-                  await AsyncStorage.setItem('selectedMode', 'fast');
-                  setSelectedMode('fast');
-                  await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
-                  // Trigger animations
-                  Object.keys(buttonBackgroundColors).forEach((m) => {
-                    animateButtonSelection(m, m === 'fast');
-                  });
-                  Haptics.selectionAsync();
-                }
-              },
-              {
-                text: 'Continue',
-                onPress: async () => {
-                  await AsyncStorage.setItem('selectedMode', mode);
-                  setSelectedMode(mode);
-                  await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].complex);
-                  Haptics.selectionAsync();
-                },
-              },
-            ],
-            { cancelable: false }
-          );
+          if (isFirstDayUnlimited && !isUnlocked) { 
+             Alert.alert(
+              'First Day Unlimited Access',
+              "Today you have unlimited accurate scans! Starting tomorrow, you'll only get one accurate scan per day unless you upgrade."
+            );
+          }
+          // Animate the button selection
+          animateButtonSelection(mode, true);
+          animateButtonSelection(currentMode, false);
         } else {
-          // Free user => check if used up the 1 daily scan
-          const freeAccurateScansUsed = await AsyncStorage.getItem(
-            'freeAccurateScansUsed'
-          );
-          
+          const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
           if (freeAccurateScansUsed === '1') {
-            // Already used the free accurate scan
             Alert.alert(
               'Daily Limit Reached',
               'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
             );
-            // Revert to fast mode since they can't use accurate
-            await AsyncStorage.setItem('selectedMode', 'fast');
-            setSelectedMode('fast');
-            await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
-            // Trigger animations
-            Object.keys(buttonBackgroundColors).forEach((m) => {
-              animateButtonSelection(m, m === 'fast');
-            });
-            Haptics.selectionAsync();
+            // Don't change state or animate if limit reached
           } else {
-            // Not used yet => show the "make it count" alert
             Alert.alert(
               'Heads Up!',
               'You only get one accurate scan a day on the free plan, so make it count!',
               [
-                { 
-                  text: 'Cancel', 
-                  style: 'cancel',
-                  onPress: async () => {
-                    // Revert to fast mode
-                    await AsyncStorage.setItem('selectedMode', 'fast');
-                    setSelectedMode('fast');
-                    await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
-                    // Trigger animations
-                    Object.keys(buttonBackgroundColors).forEach((m) => {
-                      animateButtonSelection(m, m === 'fast');
-                    });
-                    Haptics.selectionAsync();
-                  }
-                },
+                { text: 'Cancel', style: 'cancel' },
                 {
                   text: 'OK',
                   onPress: async () => {
-                    // Switch to accurate
                     await AsyncStorage.setItem('selectedMode', mode);
                     setSelectedMode(mode);
                     await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].complex);
                     Haptics.selectionAsync();
+                    // Animate the button selection
+                    animateButtonSelection(mode, true);
+                    animateButtonSelection(currentMode, false);
                   },
                 },
               ],
@@ -500,15 +489,20 @@ const FeaturesScreen = () => {
             );
           }
         }
-      } else {
-        // Fast mode is always allowed
+      } else { // Fast mode
         await AsyncStorage.setItem('selectedMode', mode);
         setSelectedMode(mode);
         await AsyncStorage.setItem('selectedModel', MODELS[selectedProvider].regular);
         Haptics.selectionAsync();
+        // Animate the button selection
+        animateButtonSelection(mode, true);
+        animateButtonSelection(currentMode, false);
       }
     } catch (error) {
       console.error('Error handling mode change:', error);
+      setSelectedMode(previousModeRef.current); // Revert visual state on error
+      animateButtonSelection(previousModeRef.current, true);
+      animateButtonSelection(mode, false);
     }
   };
 
@@ -527,32 +521,32 @@ const FeaturesScreen = () => {
     }).start();
   };
 
-  const toggleModelSelector = useCallback(() => {
-    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-  }, []);
-
-  // Render a single mode button (fast or accurate)
-  const renderScanModeButton = (mode, icon, title, description) => {
+  // Re-introduce the renderScanModeButton function
+  const renderScanModeButton = (mode, icon, title, description, isBeta = false) => {
     const scaleValue = scaleValues[mode];
+    
     const backgroundColor = buttonBackgroundColors[mode].interpolate({
       inputRange: [0, 1],
       outputRange: [
-        colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-        colorScheme === 'dark' ? '#2c2c2e' : '#e5e5e5',
+        'transparent',
+        isDark ? 'rgba(40, 40, 46, 0.7)' : 'rgba(240, 240, 240, 0.7)',
       ],
     });
+    
     const borderColor = buttonBorderColors[mode].interpolate({
       inputRange: [0, 1],
       outputRange: [
-        'transparent',
-        colorScheme === 'dark' ? '#5c5c5e' : '#d5d5d5',
+        isDark ? '#333' : '#ddd',
+        isDark ? '#007AFF' : '#007AFF',
       ],
     });
 
     const handlePressIn = () => {
       Animated.spring(scaleValue, {
         toValue: 0.97,
-        useNativeDriver: false,
+        useNativeDriver: true, // Keep scale native
+        friction: 8,
+        tension: 150,
       }).start();
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     };
@@ -560,9 +554,9 @@ const FeaturesScreen = () => {
     const handlePressOut = () => {
       Animated.spring(scaleValue, {
         toValue: 1,
-        friction: 3,
-        tension: 40,
-        useNativeDriver: false,
+        friction: 5,
+        tension: 150,
+        useNativeDriver: true, // Keep scale native
       }).start();
       // Actually change the mode on release
       handleModeChange(mode);
@@ -572,6 +566,8 @@ const FeaturesScreen = () => {
         animateButtonSelection(m, m === mode);
       });
     };
+    
+    const isSelected = mode === selectedMode;
 
     return (
       <TouchableWithoutFeedback
@@ -583,22 +579,46 @@ const FeaturesScreen = () => {
           style={[
             styles.modeButton,
             {
-              backgroundColor,
-              borderColor,
+              backgroundColor: 'transparent',
+              borderWidth: 0,
               transform: [{ scale: scaleValue }],
             },
           ]}
         >
+          <Animated.View 
+            style={[
+              StyleSheet.absoluteFill, 
+              { 
+                backgroundColor,
+                borderColor,
+                borderWidth: styles.modeButton.borderWidth,
+                borderRadius: styles.modeButton.borderRadius,
+              }
+            ]} 
+          />
+          
           <View style={styles.modeButtonContent}>
-            <View style={styles.modeIconContainer}>
+            <View style={[
+              styles.modeIconContainer,
+              isSelected && { 
+                backgroundColor: isDark ? 'rgba(60, 60, 62, 0.9)' : 'rgba(230, 230, 235, 0.9)'
+              }
+            ]}>
               <Ionicons
                 name={icon}
-                size={24}
-                color={colorScheme === 'dark' ? '#FFF' : '#000'}
+                size={24 * scale}
+                color={isDark ? '#FFF' : '#000'}
               />
             </View>
             <View style={styles.modeTextContainer}>
-              <Text style={styles.modeButtonTitle}>{title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Text style={styles.modeButtonTitle}>{title}</Text>
+                {isBeta && (
+                  <View style={styles.betaContainer}>
+                    <Text style={styles.betaTag}>BETA</Text>
+                  </View>
+                )}
+              </View>
               <Text style={styles.modeButtonDescription}>{description}</Text>
             </View>
           </View>
@@ -607,436 +627,309 @@ const FeaturesScreen = () => {
     );
   };
 
-  // Update modelSelectorValue text
-  const getModelDisplayName = (model) => {
-    // Compare with actual model values from MODELS
-    if (model === MODELS[selectedProvider].complex) {
-      return MODEL_TYPES.COMPLEX;
-    }
-    return MODEL_TYPES.DEFAULT;
-  };
-
-  // Get the actual model value from display name
-  const getModelValueFromDisplayName = (displayName) => {
-    return displayName === MODEL_TYPES.COMPLEX ? 
-      MODELS[selectedProvider].complex : 
-      MODELS[selectedProvider].regular;
-  };
-
-  // Handle model selector press
-  const handleModelSelectorPress = () => {
-    if (selectedMode === 'accurate') {
-      Alert.alert(
-        'Sorry!',
-        'Accurate mode is a beta feature and currently only achieves 90% accuracy using the Complex Processing model.'
-      );
-      return;
-    }
-    if (Platform.OS === 'ios') {
-      const options = [
-        { key: MODELS[selectedProvider].regular, title: MODEL_TYPES.DEFAULT, locked: false },
-        { 
-          key: MODELS[selectedProvider].complex, 
-          title: MODEL_TYPES.COMPLEX, 
-          locked: !isUnlocked && !isFirstDayUnlimited 
-        }
-      ];
+  return (
+    <View style={[styles.safeArea, { paddingTop: insets.top }]}>
       
-      ActionSheetIOS.showActionSheetWithOptions(
-        {
-          options: [
-            'Cancel',
-            ...options.map(
-              (opt) => `${opt.title}${opt.locked ? ' (Locked)' : ''}`
-            ),
-          ],
-          cancelButtonIndex: 0,
-          title: 'Select Processing Model',
-          message: 'Choose the processing model that best fits your needs',
-        },
-        async (buttonIndex) => {
-          if (buttonIndex === 0) return;
-          const selectedOption = options[buttonIndex - 1];
-          if (selectedOption.locked) {
-            Alert.alert(
-              'Unlock Required',
-              'Upgrade to MacroScan Unlimited to access Complex Processing.'
-            );
-            return;
-          }
-          // Store the selected model
-          await AsyncStorage.setItem('selectedModel', selectedOption.key);
-          setSelectedProcessing(selectedOption.key === MODELS[selectedProvider].complex ? MODEL_TYPES.COMPLEX : MODEL_TYPES.DEFAULT);
-          Haptics.selectionAsync();
-        }
-      );
-    } else {
-      setShowAndroidPicker(true);
-    }
-  };
-
-  // Android modal
-  const AndroidPickerModal = () => (
-    <Modal
-      visible={showAndroidPicker}
-      transparent={true}
-      animationType="slide"
-      onRequestClose={() => setShowAndroidPicker(false)}
-    >
-      <View style={styles.modalContainer}>
-        <View
-          style={[
-            styles.pickerContainer,
-            { backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#fff' },
-          ]}
-        >
-          <View style={styles.pickerHeader}>
-            <TouchableOpacity onPress={() => setShowAndroidPicker(false)}>
-              <Text
-                style={[
-                  styles.pickerHeaderButton,
-                  { color: colorScheme === 'dark' ? '#fff' : '#000' },
-                ]}
-              >
-                Cancel
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => setShowAndroidPicker(false)}>
-              <Text
-                style={[
-                  styles.pickerHeaderButton,
-                  { color: colorScheme === 'dark' ? '#fff' : '#000' },
-                ]}
-              >
-                Done
-              </Text>
+      {/* Animated content container */}
+      <Animated.View style={{
+        flex: 1,
+        opacity: splashAnim,
+      }}>
+        {/* Header */}
+        <View style={styles.header}>
+          <View style={styles.headerLeft}>
+            <TouchableOpacity
+              style={styles.backButton}
+              onPress={() => navigation.goBack()}
+            >
+              <Ionicons
+                name="chevron-back"
+                size={24 * scale}
+                color={isDark ? '#FFF' : '#000'}
+              />
             </TouchableOpacity>
           </View>
-          <Picker
-            selectedValue={selectedMode === 'accurate' ? MODEL_TYPES.COMPLEX : selectedProcessing}
-            onValueChange={async (value) => {
-              if (!isUnlocked && !isFirstDayUnlimited && value === MODEL_TYPES.COMPLEX) {
-                Alert.alert(
-                  'Unlock Required',
-                  'Upgrade to MacroScan Unlimited to access Complex Processing.'
-                );
-                return;
-              }
-              const modelValue = value === MODEL_TYPES.COMPLEX ? MODELS[selectedProvider].complex : MODELS[selectedProvider].regular;
-              await AsyncStorage.setItem('selectedModel', modelValue);
-              setSelectedProcessing(value);
-              setShowAndroidPicker(false);
-              Haptics.selectionAsync();
-            }}
-            style={{ color: colorScheme === 'dark' ? '#fff' : '#000' }}
-          >
-            <Picker.Item
-              key={MODEL_TYPES.DEFAULT}
-              label={MODEL_TYPES.DEFAULT}
-              value={MODEL_TYPES.DEFAULT}
+          <View style={styles.headerCenter}>
+            <AnimatedTextOnboarding 
+              text="Scanner Settings" 
+              colorScheme={isDark ? 'dark' : 'light'}
+              style={styles.title}
             />
-            <Picker.Item
-              key={MODEL_TYPES.COMPLEX}
-              label={`${MODEL_TYPES.COMPLEX}${
-                !isUnlocked && !isFirstDayUnlimited ? ' (Locked)' : ''
-              }`}
-              value={MODEL_TYPES.COMPLEX}
-              enabled={isUnlocked || isFirstDayUnlimited}
-            />
-          </Picker>
+          </View>
+          <View style={styles.headerRight} />
         </View>
-      </View>
-    </Modal>
-  );
 
-  // Tutorial slides
-  const renderTutorialItem = ({ item, index }) => (
-    <View style={styles.tutorialPage}>
-      <View style={styles.tutorialInnerContent}>
-        <View style={styles.tutorialIconContainer}>
-          <BlurView intensity={30} style={styles.tutorialIcon}>
-            <Ionicons
-              name={item.icon}
-              size={80}
-              color={colorScheme === 'dark' ? '#fff' : '#000'}
-            />
-          </BlurView>
-        </View>
-        <Text style={styles.tutorialTitle}>{item.title}</Text>
-        {item.isBeta && (
-          <TouchableOpacity
-            onPress={() => {
-              Alert.alert(
-                'Beta Feature',
-                'Accurate mode is a beta feature, so occasionally it may produce unexpected results.'
-              );
-            }}
-          >
-            <View style={styles.betaContainer}>
-              <Text style={styles.betaTag}>BETA</Text>
-            </View>
-          </TouchableOpacity>
-        )}
-        <AnimatedCenteredText
-          text={item.description}
-          colorScheme={colorScheme}
-          visible={currentTutorialIndex === index}
-        />
-      </View>
-    </View>
-  );
-
-  // Slide animation
-  const handleScroll = (event) => {
-    const newIndex = Math.round(
-      event.nativeEvent.contentOffset.x / width
-    );
-    if (newIndex !== tutorialIndex) {
-      setTutorialIndex(newIndex);
-    }
-  };
-
-  return (
-    <SafeAreaView style={styles.safeArea}>
-      {/* Tutorial Overlay */}
-      {showTutorial && (
-        <Animated.View
-          style={[styles.tutorialOverlay, { opacity: tutorialOpacityAnim }]}
+        <ScrollView 
+          style={styles.container}
+          contentContainerStyle={styles.contentContainer}
+          showsVerticalScrollIndicator={false}
         >
-          <BlurView intensity={50} style={StyleSheet.absoluteFill} />
-          <View style={styles.tutorialContainer}>
-            <View style={styles.tutorialContent}>
-              <FlatList
-                ref={flatListRef}
-                data={tutorialData}
-                renderItem={renderTutorialItem}
-                horizontal
-                pagingEnabled
-                showsHorizontalScrollIndicator={false}
-                keyExtractor={(item) => item.key}
-                onMomentumScrollEnd={handleScroll}
-                style={styles.flatList}
-                contentContainerStyle={styles.flatListContent}
-                onViewableItemsChanged={onViewableItemsChanged}
-                viewabilityConfig={viewabilityConfig}
+          <Animated.View style={{ // Animate description text
+            opacity: descTextAnim,
+            transform: [{
+              translateY: descTextAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] })
+            },
+            {
+              scale: descTextAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] })
+            }]
+          }}>
+            <Text style={styles.sectionDescription}>
+              Choose between quick results (Fast Mode) or detailed analysis (Accurate Mode).
+            </Text>
+          </Animated.View>
+
+          <View style={styles.modeButtonsContainer}>
+            <Animated.View style={{ // Animate fast button
+              opacity: modeButtonFastAnim,
+              transform: [
+                { translateY: modeButtonFastAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+                { scale: modeButtonFastAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }
+              ]
+            }}> 
+              {renderScanModeButton(
+                'fast',
+                'flash',
+                'Default Mode',
+                'Instant results • Good for packaged foods • Quick tracking'
+              )}
+            </Animated.View>
+            <Animated.View style={{ // Animate accurate button
+              opacity: modeButtonAccurateAnim,
+              transform: [
+                { translateY: modeButtonAccurateAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+                { scale: modeButtonAccurateAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }
+              ]
+            }}> 
+              {renderScanModeButton(
+                'accurate',
+                'shield-checkmark',
+                'Accurate Mode',
+                'Detailed analysis • Best for homemade meals • Uses Complex Reasoning',
+              )}
+            </Animated.View>
+            <Animated.View style={{ // Animate search button
+              opacity: modeButtonSearchAnim,
+              transform: [
+                { translateY: modeButtonSearchAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+                { scale: modeButtonSearchAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }
+              ]
+            }}> 
+              {renderScanModeButton(
+                'search',
+                'search-circle',
+                'Deep Search Mode',
+                'Automatic web search • Finds detailed info • Slower, Beta feature',
+                true // isBeta - Only search mode has beta tag now
+              )}
+            </Animated.View>
+          </View>
+          
+          {/* Separator before the new section */}
+          <Animated.View style={{ // Animate separator
+            opacity: separatorAnim,
+            transform: [
+              { translateY: separatorAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+              { scale: separatorAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }
+            ]
+          }}>
+            <View style={styles.separator} />
+          </Animated.View>
+
+          {/* New Experimental Features Section */}
+          <Animated.View style={{ // Animate magic header
+            opacity: magicHeaderAnim,
+            transform: [
+              { translateY: magicHeaderAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+              { scale: magicHeaderAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }
+            ]
+          }}>
+            <View style={styles.sectionHeader}>
+              <AnimatedTextOnboarding
+                text="Magic Features"
+                colorScheme={isDark ? 'dark' : 'light'}
+                style={styles.sectionHeaderText}
               />
             </View>
-            <View style={styles.tutorialFooter}>
-              <View style={styles.pagination}>
-                {tutorialData.map((_, index) => (
-                  <View
-                    key={index}
-                    style={[
-                      styles.paginationDot,
-                      currentTutorialIndex === index
-                        ? styles.paginationDotActive
-                        : styles.paginationDotInactive,
-                    ]}
-                  />
-                ))}
-              </View>
+            
+            {/* Food Selection Toggle */}
+            {(!isUnlocked && !isFirstDayUnlimited) ? (
               <TouchableOpacity
-                style={styles.tutorialNextButton}
-                onPress={() => {
-                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                  if (currentTutorialIndex < tutorialData.length - 1) {
-                    const nextIndex = currentTutorialIndex + 1;
-                    setTutorialIndex(nextIndex);
-                    flatListRef.current?.scrollToIndex({ index: nextIndex });
-                  } else {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    dismissTutorial();
-                  }
+                onPress={async () => {
+                  await Superwall.shared.register('no-scans');
                 }}
               >
-                <Text style={styles.tutorialNextButtonText}>
-                  {currentTutorialIndex === tutorialData.length - 1
-                    ? 'Get Started'
-                    : 'Next'}
-                </Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        </Animated.View>
-      )}
-
-      {/* Header with Back Button and Title */}
-      <View style={styles.header}>
-        <View style={styles.headerLeft}>
-          <TouchableOpacity
-            style={styles.backButton}
-            onPress={() => navigation.goBack()}
-          >
-            <Ionicons
-              name="chevron-back"
-              size={24}
-              color={colorScheme === 'dark' ? '#FFF' : '#000'}
-            />
-          </TouchableOpacity>
-        </View>
-        <View style={styles.headerCenter}>
-          <TouchableOpacity onPress={handleTitlePress}>
-            <Text style={styles.title}>Scanner Settings</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={styles.headerRight} />
-      </View>
-
-      <ScrollView style={styles.container}>
-        <Text style={styles.sectionDescription}>
-          Choose between quick results (Fast Mode) or detailed analysis (Accurate Mode).
-        </Text>
-        <View style={styles.modeButtonsContainer}>
-          {renderScanModeButton(
-            'fast',
-            'flash',
-            'Default Mode',
-            'Instant results • Good for packaged foods • Quick tracking'
-          )}
-          {renderScanModeButton(
-            'accurate',
-            'shield-checkmark',
-            'Accurate Mode',
-            'Detailed analysis • Best for homemade meals • Uses Complex Reasoning',
-          )}
-        </View>
-        <View style={styles.separator} />
-        {/* Processing Model Section */}
-        <TouchableOpacity
-          style={styles.modelSelectorButton}
-          onPress={handleModelSelectorPress}
-        >
-          <View style={styles.modelSelectorButtonContent}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.modelSelectorLabel}>
-                Processing Model
-              </Text>
-              {(selectedMode === 'accurate') && (
-                <Ionicons
-                  name="lock-closed"
-                  size={16}
-                  color={colorScheme === 'dark' ? '#666' : '#000'}
-                  style={{ marginLeft: 5 }}
-                />
-              )}
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <Text style={styles.modelSelectorValue}>
-                {selectedMode === 'accurate' ? MODEL_TYPES.COMPLEX : selectedProcessing}
-              </Text>
-              <Ionicons
-                name="chevron-down"
-                size={24}
-                color={colorScheme === 'dark' ? '#FFF' : '#000'}
-              />
-            </View>
-          </View>
-        </TouchableOpacity>
-
-        <View style={styles.separator} />
-        
-        {/* Add the Food Selection Toggle */}
-        {(!isUnlocked && !isFirstDayUnlimited) ? (
-          <TouchableOpacity
-            onPress={async () => {
-              await Superwall.shared.register('no-scans');
-            }}
-          >
-            <View style={[styles.toggleContainer, styles.toggleContainerLocked]}>
-              <View style={styles.toggleIconContainer}>
-                <Ionicons
-                  name="scan-circle-outline"
-                  size={25}
-                  color={colorScheme === 'dark' ? '#FFF' : '#000'}
-                />
-              </View>
-              <View style={styles.toggleTextContainer}>
-                <View style={styles.toggleHeaderContainer}>
-                  <Text style={styles.toggleLabel}>Circle to Scan</Text>
-                  <View style={[styles.betaContainer, styles.betaContainerInline]}>
-                    <Text style={styles.betaTag}>BETA</Text>
+                <View style={[styles.toggleContainer, styles.toggleContainerLocked]}>
+                  {/* Removed BlurView */}
+                  <View style={styles.toggleIconContainer}>
+                    <Ionicons
+                      name="scan-circle-outline"
+                      size={25 * scale}
+                      color={isDark ? '#FFF' : '#000'}
+                    />
                   </View>
-                  <Ionicons
-                    name="lock-closed"
-                    size={16}
-                    color={colorScheme === 'dark' ? '#666' : '#999'}
-                    style={{ marginLeft: 5 }}
+                  <View style={styles.toggleTextContainer}>
+                    <View style={styles.toggleHeaderContainer}>
+                      <Text style={styles.toggleLabel}>Circle to Scan</Text>
+                      <View style={[styles.betaContainer, styles.betaContainerInline]}>
+                        <Text style={styles.betaTag}>BETA</Text>
+                      </View>
+                      <Ionicons
+                        name="lock-closed"
+                        size={16 * scale}
+                        color={isDark ? '#666' : '#999'}
+                        style={{ marginLeft: 5 * scale }}
+                      />
+                    </View>
+                    <Text style={styles.toggleDescription}>
+                      Circle any food and only that selection will be scanned for nutrients
+                    </Text>
+                  </View>
+                  <Switch
+                    value={false}
+                    disabled={true}
+                    trackColor={{ false: '#767577', true: '#34C759' }}
+                    thumbColor={'#f4f3f4'}
+                    ios_backgroundColor="#3e3e3e"
                   />
                 </View>
-                <Text style={styles.toggleDescription}>
-                  Circle any food and only that selection will be scanned for nutrients
-                </Text>
-              </View>
-              <Switch
-                value={false}
-                disabled={true}
-                trackColor={{ false: '#767577', true: '#34C759' }}
-                thumbColor={'#f4f3f4'}
-                ios_backgroundColor="#3e3e3e"
-              />
-            </View>
-          </TouchableOpacity>
-        ) : (
-          <View style={styles.toggleContainer}>
-            <View style={styles.toggleIconContainer}>
-              <Ionicons
-                name="scan-circle-outline"
-                size={25}
-                color={colorScheme === 'dark' ? '#FFF' : '#000'}
-              />
-            </View>
-            <View style={styles.toggleTextContainer}>
-              <View style={styles.toggleHeaderContainer}>
-                <Text style={styles.toggleLabel}>Circle to Scan</Text>
-                <View style={[styles.betaContainer, styles.betaContainerInline]}>
-                  <Text style={styles.betaTag}>BETA</Text>
+              </TouchableOpacity>
+            ) : (
+              <View style={styles.toggleContainer}>
+                {/* Removed BlurView */}
+                <View style={styles.toggleIconContainer}>
+                  <Ionicons
+                    name="scan-circle-outline"
+                    size={25 * scale}
+                    color={isDark ? '#FFF' : '#000'}
+                  />
                 </View>
+                <View style={styles.toggleTextContainer}>
+                  <View style={styles.toggleHeaderContainer}>
+                    <Text style={styles.toggleLabel}>Circle to Scan</Text>
+                    <View style={[styles.betaContainer, styles.betaContainerInline]}>
+                      <Text style={styles.betaTag}>BETA</Text>
+                    </View>
+                  </View>
+                  <Text style={styles.toggleDescription}>
+                    Circle any food and only that selection will be scanned for nutrients
+                  </Text>
+                </View>
+                <Switch
+                  value={foodSelectionEnabled}
+                  onValueChange={handleFoodSelectionToggle}
+                  trackColor={{ false: '#767577', true: '#34C759' }}
+                  thumbColor={foodSelectionEnabled ? '#FFFFFF' : '#f4f3f4'}
+                  ios_backgroundColor="#3e3e3e"
+                />
               </View>
-              <Text style={styles.toggleDescription}>
-                Circle any food and only that selection will be scanned for nutrients
-              </Text>
-            </View>
-            <Switch
-              value={foodSelectionEnabled}
-              onValueChange={handleFoodSelectionToggle}
-              trackColor={{ false: '#767577', true: '#34C759' }}
-              thumbColor={foodSelectionEnabled ? '#FFFFFF' : '#f4f3f4'}
-              ios_backgroundColor="#3e3e3e"
-            />
-          </View>
-        )}
+            )}
 
-        <Text style={styles.bottomNote}>
-          💡 Tip: Fast Mode is great for quick checks. Use Accurate Mode for 
-          complex meals. Free users get only 1 accurate scan per day. 
-          Circle to Scan helps analyze specific portions in your photos.
-        </Text>
-      </ScrollView>
+            {/* Updated TouchableOpacity for Tips */}
+            <Animated.View style={{ // Animate tips touchable
+              opacity: tipsTouchableAnim,
+              transform: [
+                { translateY: tipsTouchableAnim.interpolate({ inputRange: [0, 1], outputRange: [50, 0] }) },
+                { scale: tipsTouchableAnim.interpolate({ inputRange: [0, 1], outputRange: [0.8, 1] }) }
+              ]
+            }}> 
+              <TouchableOpacity onPress={() => setShowTipsInfoSheet(true)} activeOpacity={0.7}>
+                <View style={styles.tipContainer}>
+                  <View style={styles.tipIconContainer}>
+                    <Ionicons name="bulb" size={20 * scale} color={isDark ? '#FFD700' : '#FFA000'} />
+                  </View>
+                  {/* Shortened text */}
+                  <Text style={styles.bottomNote} numberOfLines={2}>
+                    Tap here for tips on using scan modes and Circle to Scan effectively.
+                  </Text>
+                  <Ionicons name="chevron-forward" size={20 * scale} color={isDark ? '#AAA' : '#777'} style={{marginLeft: 8 * scale}} />
+                </View>
+              </TouchableOpacity>
+            </Animated.View>
 
-      {Platform.OS === 'android' && <AndroidPickerModal />}
-    </SafeAreaView>
+          </Animated.View>
+
+        </ScrollView>
+      </Animated.View>
+
+      {/* Search Mode Info Sheet */}
+      <SearchModeInfoSheet
+        visible={showSearchModeInfo}
+        onClose={() => {
+          setShowSearchModeInfo(false);
+          // If user closes without confirming, revert the mode selection
+          if (selectedMode === 'search') {
+             setSelectedMode(previousModeRef.current);
+             animateButtonSelection(previousModeRef.current, true);
+             animateButtonSelection('search', false);
+          }
+        }}
+        onRevertChip={() => {
+          // This is called when user taps "Not Now" or swipes down
+          setShowSearchModeInfo(false);
+          // Revert the mode selection
+          setSelectedMode(previousModeRef.current);
+          animateButtonSelection(previousModeRef.current, true);
+          animateButtonSelection('search', false);
+        }}
+        onGetStarted={async () => {
+          // This is called when user taps "Get Started"
+          setShowSearchModeInfo(false);
+          try {
+            await AsyncStorage.setItem('hasConfirmedSearchMode', 'true');
+            await AsyncStorage.setItem('selectedMode', 'search');
+            // Search mode doesn't use the Complex/Default model selector logic
+            await AsyncStorage.removeItem('selectedModel');
+            setSelectedMode(previousModeRef.current);
+            // Keep selectedMode as 'search' (already set tentatively)
+            // Ensure animation state reflects the final selection
+            animateButtonSelection('search', true); 
+            animateButtonSelection(previousModeRef.current, false);
+          } catch (error) {
+            console.error('Error saving search mode confirmation:', error);
+            // Revert if saving fails
+            setSelectedMode(previousModeRef.current);
+             animateButtonSelection(previousModeRef.current, true);
+             animateButtonSelection('search', false);
+          }
+        }}
+      />
+
+      {/* Replace TipsModal with TipsInfoSheet */}
+      <TipsInfoSheet 
+        visible={showTipsInfoSheet} 
+        onClose={() => setShowTipsInfoSheet(false)} 
+        // Use onGetStarted to handle the primary action (closing the sheet)
+        onGetStarted={() => setShowTipsInfoSheet(false)} 
+      />
+
+    </View>
   );
 };
 
 const getDynamicStyles = (colorScheme) => {
+  const isDark = colorScheme === 'dark';
   const baseStyles = StyleSheet.create({
     safeArea: {
       flex: 1,
-      backgroundColor: colorScheme === 'dark' ? '#000' : '#FFF',
+      backgroundColor: isDark ? '#000' : '#FFF', // Set solid background
     },
     container: {
-      paddingHorizontal: '5%',
+      flex: 1,
+      paddingHorizontal: 20 * scale,
+    },
+    contentContainer: {
+      paddingBottom: 30 * scale,
     },
     header: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      marginTop: isIphoneSE() ? '5%' : '2%',
-      paddingHorizontal: '5%',
-      height: 60,
+      marginTop: isIphoneSE() ? 10 * scale : 5 * scale,
+      paddingHorizontal: 20 * scale,
+      height: 60 * scale,
     },
     headerLeft: {
-      width: 50,
+      width: 50 * scale,
       alignItems: 'flex-start',
     },
     headerCenter: {
@@ -1044,276 +937,160 @@ const getDynamicStyles = (colorScheme) => {
       alignItems: 'center',
     },
     headerRight: {
-      width: 50,
+      width: 50 * scale,
       alignItems: 'flex-end',
     },
     backButton: {
-      backgroundColor: colorScheme === 'dark' ? '#2a2a2d' : '#FFFFFF',
-      borderRadius: 140,
-      padding: 10,
-      borderWidth: 2,
-      borderColor: colorScheme === 'dark' ? '#2a2a2d' : '#eee',
+      backgroundColor: isDark ? 'rgba(42, 42, 45, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+      borderRadius: 30 * scale,
+      padding: 10 * scale,
+      borderWidth: 1 * scale,
+      borderColor: isDark ? 'rgba(80, 80, 85, 0.5)' : 'rgba(230, 230, 230, 0.5)',
+      // Removed shadows
     },
     title: {
-      fontSize: 25,
+      fontSize: 26 * scale,
       fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      color: isDark ? '#FFF' : '#000',
+      // Removed text shadows
     },
     sectionDescription: {
-      fontSize: 14,
-      color: colorScheme === 'dark' ? '#999' : '#666',
-      marginBottom: 15,
+      fontSize: 16 * scale,
+      color: isDark ? '#BBB' : '#666',
+      marginBottom: 20 * scale,
       textAlign: 'center',
+      marginTop: 8 * scale,
+      lineHeight: 22 * scale,
     },
     modeButtonsContainer: {
-      marginTop: 15,
-      marginBottom: 15,
+      marginTop: 15 * scale,
+      marginBottom: 15 * scale,
     },
     modeButton: {
-      borderRadius: 17,
-      marginBottom: 10,
-      borderWidth: 2,
+      borderRadius: 16 * scale,
+      marginBottom: 12 * scale,
+      borderWidth: 1.5 * scale,
+      borderColor: isDark ? '#333' : '#ddd', // Default border color
+      overflow: 'hidden',
+      // Removed shadows
     },
     modeButtonContent: {
       flexDirection: 'row',
       alignItems: 'center',
-      padding: 15,
+      padding: 16 * scale,
     },
     modeIconContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#3c3c3e' : '#e0e0e0',
-      padding: 12,
-      borderRadius: 12,
-      marginRight: 15,
+      backgroundColor: isDark ? 'rgba(60, 60, 62, 0.8)' : 'rgba(240, 240, 240, 0.9)',
+      padding: 12 * scale,
+      borderRadius: 12 * scale,
+      marginRight: 15 * scale,
     },
     modeTextContainer: {
       flex: 1,
       justifyContent: 'center',
     },
     modeButtonTitle: {
-      fontSize: 16,
+      fontSize: 17 * scale,
       fontWeight: '600',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      marginBottom: 4,
+      color: isDark ? '#FFF' : '#000',
+      marginBottom: 4 * scale,
     },
     modeButtonDescription: {
-      fontSize: 13,
-      color: colorScheme === 'dark' ? '#bbb' : '#666',
-      lineHeight: 18,
+      fontSize: 14 * scale,
+      color: isDark ? '#BBB' : '#666',
+      lineHeight: 19 * scale,
     },
     separator: {
-      height: 1,
-      backgroundColor: colorScheme === 'dark' ? '#333' : '#e0e0e0',
-      marginVertical: 20,
+      height: 1 * scale,
+      backgroundColor: isDark ? 'rgba(80, 80, 85, 0.5)' : 'rgba(200, 200, 200, 0.5)',
+      marginVertical: 20 * scale,
     },
-    modelSelectorButton: {
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-      padding: 15,
-      borderRadius: 16,
-      marginBottom: 10,
+    sectionHeader: {
+      marginBottom: 15 * scale,
     },
-    modelSelectorButtonContent: {
+    sectionHeaderText: {
+      fontSize: 18 * scale,
+      fontWeight: '600',
+      color: isDark ? '#FFF' : '#000',
+      marginBottom: 8 * scale,
+    },
+    // Remove modelSelectorButton styles
+    tipContainer: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
       alignItems: 'center',
+      marginTop: 15 * scale,
+      marginBottom: 25 * scale,
+      backgroundColor: isDark ? 'rgba(42, 42, 45, 0.7)' : 'rgba(255, 255, 255, 0.7)',
+      padding: 16 * scale,
+      borderRadius: 16 * scale,
+      borderWidth: 1 * scale,
+      borderColor: isDark ? 'rgba(80, 80, 85, 0.5)' : 'rgba(230, 230, 230, 0.9)',
     },
-    modelSelectorLabel: {
-      fontSize: 14,
-      color: colorScheme === 'dark' ? '#999' : '#666',
-    },
-    modelSelectorValue: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
-      marginTop: 2,
-      marginRight: 5,
+    tipIconContainer: {
+      marginRight: 12 * scale,
     },
     bottomNote: {
-      fontSize: 14,
-      color: colorScheme === 'dark' ? '#999' : '#666',
-      textAlign: 'center',
-      marginTop: 10,
-      marginBottom: 30,
-      paddingHorizontal: '5%',
-      fontStyle: 'italic',
-    },
-    modalContainer: {
       flex: 1,
-      justifyContent: 'flex-end',
-      backgroundColor: 'rgba(0,0,0,0.5)',
-    },
-    pickerContainer: {
-      backgroundColor: '#fff',
-      borderTopLeftRadius: 20,
-      borderTopRightRadius: 20,
-      paddingBottom: 20,
-    },
-    pickerHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      padding: 15,
-      borderBottomWidth: 1,
-      borderBottomColor: colorScheme === 'dark' ? '#333' : '#e0e0e0',
-    },
-    pickerHeaderButton: {
-      fontSize: 16,
-      fontWeight: '600',
-    },
-    // Tutorial overlay
-    tutorialOverlay: {
-      ...StyleSheet.absoluteFillObject,
-      backgroundColor: 'transparent',
-      zIndex: 8,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    tutorialContainer: {
-      width: '100%',
-      flex: 1,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    tutorialContent: {
-      height: '60%',
-    },
-    flatList: {
-      flexGrow: 0,
-    },
-    flatListContent: {
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    tutorialPage: {
-      width: width,
-      alignItems: 'center',
-      justifyContent: 'center',
-      paddingHorizontal: 20,
-    },
-    tutorialInnerContent: {
-      alignItems: 'center',
-      marginTop: 50,
-    },
-    tutorialIconContainer: {
-      marginBottom: 30,
-    },
-    tutorialIcon: {
-      borderRadius: 40,
-      padding: 20,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#555' : '#CCC',
-      backgroundColor:
-        colorScheme === 'dark'
-          ? 'rgba(255, 255, 255, 0.1)'
-          : 'rgba(0, 0, 0, 0.1)',
-    },
-    tutorialTitle: {
-      fontSize: 24,
-      fontWeight: 'bold',
-      color: colorScheme === 'dark' ? '#fff' : '#000',
-      textAlign: 'center',
-      marginBottom: 20,
-    },
-    tutorialFooter: {
-      width: '100%',
-      alignItems: 'center',
-      marginBottom: 50,
-    },
-    pagination: {
-      flexDirection: 'row',
-      marginBottom: 20,
-    },
-    paginationDot: {
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-      marginHorizontal: 5,
-    },
-    paginationDotActive: {
-      backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
-      width: 10,
-      height: 10,
-      borderRadius: 5,
-    },
-    paginationDotInactive: {
-      backgroundColor: colorScheme === 'dark' ? '#777' : '#ccc',
-      width: 8,
-      height: 8,
-      borderRadius: 4,
-    },
-    tutorialNextButton: {
-      backgroundColor: colorScheme === 'dark' ? '#fff' : '#000',
-      paddingVertical: 12,
-      paddingHorizontal: 40,
-      borderRadius: 25,
-    },
-    tutorialNextButtonText: {
-      color: colorScheme === 'dark' ? '#000' : '#fff',
-      fontSize: 18,
-      fontWeight: 'bold',
-    },
-    betaContainer: {
-      borderRadius: 8,
-      overflow: 'hidden',
-      borderWidth: 1,
-      borderColor: colorScheme === 'dark' ? '#555' : '#CCC',
-      backgroundColor:
-        colorScheme === 'dark'
-          ? 'rgba(255, 255, 255, 0.1)'
-          : 'rgba(0, 0, 0, 0.1)',
-    },
-    betaContainerInline: {
-      marginBottom: 0,
-      marginLeft: 8,
-      borderWidth: 1,
-      borderColor: '#007AFF',
-      backgroundColor: 'transparent',
-    },
-    betaTag: {
-      fontSize: 12,
-      color: '#007AFF',
-      fontWeight: '600',
-      paddingHorizontal: 8,
-      paddingVertical: 2,
+      fontSize: 14 * scale,
+      color: isDark ? '#BBB' : '#666',
+      lineHeight: 20 * scale,
     },
     toggleContainer: {
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'space-between',
-      backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f0f0f0',
-      padding: 15,
-      borderRadius: 16,
-      marginBottom: 20,
-      borderWidth: 2,
-      borderColor: 'transparent',
+      borderRadius: 16 * scale,
+      marginBottom: 20 * scale,
+      borderWidth: 1 * scale,
+      borderColor: isDark ? 'rgba(80, 80, 85, 0.5)' : 'rgba(200, 200, 200, 0.5)',
+      overflow: 'hidden',
+      padding: 16 * scale,
     },
     toggleContainerLocked: {
-      opacity: 0.7,
-      borderColor: colorScheme === 'dark' ? '#333' : '#ddd',
+      opacity: 0.8,
     },
     toggleIconContainer: {
-      backgroundColor: colorScheme === 'dark' ? '#3c3c3e' : '#e0e0e0',
-      padding: 12,
-      borderRadius: 12,
-      marginRight: 15,
+      backgroundColor: isDark ? 'rgba(60, 60, 62, 0.8)' : 'rgba(240, 240, 240, 0.9)',
+      padding: 12 * scale,
+      borderRadius: 12 * scale,
+      marginRight: 15 * scale,
     },
     toggleTextContainer: {
       flex: 1,
-      marginRight: 10,
+      marginRight: 10 * scale,
     },
     toggleHeaderContainer: {
       flexDirection: 'row',
       alignItems: 'center',
-      marginBottom: 4,
+      marginBottom: 4 * scale,
     },
     toggleLabel: {
-      fontSize: 16,
+      fontSize: 16 * scale,
       fontWeight: '600',
-      color: colorScheme === 'dark' ? '#FFF' : '#000',
+      color: isDark ? '#FFF' : '#000',
     },
     toggleDescription: {
-      fontSize: 13,
-      color: colorScheme === 'dark' ? '#bbb' : '#666',
-      lineHeight: 18,
+      fontSize: 14 * scale,
+      color: isDark ? '#BBB' : '#666',
+      lineHeight: 19 * scale,
+    },
+    betaContainer: {
+      marginLeft: 8 * scale,
+      paddingHorizontal: 8 * scale,
+      paddingVertical: 2 * scale,
+      borderRadius: 8 * scale,
+      backgroundColor: 'transparent',
+      borderWidth: 1 * scale,
+      borderColor: '#007AFF',
+    },
+    betaContainerInline: {
+      marginBottom: 0,
+      marginLeft: 8 * scale,
+    },
+    betaTag: {
+      fontSize: 12 * scale,
+      color: '#007AFF',
+      fontWeight: '600',
     },
   });
   return baseStyles;

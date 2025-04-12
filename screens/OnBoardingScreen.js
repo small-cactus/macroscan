@@ -906,9 +906,17 @@ const FeatureItem = React.memo(({ item, showAnimation, animValue, styles, isDark
       </View>
     </Animated.View>
   );
+}, (prevProps, nextProps) => {
+  // Custom comparison to prevent unnecessary rerenders
+  return (
+    prevProps.item.id === nextProps.item.id &&
+    prevProps.showAnimation === nextProps.showAnimation &&
+    prevProps.isDark === nextProps.isDark &&
+    prevProps.animValue === nextProps.animValue
+  );
 });
 
-// Memoized goal card component
+// Memoized goal card component with more efficient props equality check
 const GoalCard = React.memo(({ goal, animation, styles }) => (
   <Animated.View 
     style={[
@@ -939,7 +947,15 @@ const GoalCard = React.memo(({ goal, animation, styles }) => (
     </Text>
     <Text style={styles.goalLabel}>{goal.label}</Text>
   </Animated.View>
-));
+), (prevProps, nextProps) => {
+  // Custom equality check to prevent unnecessary re-renders
+  return (
+    prevProps.goal.value === nextProps.goal.value &&
+    prevProps.goal.label === nextProps.goal.label &&
+    prevProps.animation === nextProps.animation &&
+    prevProps.styles === nextProps.styles
+  );
+});
 
 const OnboardingScreen = () => {
   const navigation = useNavigation();
@@ -1094,6 +1110,44 @@ const OnboardingScreen = () => {
   const [loadingBetterSearch, setLoadingBetterSearch] = useState(false);
   const betterSearchLoadingAnim = useRef(new Animated.Value(0)).current;
 
+  // State for the Generate Plan button's initial loading state
+  const [isButtonLoading, setIsButtonLoading] = useState(false);
+
+  // Memoize goalData outside renderItem
+  const goalData = useMemo(() => {
+    if (!calculatedGoals) return [];
+    return [
+      { 
+        value: calculatedGoals.calories,
+        label: 'Calories',
+        unit: 'kcal',
+        icon: 'fire',
+        color: '#FF6B6B'
+      },
+      { 
+        value: calculatedGoals.proteins,
+        label: 'Proteins',
+        unit: 'g',
+        icon: 'egg',
+        color: '#4ECDC4'
+      },
+      { 
+        value: calculatedGoals.carbohydrates,
+        label: 'Carbs',
+        unit: 'g',
+        icon: 'bread-slice',
+        color: '#FFD93D'
+      },
+      { 
+        value: calculatedGoals.fats,
+        label: 'Fats',
+        unit: 'g',
+        icon: 'oil',
+        color: '#95A5A6'
+      }
+    ];
+  }, [calculatedGoals]);
+
   // Effect to initialize feature animations for each step
   useEffect(() => {
     const animations = {};
@@ -1107,8 +1161,10 @@ const OnboardingScreen = () => {
 
   // Effect to trigger animations when step changes
   useEffect(() => {
-    const currentStep = ONBOARDING_STEPS[currentIndex];
-    if (['1', '2', '3', '4'].includes(currentStep?.id) && featureAnimations[currentStep.id]) {
+    const currentStep = filteredSteps[currentIndex];
+    if (!currentStep) return; // Skip if step doesn't exist
+    
+    if (['1', '2', '3', '4'].includes(currentStep.id) && featureAnimations[currentStep.id]) {
       if (currentStep.id === '4') {
         // For "Better Search, Better Results" step, show loading first
         setLoadingBetterSearch(true);
@@ -1160,7 +1216,7 @@ const OnboardingScreen = () => {
     }
     
     // Special animation for intermediate step
-    if (currentStep?.id === '3.5' && featureAnimations[currentStep.id]) {
+    if (currentStep.id === '3.5' && featureAnimations[currentStep.id]) {
       // First reset all animations to 0
       featureAnimations[currentStep.id].forEach(anim => anim.setValue(0));
       
@@ -1182,12 +1238,14 @@ const OnboardingScreen = () => {
         })
       ).start();
     }
-  }, [currentIndex, featureAnimations]);
+  }, [currentIndex, featureAnimations, filteredSteps]);
 
   // Add animation for intermediate step background
   useEffect(() => {
-    const currentStep = ONBOARDING_STEPS[currentIndex];
-    if (currentStep?.id === '3.5') {
+    const currentStep = filteredSteps[currentIndex];
+    if (!currentStep) return; // Skip if step doesn't exist
+    
+    if (currentStep.id === '3.5') {
       // Create a pulsing animation for background elements
       Animated.loop(
         Animated.sequence([
@@ -1210,7 +1268,7 @@ const OnboardingScreen = () => {
       intermediatePulse.stopAnimation();
       intermediatePulse.setValue(0);
     }
-  }, [currentIndex]);
+  }, [currentIndex, filteredSteps]);
 
   // Function to save visited steps
   const saveVisitedStep = async (stepId) => {
@@ -1236,14 +1294,27 @@ const OnboardingScreen = () => {
     checkForSavedData();
   }, []);
 
-  // Function to check if saved data exists
+  // Function to check if saved data exists and load it
   const checkForSavedData = async () => {
     try {
       const savedData = await AsyncStorage.getItem('@user_data');
       if (savedData) {
         const parsedData = JSON.parse(savedData);
-        const exists = {};
         
+        // --- BEGIN CHANGE: Load data into state ---
+        // Check if the loaded data seems valid before applying
+        // (basic check: ensure it's an object and has expected keys)
+        if (typeof parsedData === 'object' && parsedData !== null && parsedData.hasOwnProperty('unit')) {
+          setUserData(parsedData); 
+          console.log('[OnBoardingScreen] Loaded saved user data:', parsedData);
+        } else {
+          console.warn('[OnBoardingScreen] Discarding invalid saved data:', parsedData);
+          // Optionally clear invalid saved data
+          // await AsyncStorage.removeItem('@user_data');
+        }
+        // --- END CHANGE ---
+
+        const exists = {};
         // Check each field that could have saved data
         exists.height = parsedData.height || (parsedData.heightFeet && parsedData.heightInches);
         exists.weight = !!parsedData.weight;
@@ -1253,15 +1324,30 @@ const OnboardingScreen = () => {
         exists.goal = !!parsedData.goal;
         
         setSavedDataExists(exists);
+      } else {
+        console.log('[OnBoardingScreen] No saved user data found.');
+        // Ensure initial state is set if no data found
+        setUserData({
+          unit: 'imperial',
+          height: '',
+          heightFeet: '',
+          heightInches: '',
+          weight: '',
+          age: '',
+          gender: '',
+          activityLevel: '',
+          goal: 'Maintain Weight',
+          weightChangeRate: 0
+        });
       }
     } catch (error) {
-      console.error('Error checking saved data:', error);
+      console.error('Error checking/loading saved data:', error);
     }
   };
 
   // Effect to handle step changes and toast visibility
   useEffect(() => {
-    const currentStep = ONBOARDING_STEPS[currentIndex];
+    const currentStep = filteredSteps[currentIndex]; // Use filteredSteps
     if (!currentStep?.field) {
       setShowSavedDataToast(false);
       Animated.timing(savedDataToastOpacity, {
@@ -1304,7 +1390,7 @@ const OnboardingScreen = () => {
     };
 
     handleStepChange();
-  }, [currentIndex, hasAutoFilled, savedDataExists]);
+  }, [currentIndex, hasAutoFilled, savedDataExists, filteredSteps]);
 
   // Initialize userData with empty values - only run once
   useEffect(() => {
@@ -1442,9 +1528,35 @@ const OnboardingScreen = () => {
     }, 2800);
   };
 
+  // Helper function to filter steps based on userData
+  function getFilteredSteps(userData) {
+    // Always clone the original steps
+    let steps = [...ONBOARDING_STEPS];
+
+    // If the user's goal is "Maintain Weight", filter out steps 10a and 10b
+    if (userData.goal === 'Maintain Weight') {
+      steps = steps.filter(step => step.id !== '10a' && step.id !== '10b');
+    }
+
+    return steps;
+  }
+
+  // NEW: Function to find the next valid step index
+  const findNextStepIndex = (currentIndex, direction = 1) => {
+    const nextIndex = currentIndex + direction;
+    
+    // Check if the next index is valid
+    if (nextIndex < 0 || nextIndex >= filteredSteps.length) {
+      return -1; // Invalid index
+    }
+    
+    return nextIndex;
+  };
+
+  // Update handleNext to use the new function
   const handleNext = async () => {
     if (!isCurrentStepValid()) {
-      const currentStep = filteredSteps[currentIndex]; // <-- changed from ONBOARDING_STEPS
+      const currentStep = filteredSteps[currentIndex];
       let message = '';
       
       if (currentStep?.field === 'height') {
@@ -1467,7 +1579,7 @@ const OnboardingScreen = () => {
 
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     
-    // If the current step has ID '8', save the goals
+    // If the current step has ID '11', save the goals
     if (filteredSteps[currentIndex]?.id === '11') {
       try {
         console.log('[OnBoardingScreen] Attempting to save goals to AsyncStorage...');
@@ -1492,19 +1604,24 @@ const OnboardingScreen = () => {
       }
     }
 
-    if (currentIndex < filteredSteps.length - 1) {
-      setCurrentIndex(currentIndex + 1);
-      flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
+    const nextIndex = findNextStepIndex(currentIndex, 1);
+    
+    if (nextIndex !== -1) {
+      setCurrentIndex(nextIndex);
+      flatListRef.current?.scrollToIndex({ index: nextIndex, animated: true });
     } else {
       showPaywall();
     }
   };
 
+  // Update handlePrevious to use the new function
   const handlePrevious = () => {
-    if (currentIndex > 0) {
+    const prevIndex = findNextStepIndex(currentIndex, -1);
+    
+    if (prevIndex !== -1) {
       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      setCurrentIndex(currentIndex - 1);
-      flatListRef.current?.scrollToIndex({ index: currentIndex - 1, animated: true });
+      setCurrentIndex(prevIndex);
+      flatListRef.current?.scrollToIndex({ index: prevIndex, animated: true });
     }
   };
 
@@ -1570,6 +1687,7 @@ const OnboardingScreen = () => {
     };
   }, [currentIndex, step3Loaded, filteredSteps]);
 
+  // Optimize renderFeature with better memoization
   const renderFeature = useCallback(({ item, index }, showAnimation = false, animValue) => (
     <FeatureItem 
       key={item.id}
@@ -1873,8 +1991,8 @@ const calculateGoals = (data) => {
 
   // Function to validate current step
   const isCurrentStepValid = () => {
-    const currentStep = ONBOARDING_STEPS[currentIndex];
-    const data = userData;
+    const currentStep = filteredSteps[currentIndex];
+    if (!currentStep) return false; // Add safety check
     
     // For progress visualization step, require animation completion
     if (currentStep.id === '3') {
@@ -1884,69 +2002,67 @@ const calculateGoals = (data) => {
     if (!currentStep.field && !currentStep.showWeightChangeOptions) return true;
 
     if (currentStep.showWeightChangeOptions) {
-      if (data.goal === 'Maintain Weight') return true;
-      return data.weightChangeRate > 0;
+      if (userData.goal === 'Maintain Weight') return true;
+      return userData.weightChangeRate > 0;
     }
 
     if (currentStep.field === 'height') {
-      if (data.unit === 'imperial') {
-        const feet = parseFloat(data.heightFeet);
-        const inches = parseFloat(data.heightInches);
+      if (userData.unit === 'imperial') {
+        const feet = parseFloat(userData.heightFeet);
+        const inches = parseFloat(userData.heightInches);
         return !isNaN(feet) && !isNaN(inches) && feet > 0 && inches >= 0 && inches < 12;
       } else {
-        const height = parseFloat(data.height);
+        const height = parseFloat(userData.height);
         return !isNaN(height) && height > 0;
       }
     }
 
     if (currentStep.field === 'weight') {
-      const weight = parseFloat(data.weight);
+      const weight = parseFloat(userData.weight);
       return !isNaN(weight) && weight > 0;
     }
 
     if (currentStep.field === 'age') {
-      const age = parseInt(data.age);
+      const age = parseInt(userData.age);
       return !isNaN(age) && age > 0 && age < 120;
     }
 
     if (currentStep.field === 'gender') {
-      return !!data.gender;
+      return !!userData.gender;
     }
 
     if (currentStep.field === 'activityLevel') {
-      return !!data.activityLevel;
+      return !!userData.activityLevel;
     }
 
     if (currentStep.field === 'goal') {
-      return !!data.goal;
+      return !!userData.goal;
     }
 
     return true;
   };
 
-  // Modify the animateGoalCards function to chain the affirmation animation
+  // Modify the animateGoalCards function to use timing instead of spring
   const animateGoalCards = () => {
-    Animated.stagger(150, goalCardAnimations.map((anim, index) => {
-      // Add timeout to trigger haptic for each goal card
-      const animDuration = 150 * index;
-      setTimeout(() => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-      }, animDuration);
-      
-      return Animated.spring(anim, {
+    // Create an array of timing animations for each goal card
+    const animations = goalCardAnimations.map((anim) => 
+      Animated.timing(anim, {
         toValue: 1,
-        tension: 50,
-        friction: 7,
+        duration: 400, // Faster duration for timing animation
+        easing: Easing.out(Easing.ease), // Smooth easing
         useNativeDriver: true
-      });
-    })).start(() => {
-      // After all goal cards are animated, fade in the affirmation
+      })
+    );
+
+    // Start all card animations in parallel
+    Animated.parallel(animations).start(() => {
+      // After card animations complete, fade in the affirmation text
       Animated.timing(affirmationOpacity, {
         toValue: 1,
-        duration: 500,
+        duration: 500, // Affirmation fade-in duration
         useNativeDriver: true,
       }).start(() => {
-        // Add success haptic when affirmation appears
+        // Optional: Haptic feedback when affirmation appears
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       });
     });
@@ -2030,7 +2146,7 @@ const calculateGoals = (data) => {
           })
         ]).start(() => {
           // Wait for 1 second after fade out
-          setTimeout(() => {
+          // setTimeout(() => {
             // Then animate in the content
             Animated.parallel([
               Animated.timing(titleOpacity, {
@@ -2058,12 +2174,12 @@ const calculateGoals = (data) => {
                 useNativeDriver: true,
               }).start();
             });
-          }, 1000); // 1 second pause after fade out
+          // }, 1000); // 1 second pause after fade out --> REMOVED THIS DELAY
         });
       }, totalDuration + 300); // Add a small buffer to the total duration
 
-    } else if (step?.showCalculatedGoals && hasCalculatedGoals) {
-      // If goals were already calculated, show content immediately
+    } else if (step?.showCalculatedGoals && hasCalculatedGoals && currentIndex === findStepById('11')) {
+      // Only run these animations if we're actually on the goals screen (step 11)
       contentOpacity.setValue(1);
       titleOpacity.setValue(1);
       descriptionOpacity.setValue(1);
@@ -2071,19 +2187,30 @@ const calculateGoals = (data) => {
       setIsCalculatingGoals(false);
       animateGoalCards();
     }
-  }, [currentIndex, filteredSteps]);
+  }, [currentIndex, filteredSteps, findStepById]);
 
-  const renderItem = ({ item, index }) => {
+  // Make renderItem a memoized callback
+  const renderItem = useCallback(({ item, index }) => {
+    // Skip rendering if item is null
+    if (!item) return null;
+    
     // Special handling for progress visualization step
     if (item.id === '3') {
+      // Define default progress days for onboarding visualization
+      const defaultProgressDays = Array.from({ length: 10 }, (_, i) => ({
+        day: i + 1,
+        completed: false,
+      }));
+
       return (
         <View style={styles.slide}>
           <Text style={styles.title}>{item.title}</Text>
           <Text style={styles.description}>{item.description}</Text>
-          <ProgressVisualization 
-            isDark={isDark} 
+          <ProgressVisualization
+            isDark={isDark}
             isVisible={currentIndex === index}
             onAnimationComplete={() => setProgressAnimationComplete(true)}
+            progressDays={defaultProgressDays} // Pass default data
           />
         </View>
       );
@@ -2410,37 +2537,6 @@ const calculateGoals = (data) => {
 
     // Show calculated goals
     if (item.showCalculatedGoals && calculatedGoals) {
-      const goalData = [
-        { 
-          value: calculatedGoals.calories,
-          label: 'Calories',
-          unit: 'kcal',
-          icon: 'fire',
-          color: '#FF6B6B'
-        },
-        { 
-          value: calculatedGoals.proteins,
-          label: 'Proteins',
-          unit: 'g',
-          icon: 'egg',
-          color: '#4ECDC4'
-        },
-        { 
-          value: calculatedGoals.carbohydrates,
-          label: 'Carbs',
-          unit: 'g',
-          icon: 'bread-slice',
-          color: '#FFD93D'
-        },
-        { 
-          value: calculatedGoals.fats,
-          label: 'Fats',
-          unit: 'g',
-          icon: 'oil',
-          color: '#95A5A6'
-        }
-      ];
-
       return (
         <View style={styles.slide}>
           <Animated.Text style={[styles.title, { opacity: titleOpacity }]}>
@@ -2451,87 +2547,91 @@ const calculateGoals = (data) => {
           </Animated.Text>
           
           {/* Loading Animation */}
-          <Animated.View style={[styles.loadingContainer, { opacity: loadingOpacity }]}>
-            <View style={styles.loadingIconContainer}>
-              <Animated.View style={{
-                transform: [{
-                  rotate: rotationAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: ['0deg', '360deg']
-                  })
-                }]
-              }}>
-                <Svg width={60} height={60} viewBox="0 0 60 60">
-                  <Circle
-                    cx="30"
-                    cy="30"
-                    r="25"
-                    stroke={isDark ? "#FFF" : "#000"}
-                    strokeWidth="5"
-                    fill="none"
-                    strokeLinecap="round"
-                    strokeDasharray="120,180"
-                  />
-                </Svg>
-              </Animated.View>
-            </View>
-            <Animated.Text style={[
-              styles.loadingText, 
-              { 
-                opacity: loadingMessageOpacity,
-                color: isDark ? '#FFF' : '#000',
-                fontSize: 20 * scale,
-                fontWeight: '600',
-                textAlign: 'center',
-                marginTop: 20 * scale
-              }
-            ]}>
-              {currentLoadingMessage}
-            </Animated.Text>
-          </Animated.View>
+          {isCalculatingGoals && (
+            <Animated.View style={[styles.loadingContainer, { opacity: loadingOpacity }]}>
+              <View style={styles.loadingIconContainer}>
+                <Animated.View style={{
+                  transform: [{
+                    rotate: rotationAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: ['0deg', '360deg']
+                    })
+                  }]
+                }}>
+                  <Svg width={60} height={60} viewBox="0 0 60 60">
+                    <Circle
+                      cx="30"
+                      cy="30"
+                      r="25"
+                      stroke={isDark ? "#FFF" : "#000"}
+                      strokeWidth="5"
+                      fill="none"
+                      strokeLinecap="round"
+                      strokeDasharray="120,180"
+                    />
+                  </Svg>
+                </Animated.View>
+              </View>
+              <Animated.Text style={[
+                styles.loadingText, 
+                { 
+                  opacity: loadingMessageOpacity,
+                  color: isDark ? '#FFF' : '#000',
+                  fontSize: 20 * scale,
+                  fontWeight: '600',
+                  textAlign: 'center',
+                  marginTop: 20 * scale
+                }
+              ]}>
+                {currentLoadingMessage}
+              </Animated.Text>
+            </Animated.View>
+          )}
 
           {/* Goals Content */}
-          <Animated.View style={[styles.goalsContent, { opacity: contentOpacity }]}>
-            <View style={styles.goalsContainer}>
-              {goalData.map((goal, index) => (
-                <GoalCard 
-                  key={goal.label}
-                  goal={goal}
-                  animation={goalCardAnimations[index]}
-                  styles={styles}
-                />
-              ))}
-            </View>
-            
-            {calculatedGoals.calories !== (userData.gender === 'Male' ? 1500 : 1200) && (
-              <Animated.View style={[
-                styles.affirmationContainer,
-                { opacity: affirmationOpacity }
-              ]}>
-                <MaterialCommunityIcons 
-                  name="check-circle-outline" 
-                  size={20} 
-                  color={isDark ? '#4ECDC4' : '#2ecc71'} 
-                />
-                <Text style={styles.affirmationText}>
-                  These goals are reasonable for you
-                </Text>
-              </Animated.View>
-            )}
-
-            {calculatedGoals.calories === (userData.gender === 'Male' ? 1500 : 1200) && (
-              <View style={styles.disclaimerContainer}>
-                <MaterialCommunityIcons 
-                  name="alert-circle-outline" 
-                  size={20} 
-                  color={isDark ? '#FF6961' : '#D32F2F'} 
-                />
-                <Text style={styles.disclaimerText}>
-                  Your selected weight loss rate sets calories at the minimum safe level. Consider choosing a more moderate, sustainable rate to protect your health.
-                </Text>
+          {!isCalculatingGoals && (
+            <Animated.View style={[styles.goalsContent, { opacity: contentOpacity }]}>
+              <View style={styles.goalsContainer}>
+                {goalData.map((goal, index) => (
+                  <GoalCard 
+                    key={goal.label}
+                    goal={goal}
+                    animation={goalCardAnimations[index]}
+                    styles={styles}
+                  />
+                ))}
               </View>
-            )}
-          </Animated.View>
+              
+              {calculatedGoals.calories !== (userData.gender === 'Male' ? 1500 : 1200) && (
+                <Animated.View style={[
+                  styles.affirmationContainer,
+                  { opacity: affirmationOpacity }
+                ]}>
+                  <MaterialCommunityIcons 
+                    name="check-circle-outline" 
+                    size={20} 
+                    color={isDark ? '#4ECDC4' : '#2ecc71'} 
+                  />
+                  <Text style={styles.affirmationText}>
+                    These goals are reasonable for you
+                  </Text>
+                </Animated.View>
+              )}
+
+              {calculatedGoals.calories === (userData.gender === 'Male' ? 1500 : 1200) && (
+                <View style={styles.disclaimerContainer}>
+                  <MaterialCommunityIcons 
+                    name="alert-circle-outline" 
+                    size={20} 
+                    color={isDark ? '#FF6961' : '#D32F2F'} 
+                  />
+                  <Text style={styles.disclaimerText}>
+                    Your selected weight loss rate sets calories at the minimum safe level. Consider choosing a more moderate, sustainable rate to protect your health.
+                  </Text>
+                </View>
+              )}
+            </Animated.View>
+          )}
         </View>
       );
     }
@@ -3352,91 +3452,101 @@ const calculateGoals = (data) => {
                     elevation: 8,
                   }}
                   onPress={() => {
-                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    // Start the loading process and animations
-                    setCurrentLoadingMessage(LOADING_MESSAGES[0].text);
-                    setIsCalculatingGoals(true);
-                    loadingOpacity.setValue(1);
-                    loadingMessageOpacity.setValue(1);
-                    
-                    // Start rotation animation for the loading icon
-                    Animated.loop(
-                      Animated.timing(rotationAnim, {
-                        toValue: 1,
-                        duration: 1500,
-                        useNativeDriver: true,
-                      })
-                    ).start();
-                    
-                    // Start the text animation sequence
-                    const animateTextChange = (index, remainingTime) => {
-                      if (index >= LOADING_MESSAGES.length) return;
-                      
-                      const currentMessage = LOADING_MESSAGES[index];
-                      const fadeOutDuration = 300;
-                      const fadeInDuration = 300;
-                      const pauseDuration = 200; // Pause between fade out and fade in
-                    
-                      // First fade out the current text
-                      Animated.timing(loadingMessageOpacity, {
-                        toValue: 0,
-                        duration: fadeOutDuration,
-                        useNativeDriver: true,
-                      }).start(() => {
-                        // After fade out completes, wait a bit then change text and fade in
-                        setTimeout(() => {
-                          if (index + 1 < LOADING_MESSAGES.length) {
-                            setCurrentLoadingMessage(LOADING_MESSAGES[index + 1].text);
-                            
-                            // Fade in the new text
-                            Animated.timing(loadingMessageOpacity, {
-                              toValue: 1,
-                              duration: fadeInDuration,
-                              useNativeDriver: true,
-                            }).start();
-                    
-                            // Schedule next message change
-                            const totalTransitionTime = fadeOutDuration + pauseDuration + fadeInDuration;
-                            const nextMessageDelay = currentMessage.duration - totalTransitionTime;
-                            
-                            setTimeout(() => {
-                              animateTextChange(index + 1, remainingTime - currentMessage.duration);
-                            }, nextMessageDelay);
-                          }
-                        }, pauseDuration);
-                      });
-                    };
-                    
-                    // Calculate total duration and start the animation sequence
-                    const totalDuration = LOADING_MESSAGES.reduce((sum, msg) => sum + msg.duration, 0);
-                    animateTextChange(0, totalDuration);
-                    
-                    // After the animation sequence, calculate goals and proceed
+                    setIsButtonLoading(true); // Show loading indicator on the button
+                    // Add a 350ms delay before executing the rest of the logic
                     setTimeout(() => {
-                      // First fade out loading animation
-                      Animated.timing(loadingOpacity, {
-                        toValue: 0,
-                        duration: 500,
-                        useNativeDriver: true,
-                      }).start(() => {
-                        // Calculate goals and move to next step
-                        const goals = calculateGoals(userData);
-                        setCalculatedGoals(goals);
-                        setHasCalculatedGoals(true);
-                        setIsCalculatingGoals(false);
-                        handleNext();
-                      });
-                    }, totalDuration + 500);
+                      setIsButtonLoading(false); // Hide button loading indicator
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+                      // Start the loading process and animations
+                      setCurrentLoadingMessage(LOADING_MESSAGES[0].text);
+                      setIsCalculatingGoals(true);
+                      loadingOpacity.setValue(1);
+                      loadingMessageOpacity.setValue(1);
+                      
+                      // Start rotation animation for the loading icon
+                      Animated.loop(
+                        Animated.timing(rotationAnim, {
+                          toValue: 1,
+                          duration: 1500,
+                          useNativeDriver: true,
+                        })
+                      ).start();
+                      
+                      // Start the text animation sequence
+                      const animateTextChange = (index, remainingTime) => {
+                        if (index >= LOADING_MESSAGES.length) return;
+                        
+                        const currentMessage = LOADING_MESSAGES[index];
+                        const fadeOutDuration = 300;
+                        const fadeInDuration = 300;
+                        const pauseDuration = 200; // Pause between fade out and fade in
+                      
+                        // First fade out the current text
+                        Animated.timing(loadingMessageOpacity, {
+                          toValue: 0,
+                          duration: fadeOutDuration,
+                          useNativeDriver: true,
+                        }).start(() => {
+                          // After fade out completes, wait a bit then change text and fade in
+                          setTimeout(() => {
+                            if (index + 1 < LOADING_MESSAGES.length) {
+                              setCurrentLoadingMessage(LOADING_MESSAGES[index + 1].text);
+                              
+                              // Fade in the new text
+                              Animated.timing(loadingMessageOpacity, {
+                                toValue: 1,
+                                duration: fadeInDuration,
+                                useNativeDriver: true,
+                              }).start();
+                      
+                              // Schedule next message change
+                              const totalTransitionTime = fadeOutDuration + pauseDuration + fadeInDuration;
+                              const nextMessageDelay = currentMessage.duration - totalTransitionTime;
+                              
+                              setTimeout(() => {
+                                animateTextChange(index + 1, remainingTime - currentMessage.duration);
+                              }, nextMessageDelay);
+                            }
+                          }, pauseDuration);
+                        });
+                      };
+                      
+                      // Calculate total duration and start the animation sequence
+                      const totalDuration = LOADING_MESSAGES.reduce((sum, msg) => sum + msg.duration, 0);
+                      animateTextChange(0, totalDuration);
+                      
+                      // After the animation sequence, calculate goals and proceed
+                      setTimeout(() => {
+                        // First fade out loading animation
+                        Animated.timing(loadingOpacity, {
+                          toValue: 0,
+                          duration: 500,
+                          useNativeDriver: true,
+                        }).start(() => {
+                          // Calculate goals and move to next step
+                          const goals = calculateGoals(userData);
+                          setCalculatedGoals(goals);
+                          setHasCalculatedGoals(true);
+                          setIsCalculatingGoals(false);
+                          handleNext();
+                        });
+                      }, totalDuration + 500);
+                    }, 350); // 350ms delay
                   }}
+                  disabled={isButtonLoading} // Disable button while its specific loading is active
                 >
-                  <Text style={{
-                    color: isDark ? '#000' : '#FFF',
-                    fontSize: 22 * scale,
-                    fontWeight: '600',
-                    textAlign: 'center',
-                  }}>
-                    Generate Plan
-                  </Text>
+                  {isButtonLoading ? (
+                    <ActivityIndicator size="small" color={isDark ? '#000' : '#FFF'} />
+                  ) : (
+                    <Text style={{
+                      color: isDark ? '#000' : '#FFF',
+                      fontSize: 22 * scale,
+                      fontWeight: '600',
+                      textAlign: 'center',
+                    }}>
+                      Generate Plan
+                    </Text>
+                  )}
                 </TouchableOpacity>
               </Animated.View>
             </>
@@ -3471,11 +3581,11 @@ const calculateGoals = (data) => {
         )}
       </View>
     );
-  };
+  }, [currentIndex, isDark, progressAnimationComplete, calculatedGoals, userData, styles, featureAnimations, isCalculatingGoals, goalData]);
 
   const handleValidationAndNext = () => {
     if (!isCurrentStepValid()) {
-      const currentStep = ONBOARDING_STEPS[currentIndex];
+      const currentStep = filteredSteps[currentIndex];
       let message = '';
       
       if (currentStep.field === 'height') {
@@ -3577,19 +3687,6 @@ const calculateGoals = (data) => {
     </Text>
   );
 
-  // Helper function to filter steps based on userData
-  function getFilteredSteps(userData) {
-    // Always clone the original steps
-    let steps = [...ONBOARDING_STEPS];
-
-    // If the user's goal is "Maintain Weight", filter out steps 10a and 10b
-    if (userData.goal === 'Maintain Weight') {
-      steps = steps.filter(step => step.id !== '10a' && step.id !== '10b');
-    }
-
-    return steps;
-  }
-
   // NEW: A memoized filtered list of steps for FlatList
   const filteredSteps = useMemo(() => {
     return getFilteredSteps(userData);
@@ -3656,7 +3753,9 @@ const calculateGoals = (data) => {
   // Special handling for step 10c - ensure animations play
   useEffect(() => {
     const currentStep = filteredSteps[currentIndex];
-    if (currentStep?.id === '10c' && !isCalculatingGoals && featureAnimations[currentStep.id]) {
+    if (!currentStep) return; // Skip if step doesn't exist
+    
+    if (currentStep.id === '10c' && !isCalculatingGoals && featureAnimations[currentStep.id]) {
       // Reset animations to 0
       featureAnimations[currentStep.id].forEach(anim => anim.setValue(0));
       
@@ -3684,10 +3783,14 @@ const calculateGoals = (data) => {
 
   // Reset progress animation state when leaving the step
   useEffect(() => {
-    if (currentIndex !== 2) { // Assuming step with id '3' is at index 2
+    // Find the index of the step with id '3' in the filtered list
+    const progressStepIndex = filteredSteps.findIndex(step => step.id === '3');
+    
+    // Only reset if the progress step exists and we are no longer on it
+    if (progressStepIndex !== -1 && currentIndex !== progressStepIndex) {
       setProgressAnimationComplete(false);
     }
-  }, [currentIndex]);
+  }, [currentIndex, filteredSteps]); // Add filteredSteps as dependency
 
   // Add this function to check if the current step has a start button
   const hasStartButton = (stepId) => {
@@ -3744,6 +3847,22 @@ const calculateGoals = (data) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
   };
 
+  // NEW: Function to find a step by ID
+  const findStepById = (stepId) => {
+    return filteredSteps.findIndex(step => step?.id === stepId);
+  };
+
+  // Use the new function for step-specific logic
+  useEffect(() => {
+    // Find the index of the step with id '3' in the filtered list
+    const progressStepIndex = findStepById('3');
+    
+    // Only reset if the progress step exists and we are no longer on it
+    if (progressStepIndex !== -1 && currentIndex !== progressStepIndex) {
+      setProgressAnimationComplete(false);
+    }
+  }, [currentIndex, filteredSteps]); // Add filteredSteps as dependency
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <View style={StyleSheet.absoluteFill}>
@@ -3786,13 +3905,20 @@ const calculateGoals = (data) => {
           showsHorizontalScrollIndicator={false}
           keyExtractor={(item) => item.id}
           getItemLayout={getItemLayout}
-          windowSize={3}
+          windowSize={3} // Allow rendering of one screen on either side of visible area
           maxToRenderPerBatch={1}
           initialNumToRender={1}
+          removeClippedSubviews={true}
+          updateCellsBatchingPeriod={50}
+          maintainVisibleContentPosition={{
+            minIndexForVisible: 0
+          }}
           onMomentumScrollEnd={(event) => {
             const newIndex = Math.round(event.nativeEvent.contentOffset.x / width);
-            const safeIndex = Math.min(newIndex, filteredSteps.length - 1);
-            setCurrentIndex(safeIndex);
+            // Make sure the index is valid before setting it
+            if (newIndex >= 0 && newIndex < filteredSteps.length) {
+              setCurrentIndex(newIndex);
+            }
           }}
           onScrollBeginDrag={(event) => {
             const currentStep = filteredSteps[currentIndex];
@@ -3849,7 +3975,8 @@ const calculateGoals = (data) => {
         styles.bottomContainer, 
         { 
           opacity: buttonContainerOpacity,
-          display: (ONBOARDING_STEPS[currentIndex]?.id === '3.5' || ONBOARDING_STEPS[currentIndex]?.id === '10c') ? 'none' : 'flex'
+          // Use filteredSteps to check the current step ID
+          display: (filteredSteps[currentIndex]?.id === '3.5' || filteredSteps[currentIndex]?.id === '10c') ? 'none' : 'flex'
         }
       ]}>
         {showValidationMessage && (

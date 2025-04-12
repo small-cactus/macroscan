@@ -6,10 +6,14 @@ import * as Haptics from 'expo-haptics';
 
 const { width } = Dimensions.get('window');
 
-const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete }) => {
-  // Create animated values for each day
-  const dayAnimations = useRef(Array(10).fill(0).map(() => new Animated.Value(0))).current;
-  const connectorAnimations = useRef(Array(9).fill(0).map(() => new Animated.Value(0))).current;
+const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete, progressDays = [] }) => {
+  // Calculate number of days based on prop length
+  const numDays = progressDays.length;
+  const numConnectors = numDays > 0 ? numDays - 1 : 0;
+
+  // Use useRef to hold the animation arrays
+  const dayAnimations = useRef([]);
+  const connectorAnimations = useRef([]);
   
   // Simplified animation values
   const graphOpacity = useRef(new Animated.Value(0)).current;
@@ -19,6 +23,15 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
 
   // State to track which view is currently active
   const [activeView, setActiveView] = useState('challenge');
+
+  // Effect to update animation refs when numDays changes
+  useEffect(() => {
+    dayAnimations.current = Array(numDays).fill(0).map(() => new Animated.Value(0));
+    connectorAnimations.current = Array(numConnectors).fill(0).map(() => new Animated.Value(0));
+    // Optionally, reset graph/challenge state if needed when data changes
+    // Reset animation states if the component might re-animate with new data
+    startAnimations(); // Restart animations when data changes
+  }, [numDays]); // Dependency array includes numDays
 
   // Define the chart data
   const chartData = {
@@ -99,9 +112,12 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
 
   // Reset and start animations
   const startAnimations = () => {
-    // Reset all animations to initial state
-    dayAnimations.forEach(anim => anim.setValue(0));
-    connectorAnimations.forEach(anim => anim.setValue(0));
+    // Ensure refs have been initialized by the useEffect
+    if (!dayAnimations.current || !connectorAnimations.current) return;
+
+    // Reset all animations to initial state using .current
+    dayAnimations.current.forEach(anim => anim.setValue(0));
+    connectorAnimations.current.forEach(anim => anim.setValue(0));
     graphOpacity.setValue(0);
     challengeOpacity.setValue(1);
     challengeTranslateY.setValue(0);
@@ -110,8 +126,8 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
 
     const dayAnimationsArray = [];
     
-    // Animate each day and its following connector
-    dayAnimations.forEach((anim, index) => {
+    // Animate each day and its following connector using .current
+    dayAnimations.current.forEach((anim, index) => {
       // Add haptic feedback for each day animation with appropriate timing
       const dayAnimationDelay = 50 * (index * 2); // Match the stagger timing
       setTimeout(() => {
@@ -127,9 +143,10 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
         })
       );
       
-      if (index < connectorAnimations.length) {
+      // Ensure connector animation exists before pushing using .current
+      if (index < connectorAnimations.current.length) {
         dayAnimationsArray.push(
-          Animated.spring(connectorAnimations[index], {
+          Animated.spring(connectorAnimations.current[index], {
             toValue: 1,
             tension: 50,
             friction: 7,
@@ -209,23 +226,10 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
     yAxisInterval: 1
   };
 
-  // Sample data for the progress tracker showing 30-day streak requirement
-  const progressDays = [
-    { day: 1, completed: true },
-    { day: 2, completed: false },
-    { day: 3, completed: false },
-    { day: 4, completed: false },
-    { day: 5, completed: false },
-    { day: 6, completed: false },
-    { day: 7, completed: false },
-    { day: 8, completed: false },
-    { day: 9, completed: false },
-    { day: 10, completed: false }
-  ];
-
-  // Split days into two rows
-  const firstRowDays = progressDays.slice(0, 5);
-  const secondRowDays = progressDays.slice(5);
+  // Split days into two rows based on prop length
+  const midPoint = Math.ceil(numDays / 2);
+  const firstRowDays = progressDays.slice(0, midPoint);
+  const secondRowDays = progressDays.slice(midPoint);
 
   const renderDayCircle = (day, completed, animationIndex) => (
     <Animated.View style={[
@@ -235,9 +239,9 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
           ? (isDark ? '#FFF' : '#000')
           : isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
         transform: [
-          { scale: dayAnimations[animationIndex] },
+          { scale: dayAnimations.current[animationIndex] || 0 },
         ],
-        opacity: dayAnimations[animationIndex]
+        opacity: dayAnimations.current[animationIndex] || 0
       }
     ]}>
       {completed ? (
@@ -265,14 +269,27 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
           ? (isDark ? '#FFF' : '#000')
           : isDark ? 'rgba(255, 255, 255, 0.2)' : 'rgba(0, 0, 0, 0.1)',
         transform: [
-          { scaleX: connectorAnimations[animationIndex] }
+          { scaleX: animationIndex < connectorAnimations.current.length ? connectorAnimations.current[animationIndex] : 0 }
         ],
-        opacity: connectorAnimations[animationIndex]
+        opacity: animationIndex < connectorAnimations.current.length ? connectorAnimations.current[animationIndex] : 0
       }
     ]} />
   );
 
   const renderProgressTracker = () => {
+    // Handle case with no progress days
+    if (numDays === 0) {
+      return (
+        <View style={styles.progressTrackerContainer}>
+          <Text style={{ color: isDark ? '#FFF' : '#000' }}>No scan data available.</Text>
+        </View>
+      );
+    }
+
+    // Calculate indices correctly for connectors
+    const firstRowConnectorIndices = firstRowDays.map((_, index) => index).slice(0, -1);
+    const secondRowConnectorIndices = secondRowDays.map((_, index) => index + firstRowDays.length -1).slice(0,-1);
+
     return (
       <View style={styles.progressTrackerContainer}>
         <View style={styles.streakHeader}>
@@ -300,18 +317,22 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete 
             ))}
           </View>
           
-          {/* Add some vertical spacing between rows */}
-          <View style={styles.rowSpacing} />
+          {/* Add some vertical spacing between rows if there are two rows */}
+          {secondRowDays.length > 0 && <View style={styles.rowSpacing} />}
           
           {/* Second row */}
-          <View style={styles.daysRow}>
-            {secondRowDays.map((day, index) => (
-              <React.Fragment key={`day-${day.day}`}>
-                {renderDayCircle(day.day, day.completed, index + firstRowDays.length)}
-                {index < secondRowDays.length - 1 && renderHorizontalConnector(secondRowDays[index + 1].completed, index + firstRowDays.length - 1)}
-              </React.Fragment>
-            ))}
-          </View>
+          {secondRowDays.length > 0 && (
+            <View style={styles.daysRow}>
+              {secondRowDays.map((day, index) => (
+                <React.Fragment key={`day-${day.day}`}>
+                  {/* Adjust animation index for the second row */}
+                  {renderDayCircle(day.day, day.completed, index + firstRowDays.length)}
+                  {/* Adjust connector logic for the second row */}
+                  {index < secondRowDays.length - 1 && renderHorizontalConnector(secondRowDays[index + 1].completed, index + firstRowDays.length)}
+                </React.Fragment>
+              ))}
+            </View>
+          )}
         </View>
 
         <Text style={[

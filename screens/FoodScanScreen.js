@@ -933,6 +933,30 @@ const stopLoadingAnimation = () => {
   };
 
   const pickImage = async () => {
+    // Check scan limits before allowing image picking
+    if (!isFirstDayUnlimited && !isSubscribed) {
+      if (selectedMode === ACCURATE_MODE && freeAccurateScansUsed >= 1) {
+        console.log('[FoodScanScreen] Accurate scan limit reached on pickImage, showing paywall.');
+        Superwall.shared.register('no-scans');
+        return;
+      }
+      if (selectedMode === SEARCH_MODE && !(await checkSearchScanLimit())) {
+        // checkSearchScanLimit already shows paywall if needed
+        console.log('[FoodScanScreen] Search scan limit reached on pickImage.');
+        return;
+      }
+      if (isSubscribedPlus && scanCount >= 20) {
+        console.log('[FoodScanScreen] Plus scan limit reached on pickImage, showing paywall.');
+        Superwall.shared.register('no-scans');
+        return;
+      }
+      if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
+        console.log('[FoodScanScreen] Free scan limit reached on pickImage, showing paywall.');
+        Superwall.shared.register('no-scans');
+        return;
+      }
+    }
+
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
         mediaTypes: ImagePicker.MediaTypeOptions.Images,
@@ -967,14 +991,27 @@ const stopLoadingAnimation = () => {
 
     if (isFirstDayUnlimited || isSubscribed) {
       navigation.navigate('CameraScreen');
-    } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 2)) {
+    } else if ((isSubscribedPlus && scanCount < 20) || (!isSubscribed && scanCount < 5)) {
+      // Check accurate scan limit specifically if accurate mode is selected
+      if (selectedMode === ACCURATE_MODE && freeAccurateScansUsed >= 1) {
+        console.log('[FoodScanScreen] Accurate scan limit reached, showing paywall.');
+        Superwall.shared.register('no-scans'); // Trigger paywall
+        return; // Stop execution
+      }
+      // Check general scan limit for Free users (this also covers fast mode implicitly)
+      if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
+        console.log('[FoodScanScreen] Free scan limit reached, showing paywall.');
+        Superwall.shared.register('no-scans'); // Trigger paywall
+        return; // Stop execution
+      }
+
+      // If no limits are hit, proceed
       navigation.navigate('CameraScreen');
     } else {
-      const timeLeft = getTimeUntilMidnight().formatted;
-      Alert.alert(
-        "No More Scans Left",
-        `You have reached your daily scan limit. Please wait ${timeLeft} for more scans or upgrade for unlimited access.`
-      );
+      // This else block should now catch cases where limits are explicitly hit
+      // (e.g., freeAccurateScansUsed >= 1, scanCount >= 20 for Plus, scanCount >= 2 for Free)
+      console.log('[FoodScanScreen] General scan limit reached, showing paywall.');
+      Superwall.shared.register('no-scans'); // Trigger paywall
     }
   };
 
@@ -1128,8 +1165,8 @@ const stopLoadingAnimation = () => {
       const apiKey = apiKeys?.[provider + 'ApiKey'];
         
       if (!apiKey) {
-        console.error(`API key not found for ${provider}`);
-        Alert.alert('Error', `API key not found for ${provider}`);
+        console.error(`API key not found for ${provider}. The developer doesn't know how this happened. Please contact support in the settings menu.`);
+        Alert.alert('ERROR', `Cloud functions are not active. The developer doesn't know how this happened. Please contact support in the settings menu.`);
         setIsLoading(false);
         stopLoadingAnimation();
         setProcessingImage(null);
@@ -2589,7 +2626,7 @@ const stopLoadingAnimation = () => {
             
             // If never shown before or 20 minutes (1200000 ms) have passed
             if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
-              await Superwall.shared.register('onboardingV2');
+              await Superwall.shared.register('fortune');
               // Update the last shown time
               await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
             }
@@ -2730,7 +2767,7 @@ const stopLoadingAnimation = () => {
         // This is the first scan, show paywall and mark as scanned
         await AsyncStorage.setItem('@has_ever_scanned', 'true');
         setHasScannedEver(true);
-        await Superwall.shared.register('onboardingV2');
+        await Superwall.shared.register('fortune');
         await AsyncStorage.setItem('@paywall_last_shown', Date.now().toString());
       }
 
@@ -2781,7 +2818,7 @@ const stopLoadingAnimation = () => {
             
             // Show paywall if never shown before or 20 minutes (1200000 ms) have passed
             if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
-              await Superwall.shared.register('onboardingV2');
+              await Superwall.shared.register('fortune');
               // Update the last shown time
               await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
             }
@@ -3187,19 +3224,8 @@ const stopLoadingAnimation = () => {
       // Free users get 1 search scan per day
       if (searchScansUsed >= 1) {
         // User has reached their daily limit
-        const timeLeft = getTimeUntilMidnight().formatted;
-        Alert.alert(
-          "Search Scan Limit Reached",
-          `You've used your daily search scan. Please wait ${timeLeft} or upgrade for unlimited search scans.`,
-          [
-            { text: "OK", style: "default" },
-            { 
-              text: "Upgrade", 
-              onPress: () => navigation.navigate('Subscription'),
-              style: "default" 
-            }
-          ]
-        );
+        console.log('[FoodScanScreen] Search scan limit reached, showing paywall.');
+        Superwall.shared.register('no-scans'); // Trigger paywall
         return false;
       }
       
@@ -3816,17 +3842,40 @@ const stopLoadingAnimation = () => {
         setHasSeenSearchInfoSheetThisSession(false);
       }
 
-      // New logic to show the info sheet for Search Mode
-      if (selectedMode === 'search' && !hasSeenSearchInfoSheetThisSession) {
-        // Increment the key to force a complete re-render of the component
-        setSearchInfoSheetKey(prevKey => prevKey + 1);
-        // Show the sheet
-        setShowSearchInfoSheet(true);
-        setHasSeenSearchInfoSheetThisSession(true);
+      // New logic to show the info sheet for Search Mode based on time
+      if (selectedMode === 'search') {
+        try {
+          const lastSeenTimestampStr = await AsyncStorage.getItem('@last_seen_search_info_sheet');
+          const lastSeenTimestamp = lastSeenTimestampStr ? parseInt(lastSeenTimestampStr, 10) : 0;
+          const currentTime = Date.now();
+          const threeHoursInMillis = 3 * 60 * 60 * 1000;
+
+          if (!lastSeenTimestamp || (currentTime - lastSeenTimestamp > threeHoursInMillis)) {
+            // Increment the key to force a complete re-render of the component
+            setSearchInfoSheetKey(prevKey => prevKey + 1);
+            // Show the sheet
+            setShowSearchInfoSheet(true);
+            // Update the last seen timestamp
+            await AsyncStorage.setItem('@last_seen_search_info_sheet', currentTime.toString());
+            // Optionally keep track within the session if needed elsewhere, but time check is primary
+            setHasSeenSearchInfoSheetThisSession(true); 
+          } else {
+            // If shown recently, ensure the session flag reflects that it's been seen (might be redundant depending on usage)
+            setHasSeenSearchInfoSheetThisSession(true);
+          }
+        } catch (error) {
+          console.error("Error checking/setting search info sheet timestamp:", error);
+          // Fallback: show the sheet if there's an error reading time, but don't update timestamp
+          if (!hasSeenSearchInfoSheetThisSession) {
+             setSearchInfoSheetKey(prevKey => prevKey + 1);
+             setShowSearchInfoSheet(true);
+             setHasSeenSearchInfoSheetThisSession(true);
+          }
+        }
       }
     };
     handleModeChange();
-  }, [selectedMode, isLoading, prevMode, hasSeenSearchInfoSheetThisSession]);
+  }, [selectedMode, isLoading, prevMode]); // Removed hasSeenSearchInfoSheetThisSession from deps for showing logic
 
   // Add this function to start the pulsing animation for the mode chip
   const startChipPulseAnimation = () => {
@@ -4091,9 +4140,11 @@ const stopLoadingAnimation = () => {
                     >
                       {selectedMode === 'accurate'
                         ? Math.max(0, 1 - freeAccurateScansUsed)
-                        : isSubscribedPlus
-                          ? (20 - scanCount)
-                          : (2 - scanCount)}
+                        : selectedMode === SEARCH_MODE
+                          ? Math.max(0, 1 - freeSearchScansUsed) // Show remaining search scans
+                          : isSubscribedPlus
+                            ? (20 - scanCount) // Plus users general count
+                            : (5 - scanCount)} {/* Free users general count (fast mode) */}
                     </Text>
                   )}
                 </View>
@@ -4327,7 +4378,7 @@ const stopLoadingAnimation = () => {
             </Svg>
             <Icon name="search" size={28 * scale} color="#FFFFFF" style={styles.searchHeaderIconOverlay} />
           </View>
-          <Text style={styles.searchHeaderText}>Deep Search Mode</Text>
+          <Text style={styles.searchHeaderText}>Deep Search Scan</Text>
         </View>
 
         <FunctionalAIVisualization
@@ -4422,7 +4473,7 @@ const stopLoadingAnimation = () => {
                   `${Math.max(0, 1 - freeAccurateScansUsed - 1)} left` :
                   isSubscribedPlus ?
                     `${20 - scanCount - 1} left` :
-                    `${2 - scanCount - 1} left`
+                    `${5 - scanCount - 1} left`
               )}
             </Text>
           </BlurView>
@@ -6397,18 +6448,19 @@ const scale = Math.min(scaleWidth, scaleHeight);
       flexDirection: 'row',
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: 16 * scale, // Space below the header
-      padding: 15 * scale, // Adjusted padding
+      marginBottom: 5 * scale, // Space below the header
+      padding: 12 * scale, // Adjusted padding
+      paddingHorizontal: 15 * scale,
       backgroundColor: colorScheme === 'dark' ? 'rgba(0, 0, 0, 0.7)' : 'rgba(255, 255, 255, 0.85)', // Match visualization background
       borderColor: colorScheme === 'dark' ? 'rgba(51, 51, 51, 0.5)' : '#bbb', // Match visualization border color
       borderWidth: 2, // Match visualization border width
-      borderRadius: 28, // Match visualization border radius
+      borderRadius: 25, // Match visualization border radius
       overflow: 'hidden', // Ensure content stays within rounded corners
     },
     searchHeaderIconGradient: {
-      width: 40 * scale,
-      height: 40 * scale,
-      borderRadius: 12 * scale, // Rounded square
+      width: 50 * scale,
+      height: 50 * scale,
+      borderRadius: 15 * scale, // Rounded square
       alignItems: 'center',
       justifyContent: 'center',
       overflow: 'hidden',
@@ -6420,9 +6472,10 @@ const scale = Math.min(scaleWidth, scaleHeight);
       zIndex: 1,
     },
     searchHeaderText: {
-      fontSize: 20 * scale,
+      fontSize: 24 * scale,
       fontWeight: '600',
       color: colorScheme === 'dark' ? '#FFFFFF' : '#000000',
+      letterSpacing: 0.5 * scale,
     },
   });
 

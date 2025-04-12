@@ -1,5 +1,5 @@
 // AccountScreen.js
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   Platform,
   StyleSheet,
@@ -13,11 +13,12 @@ import {
   Dimensions,
   Appearance,
   ActivityIndicator,
+  useColorScheme,
 } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { FontAwesome6, MaterialCommunityIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import {
   initConnection,
   finishTransaction,
@@ -31,11 +32,13 @@ import {
 import { useIAP } from '../IAPContext';
 import { useUser } from '../userContext';
 import { LinearGradient } from 'expo-linear-gradient';
+import StreakVisualization from './StreakVisualization'; // Import the new component
 
 // Constants for AsyncStorage keys
 const LAST_PLACEHOLDER_KEY = '@last_placeholder';
 const LAST_PLACEHOLDER_TIME_KEY = '@last_placeholder_time';
 const FILTER_SECTION_STATE_KEY = '@filter_section_state';
+const PRODUCT_HISTORY_KEY = '@product_history'; // Key for scan history
 
 const { width } = Dimensions.get('window');
 const avatarSize = width * 0.3;
@@ -59,7 +62,8 @@ export default function AccountScreen() {
   const [debugTapCount, setDebugTapCount] = useState(0);
   const [showAndroidPicker, setShowAndroidPicker] = useState(false);
   const [isPurchasing, setIsPurchasing] = useState(false);
-  const colorScheme = Appearance.getColorScheme();
+  const [streakData, setStreakData] = useState([]); // State for streak visualization
+  const colorScheme = useColorScheme();
   const c = colorScheme === 'dark' ? darkColors : lightColors;
 
   // Hooks & Context
@@ -124,6 +128,93 @@ export default function AccountScreen() {
     }
     loadProfile();
   }, []);
+
+  // Function to calculate streak data
+  const calculateStreak = async (currentStreakData) => {
+    try {
+      const historyJson = await AsyncStorage.getItem(PRODUCT_HISTORY_KEY);
+      const history = historyJson ? JSON.parse(historyJson) : [];
+      // console.log('History:', JSON.stringify(history));
+
+      if (!Array.isArray(history)) {
+        console.error("History data is not an array:", history);
+        return null; // Return null if data is invalid
+      }
+
+      // Sort history by timestamp descending
+      history.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+      let currentStreak = 0;
+      const today = new Date();
+      today.setHours(0, 0, 0, 0); // Start of today
+      console.log('Today (start of day):', today.toISOString());
+
+      // Map to track unique days with scans
+      const scannedDays = new Set();
+      console.log('--- Processing History Timestamps ---');
+      history.forEach(item => {
+        if (item.date) {
+          const scanDate = new Date(item.date);
+          console.log('Raw Scan Date:', new Date(item.date).toISOString());
+          scanDate.setHours(0, 0, 0, 0); // Normalize to start of day
+          console.log('Normalized Scan Date (start of day):', scanDate.toISOString());
+          scannedDays.add(scanDate.getTime());
+        } else {
+          console.log('History item missing date:', item.productName);
+        }
+      });
+      console.log('Scanned Days (timestamps):', Array.from(scannedDays));
+      console.log('--- Finished Processing History ---');
+
+      // Check consecutive days backwards from today
+      for (let i = 0; ; i++) {
+        const checkDate = new Date(today);
+        checkDate.setDate(today.getDate() - i);
+        const checkDateTime = checkDate.getTime();
+
+        if (scannedDays.has(checkDateTime)) {
+          currentStreak++;
+        } else {
+          // Streak broken
+          console.log(`Streak check stopped at day ${i} (Date: ${checkDate.toISOString()})`);
+          break;
+        }
+      }
+      console.log('Calculated Current Streak:', currentStreak);
+
+      // Prepare data for streak visualization
+      const displayDays = 10;
+      const newProgressDays = Array.from({ length: displayDays }, (_, i) => ({
+        day: i + 1,
+        completed: i < currentStreak,
+      }));
+
+      // Only update state if data has changed
+      if (JSON.stringify(newProgressDays) !== JSON.stringify(currentStreakData)) {
+        console.log('Streak data changed, updating state.');
+        return newProgressDays;
+      } else {
+        console.log('Streak data has not changed.');
+        return null; // Return null if no change
+      }
+
+    } catch (error) {
+      console.error('Failed to calculate streak:', error);
+      return null; // Return null on error
+    }
+  };
+
+  // Use useFocusEffect to load history and calculate streak when screen is focused
+  useFocusEffect(
+    useCallback(() => {
+      console.log('AccountScreen focused, calculating streak...');
+      calculateStreak(streakData).then(newStreakData => {
+        if (newStreakData !== null) {
+          setStreakData(newStreakData);
+        }
+      });
+    }, [streakData]) // Include streakData to compare against current state
+  );
 
   // Functions
   const getAvailableSubscriptions = async () => {
@@ -470,12 +561,53 @@ export default function AccountScreen() {
     };
   }, [isIAPEnabled]);
 
-  // Determine color set for dark vs. light mode
-  const colors = colorScheme === 'dark' ? darkColors : lightColors;
-  const styles = getStyles(colors);
+  // Create dynamic styles based on the current color scheme
+  const dynamicStyles = StyleSheet.create({
+    container: {
+      flex: 1,
+      backgroundColor: c.background,
+    },
+    progressSection: {
+      marginBottom: 20,
+      alignItems: 'center',
+      backgroundColor: colorScheme === 'dark' ? '#1A1A1A' : '#F5F5F5',
+      borderRadius: 15,
+      padding: 15,
+      marginHorizontal: 10,
+    },
+    input: {
+      backgroundColor: c.inputBg,
+      borderRadius: 21,
+      borderWidth: 3,
+      borderColor: c.inputBorder,
+      padding: 16,
+      color: c.text,
+      fontSize: 16,
+      marginBottom: 8,
+    },
+    greeting: {
+      fontSize: 28,
+      fontWeight: '600',
+      color: c.text,
+    },
+    inputLabel: {
+      fontSize: 16,
+      fontWeight: '500',
+      color: c.subText,
+      marginBottom: 5,
+      marginLeft: 15,
+    },
+    inputHelper: {
+      alignSelf: 'center',
+      fontSize: 14,
+      color: c.subText,
+      width: '80%',
+      textAlign: 'center',
+    },
+  });
 
   return (
-    <View style={styles.container}>
+    <View style={dynamicStyles.container}>
       <ScrollView contentContainerStyle={styles.scrollContent}>
         {/* Profile Section */}
         <View style={styles.profileSection}>
@@ -488,15 +620,15 @@ export default function AccountScreen() {
               <MaterialCommunityIcons name="pencil" size={22} color={c.pencilcolor} />
             </View>
           </TouchableOpacity>
-          <Text style={styles.greeting}>
+          <Text style={dynamicStyles.greeting}>
             Hi, {name && name.trim().split(' ')[0] ? name.split(' ')[0] : 'there'}! 👋
           </Text>
         </View>
         {/* Name Input Section */}
         <View style={styles.inputSection}>
-          <Text style={styles.inputLabel}>Your name</Text>
+          <Text style={dynamicStyles.inputLabel}>Your name</Text>
           <TextInput
-            style={styles.input}
+            style={dynamicStyles.input}
             value={name}
             onChangeText={setName}
             placeholder="Enter your full name"
@@ -511,11 +643,12 @@ export default function AccountScreen() {
               }
             }}
           />
-          <Text style={styles.inputHelper}>
+          <Text style={dynamicStyles.inputHelper}>
             Your name helps personalize your experience throughout the app.
           </Text>
         </View>
-        {/* Subscription Section */}
+        {/* Subscription Section - Commenting out */}
+        {/*
         <View style={styles.subscriptionSection}>
           <LinearGradient
             colors={c.specialOfferGradient}
@@ -526,10 +659,8 @@ export default function AccountScreen() {
             <Text style={styles.offerPillText}>SPECIAL OFFER</Text>
           </LinearGradient>
           <View style={styles.subscriptionCard}>
-            {/* Header */}
             <View style={styles.cardHeader}>
               <View style={styles.logoContainer}>
-                {/* Replace with your actual logo */}
                 <Image
                   source={require('../assets/macroscan-unlimited.png')}
                   style={styles.logoImage}
@@ -543,9 +674,7 @@ export default function AccountScreen() {
                 </View>
               </View>
             </View>
-            {/* Features */}
             <View style={styles.featuresList}>
-              {/* Repeat for each feature */}
               <View style={styles.featureItem}>
                 <LinearGradient
                   colors={c.featureIconGradient.flash}
@@ -595,7 +724,6 @@ export default function AccountScreen() {
                 </View>
               </View>
             </View>
-            {/* Pricing Card */}
             <LinearGradient
               colors={c.pricingGradient}
               start={{ x: 1, y: 0 }}
@@ -657,6 +785,15 @@ export default function AccountScreen() {
             </Text>
           </View>
         </View>
+        */}
+        {/* Progress Visualization Section */}
+        <View style={dynamicStyles.progressSection}>
+           <Text style={[styles.sectionTitle, { color: c.text, marginBottom: 5}]}>Your Streak</Text>
+           <StreakVisualization
+             isDark={colorScheme === 'dark'}
+             progressDays={streakData}
+           />
+         </View>
         {/* Danger Zone */}
         <View style={styles.dangerZone}>
           <Text style={styles.dangerTitle}></Text>
@@ -753,270 +890,83 @@ const lightColors = {
 };
 
 /* STYLES */
-const getStyles = (c) =>
-  StyleSheet.create({
-    container: {
-      flex: 1,
-      backgroundColor: c.background, // Dynamic background color
-    },
-    scrollContent: {
-      padding: 20,
-      paddingTop: 60,
-    },
-    profileSection: {
-      marginTop: 20,
-      alignItems: 'center',
-      marginBottom: 30,
-    },
-    avatarContainer: {
-      position: 'relative',
-      marginBottom: 16,
-    },
-    avatar: {
-      width: avatarSize,
-      height: avatarSize,
-      borderRadius: avatarSize / 2,
-      backgroundColor: '#333333',
-    },
-    editButton: {
-      position: 'absolute',
-      bottom: 0,
-      right: 0,
-      backgroundColor: c.pencilbg,
-      borderRadius: 13,
-      padding: 6,
-    },
-    greeting: {
-      fontSize: 28,
-      fontWeight: '600',
-      color: c.text, // Dynamic text color
-    },
-    inputSection: {
-      marginBottom: 30,
-    },
-    inputLabel: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: c.subText, // Dynamic subtext color
-      marginBottom: 5,
-      marginLeft: 15,
-    },
-    input: {
-      backgroundColor: c.inputBg,
-      borderRadius: 21,
-      borderWidth: 3,
-      borderColor: c.inputBorder,
-      padding: 16,
-      color: c.text,
-      fontSize: 16,
-      marginBottom: 8,
-    },
-    inputHelper: {
-      alignSelf: 'center',
-      fontSize: 14,
-      color: c.subText,
-      width: '80%',
-      textAlign: 'center',
-    },
-    subscriptionSection: {
-      marginBottom: 30,
-    },
-    offerPill: {
-      paddingHorizontal: 12,
-      paddingVertical: 6,
-      borderRadius: 16,
-      alignSelf: 'flex-start',
-      marginBottom: 8,
-    },
-    offerPillText: {
-      color: c.specialOfferText,
-      fontSize: 12,
-      fontWeight: '800',
-    },
-    subscriptionCard: {
-      backgroundColor: c.cardBg, // Maintained black or white based on theme
-      borderRadius: 16,
-      padding: 20,
-    },
-    cardHeader: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 24,
-    },
-    logoContainer: {
-      marginLeft: '-1.5%',
-      width: 60,
-      height: 60,
-      borderColor: '#777',
-      borderWidth: 1,
-      backgroundColor: '#fff',
-      borderRadius: 15,
-      alignItems: 'center',
-      justifyContent: 'center',
-      shadowColor: c.logoShadow,
-      shadowOffset: { width: 0, height: 2 },
-      shadowOpacity: 0.2,
-      shadowRadius: 15.84,
-      elevation: 10,
-    },
-    logoImage: {
-      width: 55,
-      height: 55,
-      resizeMode: 'contain',
-    },
-    titleContainer: {
-      marginLeft: 12,
-    },
-    cardTitle: {
-      fontSize: 20,
-      fontWeight: '600',
-      color: c.text,
-      marginBottom: 4,
-    },
-    ratingContainer: {
-      flexDirection: 'row',
-      alignItems: 'center',
-    },
-    ratingStars: {
-      color: '#F0CF60',
-      marginRight: 4,
-    },
-    ratingText: {
-      color: c.subText,
-      fontSize: 14,
-    },
-    featuresList: {
-      marginBottom: 12,
-    },
-    featureItem: {
-      flexDirection: 'row',
-      marginBottom: 20,
-    },
-    featureIcon: {
-      width: 50,
-      height: 50,
-      borderRadius: 14,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginRight: 12,
-    },
-    featureText: {
-      flex: 1,
-    },
-    featureTitle: {
-      fontSize: 16,
-      fontWeight: '500',
-      color: c.text,
-      marginBottom: 4,
-    },
-    featureDescription: {
-      fontSize: 14,
-      color: c.subText,
-    },
-    pricingCard: {
-      marginHorizontal: -20,
-      borderRadius: 33,
-      padding: 16,
-      borderWidth: c.pricingBorderWidth,
-      borderColor: c.pricingBorderColor,
-    },
-    priceContainer: {
-      marginBottom: 16,
-    },
-    priceRow: {
-      marginLeft: '3%',
-      flexDirection: 'row',
-      alignItems: 'center',
-      marginBottom: 8,
-    },
-    price: {
-      fontSize: 24,
-      fontWeight: '700',
-      color: c.text,
-    },
-    period: {
-      fontSize: 16,
-      color: c.subText,
-      marginLeft: 4,
-    },
-    saveTag: {
-      paddingHorizontal: 10,
-      paddingVertical: 6,
-      borderRadius: 90,
-      marginLeft: '30%',
-    },
-    saveTagText: {
-      color: c.saveTagText,
-      fontSize: 15,
-      fontWeight: '600',
-    },
-    trialText: {
-      marginLeft: '3%',
-      fontSize: 14,
-      color: c.subText,
-    },
-    ctaButton: {
-      backgroundColor: c.ctabtn, // Button background remains white or black based on theme
-      borderRadius: 25,
-      padding: 20,
-      alignItems: 'center',
-    },
-    ctaButtonDisabled: {
-      backgroundColor: '#A9A9A9', // Gray background for disabled state
-    },
-    ctaButtonContent: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    ctaButtonText: {
-      color: c.ctabtntext,
-      fontSize: 18,
-      fontWeight: '700',
-      marginRight: 8, // Space between text and icon
-    },
-    ctaButtonIcon: {
-      // Additional styling for the icon if needed
-    },
-    ctaSubtitle: {
-      marginTop: 8,
-      fontSize: 14,
-      color: c.subText,
-      textAlign: 'center',
-    },
-    dangerZone: {
-      marginTop: 30,
-    },
-    dangerTitle: {
-      alignSelf: 'center',
-      fontSize: 18,
-      fontWeight: '600',
-      color: '#FF3B30',
-      marginBottom: 16,
-    },
-    separator: {
-      height: 2,
-      borderRadius: 90,
-      backgroundColor: c.separator,
-      marginBottom: 16,
-    },
-    deleteButton: {
-      backgroundColor: '#FF4136',
-      borderRadius: 18,
-      padding: 16,
-      alignItems: 'center',
-    },
-    deleteButtonText: {
-      color: '#FFFFFF',
-      fontSize: 16,
-      fontWeight: '700',
-    },
-    dangerSubtitle: {
-      width: '80%',
-      marginTop: 16,
-      fontSize: 14,
-      color: c.subText,
-      textAlign: 'center',
-      alignSelf: 'center',
-    },
-  });
+const styles = StyleSheet.create({
+  scrollContent: {
+    padding: 20,
+    paddingTop: 60,
+  },
+  profileSection: {
+    marginTop: 20,
+    alignItems: 'center',
+    marginBottom: 30,
+  },
+  avatarContainer: {
+    position: 'relative',
+    marginBottom: 16,
+  },
+  avatar: {
+    width: avatarSize,
+    height: avatarSize,
+    borderRadius: avatarSize / 2,
+    backgroundColor: '#333333',
+  },
+  editButton: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    backgroundColor: '#2a2a2b',
+    borderRadius: 13,
+    padding: 6,
+  },
+  inputSection: {
+    marginBottom: 30,
+  },
+  sectionTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    marginBottom: 16,
+    alignSelf: 'flex-start',
+    paddingLeft: 5,
+  },
+  dangerZone: {
+    marginTop: 30,
+  },
+  dangerTitle: {
+    alignSelf: 'center',
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#FF3B30',
+    marginBottom: 16,
+  },
+  separator: {
+    height: 2,
+    borderRadius: 90,
+    backgroundColor: '#ccc',
+    marginBottom: 16,
+  },
+  deleteButton: {
+    backgroundColor: '#FF4136',
+    borderRadius: 18,
+    padding: 16,
+    alignItems: 'center',
+  },
+  deleteButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  dangerSubtitle: {
+    width: '80%',
+    marginTop: 16,
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+    alignSelf: 'center',
+  },
+  ctaSubtitle: {
+    marginTop: 8,
+    fontSize: 14,
+    color: '#666',
+    textAlign: 'center',
+  },
+});

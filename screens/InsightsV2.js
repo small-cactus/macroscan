@@ -2019,7 +2019,7 @@ const getDynamicStyles = colorScheme =>
       zIndex: 10,
     },
     title: {
-      fontSize: 32,
+      fontSize: 28,
       fontWeight: 'bold',
       color: colorScheme === 'dark' ? '#FFF' : '#000',
     },

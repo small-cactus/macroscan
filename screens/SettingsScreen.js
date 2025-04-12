@@ -17,6 +17,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import FoodCarousel from './FoodCarouselHero.js';
 import { LinearGradient } from 'expo-linear-gradient'; // Import LinearGradient
 import { SymbolView } from 'expo-symbols';
+import Superwall from '@superwall/react-native-superwall';
 
 // Import your user context hook (adjust the path as needed)
 import { useUser } from '../userContext';
@@ -43,7 +44,7 @@ const SettingsScreen = () => {
     {
       title: "Features",
       navigateTo: "FeaturesScreen",
-      symbol: "star.fill"
+      symbol: "wand.and.sparkles.inverse"
     },
     {
       title: "Privacy and Security",
@@ -104,6 +105,7 @@ const SettingsScreen = () => {
     // await AsyncStorage.removeItem('@has_seen_whats_new_1_6_0');
     // await AsyncStorage.removeItem('@has_seen_mode_tooltip');
     // await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
+    await Superwall.shared.register('fortune');
     navigation.navigate(navigateTo);
   };
 
