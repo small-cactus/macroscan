@@ -13,7 +13,7 @@ const ScanButtonTooltip = forwardRef(({ visible, onHide, position, debug = false
   const translateX = useRef(new Animated.Value(0)).current;
   const checkmarkScale = useRef(new Animated.Value(0)).current;
   const textFadeOut = useRef(new Animated.Value(1)).current;
-  const containerWidth = useRef(new Animated.Value(230 * scale)).current;
+  const containerWidth = useRef(new Animated.Value(260 * scale)).current;
   const arrowOpacity = useRef(new Animated.Value(1)).current;
   const borderRadius = useRef(new Animated.Value(12 * scale)).current;
   const [showCheckmark, setShowCheckmark] = useState(false);
@@ -37,7 +37,7 @@ const ScanButtonTooltip = forwardRef(({ visible, onHide, position, debug = false
           useNativeDriver: false,
         }),
         Animated.timing(translateX, {
-          toValue: 20,
+          toValue: 25,
           duration: 200,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: false,
@@ -90,7 +90,7 @@ const ScanButtonTooltip = forwardRef(({ visible, onHide, position, debug = false
     if (debug) {
       fadeAnim.setValue(1);
       translateY.setValue(0);
-      translateX.setValue(20);
+      translateX.setValue(25);
       checkmarkScale.setValue(1);
       textFadeOut.setValue(0);
       containerWidth.setValue(45 * scale);
@@ -103,7 +103,7 @@ const ScanButtonTooltip = forwardRef(({ visible, onHide, position, debug = false
       fadeAnim.setValue(0);
       checkmarkScale.setValue(0);
       textFadeOut.setValue(1);
-      containerWidth.setValue(230 * scale);
+      containerWidth.setValue(260 * scale);
       arrowOpacity.setValue(1);
       borderRadius.setValue(12 * scale);
       setShowCheckmark(false);
@@ -155,6 +155,12 @@ const ScanButtonTooltip = forwardRef(({ visible, onHide, position, debug = false
       pointerEvents="none"
     >
       <View style={styles.contentContainer}>
+        <Ionicons
+          name="scan-outline"
+          size={20 * scale}
+          color={colorScheme === 'dark' ? '#000000' : '#FFFFFF'}
+          style={{ marginRight: 8 * scale }}
+        />
         <Animated.Text style={[styles.text, { 
           opacity: textFadeOut, 
           color: colorScheme === 'dark' ? '#000000' : '#FFFFFF' 
@@ -202,6 +208,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   contentContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 24 * scale,

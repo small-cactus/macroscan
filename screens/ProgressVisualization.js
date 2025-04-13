@@ -302,7 +302,7 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete,
             styles.streakTitle,
             { color: isDark ? '#FFF' : '#000' }
           ]}>
-            30-Day Challenge
+            10-Day Challenge
           </Text>
         </View>
         

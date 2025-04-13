@@ -86,14 +86,24 @@ const HistoryCard = ({
           style={styles.card}
           onPress={() => onSelect(item)}
         >
-          <Image 
-            source={{ 
-              uri: typeof item.imageUri === 'string' && !item.imageUri.startsWith('data:image/jpeg;base64,')
-                ? 'data:image/jpeg;base64,' + item.imageUri
-                : item.imageUri 
-            }} 
-            style={styles.productImage} 
-          />
+          {item.imageUri ? (
+            <Image 
+              source={{ 
+                uri: typeof item.imageUri === 'string' && !item.imageUri.startsWith('data:image/jpeg;base64,')
+                  ? 'data:image/jpeg;base64,' + item.imageUri
+                  : item.imageUri 
+              }} 
+              style={styles.productImage} 
+            />
+          ) : (
+            <View style={styles.imagePlaceholder}>
+              <Ionicons 
+                name="document-text-outline" 
+                size={40 * scale} 
+                color={colorScheme === 'dark' ? '#555' : '#bbb'} 
+              />
+            </View>
+          )}
           <View style={styles.info}>
             <Text style={styles.productName}>{item.productName}</Text>
             {formatDate(item.date).map((line, lineIndex) => (
@@ -1562,6 +1572,14 @@ const getDynamicStyles = (colorScheme) =>
       width: 100 * scale,
       height: 100 * scale,
       borderRadius: 15 * scale,
+    },
+    imagePlaceholder: {
+      width: 100 * scale,
+      height: 100 * scale,
+      borderRadius: 15 * scale,
+      backgroundColor: colorScheme === 'dark' ? '#2a2a2c' : '#e9e9e9',
+      justifyContent: 'center',
+      alignItems: 'center',
     },
     info: {
       flex: 1,

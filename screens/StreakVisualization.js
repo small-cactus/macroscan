@@ -4,10 +4,11 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { FadeInDown } from 'react-native-reanimated';
+import LottieView from 'lottie-react-native';
 
 const { width } = Dimensions.get('window');
 
-const StreakVisualization = ({ isDark, progressDays = [] }) => {
+const StreakVisualization = ({ isDark, progressDays = [], isContinuable = false }) => {
   // Calculate current streak
   const currentStreak = progressDays.filter(day => day.completed).length;
   
@@ -19,6 +20,8 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
   const dayAnimations = useRef([]);
   const connectorAnimations = useRef([]);
   const streakCountAnimation = useRef(new Animated.Value(0)).current;
+  const continuableOpacityAnimation = useRef(new Animated.Value(1)).current; // Animation for continuable state
+  const continuableAnimationRef = useRef(null); // Ref to store the looping animation
   
   // Animation values for view toggling
   const infoOpacity = useRef(new Animated.Value(0)).current;
@@ -30,9 +33,18 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
   const [activeView, setActiveView] = useState('main');
   // State to track if entry animation has run
   const [hasAnimatedIn, setHasAnimatedIn] = useState(false);
+  // State to track if we should show the confetti animation
+  const [showConfetti, setShowConfetti] = useState(false);
+  // Ref to track previous continuable state
+  const prevContinuableRef = useRef(isContinuable);
+  // Ref for the Lottie animation
+  const confettiRef = useRef(null);
+  // Ref to track if this is the first render
+  const didMountRef = useRef(false);
 
   // Get motivational message based on streak
-  const getMotivationalMessage = (streak) => {
+  const getMotivationalMessage = (streak, isContinuable) => {
+    if (isContinuable && streak > 0) return "Streak running out! Scan today to keep it going!";
     if (streak === 0) return "Scan a meal to get started!";
     if (streak === 1) return "Great start! Keep it going!";
     if (streak === 2) return "Two days strong! You're building momentum!";
@@ -73,6 +85,8 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
         return () => {
           clearTimeout(countTimerId);
           clearTimeout(daysTimerId);
+          // Stop pulsing animation if component unmounts or data clears
+          stopPulsingAnimation(); 
         };
       } else {
         // Data updated after initial animation: set directly to final state
@@ -83,7 +97,80 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
       resetAnimations();
       setHasAnimatedIn(false);
     }
-  }, [numDays, progressDays]); // Rerun when data changes
+  }, [numDays, progressDays, isContinuable]); // Rerun when data changes OR isContinuable changes
+
+  // Effect to detect streak renewal and trigger confetti
+  useEffect(() => {
+    // Skip this effect on first render to avoid false streak renewal detection
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      prevContinuableRef.current = isContinuable;
+      return;
+    }
+    
+    // Check if streak was renewed: was continuable (about to break) but now it's not
+    // And current streak is still greater than 0 (streak was actually renewed, not just reset)
+    if (prevContinuableRef.current && !isContinuable && currentStreak > 0) {
+      setShowConfetti(true);
+      // Provide success haptic feedback
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      
+      // Auto-hide confetti after animation completes
+      const timer = setTimeout(() => {
+        setShowConfetti(false);
+      }, 3000); // Adjust time as needed for your animation duration
+      
+      return () => clearTimeout(timer);
+    }
+    
+    // Update the previous continuable state
+    prevContinuableRef.current = isContinuable;
+  }, [isContinuable, currentStreak]);
+  
+  // Play confetti animation when it becomes visible
+  useEffect(() => {
+    if (showConfetti && confettiRef.current) {
+      // Reset and play animation
+      confettiRef.current.reset();
+      confettiRef.current.play();
+    }
+  }, [showConfetti]);
+
+  // Helper function to start the pulsing animation
+  const startPulsingAnimation = () => {
+    if (continuableAnimationRef.current) {
+      continuableAnimationRef.current.stop(); // Stop existing animation first
+    }
+    continuableAnimationRef.current = Animated.loop(
+      Animated.sequence([
+        Animated.timing(continuableOpacityAnimation, {
+          toValue: 0.5,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+        Animated.timing(continuableOpacityAnimation, {
+          toValue: 1,
+          duration: 1000,
+          useNativeDriver: true,
+        }),
+      ])
+    );
+    continuableAnimationRef.current.start();
+  };
+
+  // Helper function to stop the pulsing animation
+  const stopPulsingAnimation = () => {
+    if (continuableAnimationRef.current) {
+      continuableAnimationRef.current.stop();
+      continuableAnimationRef.current = null;
+    }
+    // Ensure opacity returns to 1 when stopped
+    Animated.timing(continuableOpacityAnimation, {
+      toValue: 1,
+      duration: 200, // Short duration for reset
+      useNativeDriver: true,
+    }).start();
+  };
 
   // Function to reset animations to initial state (invisible/default)
   const resetAnimations = () => {
@@ -92,9 +179,13 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
     connectorAnimations.current.forEach(anim => anim.setValue(0));
     streakCountAnimation.setValue(0);
     infoOpacity.setValue(0);
-    mainViewOpacity.setValue(1); 
+    mainViewOpacity.setValue(1);
     infoTranslateY.setValue(200);
     mainViewTranslateY.setValue(0);
+    // Stop pulsing and reset opacity
+    stopPulsingAnimation();
+    // Hide confetti if it's showing
+    setShowConfetti(false);
     setActiveView('main');
   };
   
@@ -105,10 +196,19 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
     connectorAnimations.current.forEach(anim => anim.setValue(1));
     streakCountAnimation.setValue(1);
     infoOpacity.setValue(0);
-    mainViewOpacity.setValue(1); 
+    mainViewOpacity.setValue(1);
     infoTranslateY.setValue(200);
     mainViewTranslateY.setValue(0);
     setActiveView('main');
+    // Ensure pulsing state is correct for the final state
+    if (isContinuable) {
+      startPulsingAnimation();
+    } else {
+      stopPulsingAnimation();
+    }
+    
+    // Don't automatically trigger confetti in setToFinalState
+    // The useEffect watching isContinuable will handle that
   };
 
   // Animate only the streak count
@@ -119,8 +219,10 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
       friction: 7,
       useNativeDriver: true,
     }).start(() => {
-      // Optional: Haptic feedback specifically for count appearing
-      // Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+      // After count animation, check if pulsing should start
+      if (isContinuable) {
+        startPulsingAnimation();
+      }
     });
   };
 
@@ -280,6 +382,20 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
 
   return (
     <View style={styles.container}>
+      {/* Confetti animation overlay */}
+      {showConfetti && (
+        <View style={styles.confettiContainer}>
+          <LottieView
+            ref={confettiRef}
+            source={require('../assets/animations/confetti.json')}
+            autoPlay
+            loop={false}
+            style={styles.confetti}
+            resizeMode="cover"
+          />
+        </View>
+      )}
+      
       <TouchableOpacity 
         activeOpacity={0.8}
         onPress={toggleView}
@@ -300,18 +416,22 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
             styles.streakCountContainer,
             {
               transform: [{ scale: streakCountAnimation }],
+              // Apply only the entry animation opacity/scale to the container
               opacity: streakCountAnimation
-            }
+            },
           ]}>
-            <LinearGradient
-              colors={isDark ? ['#2E3B80', '#1F2359'] : ['#4B5EAC', '#2E3B80']}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
-              style={styles.streakCountGradient}
-            >
-              <Text style={styles.streakCountNumber}>{currentStreak}</Text>
-              <Text style={styles.streakCountLabel}>DAY{currentStreak !== 1 ? 'S' : ''}</Text>
-            </LinearGradient>
+            {/* Wrap the gradient in an Animated.View to apply the pulsing opacity */}
+            <Animated.View style={{ opacity: continuableOpacityAnimation }}>
+              <LinearGradient
+                colors={isDark ? ['#2E3B80', '#1F2359'] : ['#4B5EAC', '#2E3B80']}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+                style={styles.streakCountGradient}
+              >
+                <Text style={styles.streakCountNumber}>{currentStreak}</Text>
+                <Text style={styles.streakCountLabel}>DAY{currentStreak !== 1 ? 'S' : ''}</Text>
+              </LinearGradient>
+            </Animated.View>
           </Animated.View>
 
           {/* Motivational Message */}
@@ -319,10 +439,10 @@ const StreakVisualization = ({ isDark, progressDays = [] }) => {
             styles.motivationalMessage,
             { 
               color: isDark ? '#FFF' : '#000',
-              opacity: streakCountAnimation
+              opacity: streakCountAnimation // Only use entry animation opacity
             }
           ]}>
-            {getMotivationalMessage(currentStreak)}
+            {getMotivationalMessage(currentStreak, isContinuable)}
           </Animated.Text>
 
           <View style={styles.rowsContainer}>
@@ -628,6 +748,23 @@ const styles = StyleSheet.create({
   backPromptText: {
     fontSize: 12,
     marginRight: 5,
+  },
+  confettiContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    justifyContent: 'center',
+    alignItems: 'center',
+    width: '100%',
+    height: '100%',
+    zIndex: 10,
+    pointerEvents: 'none',
+  },
+  confetti: {
+    width: '100%',
+    height: '100%',
   },
 });
 

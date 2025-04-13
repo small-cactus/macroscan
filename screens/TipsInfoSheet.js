@@ -457,7 +457,7 @@ const styles = StyleSheet.create({
   },
   featureListContent: {
     paddingTop: 10 * scale,
-    paddingLeft: width * 0.05, // Proper left margin for all content
+    paddingHorizontal: 10 * scale, // Proper left margin for all content
   },
   featureItem: {
     flexDirection: 'row',

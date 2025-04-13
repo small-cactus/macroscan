@@ -781,7 +781,7 @@ const FeaturesScreen = () => {
                       />
                     </View>
                     <Text style={styles.toggleDescription}>
-                      Circle any food and only that selection will be scanned for nutrients
+                      Draw a circle around any food item to scan only that selection for nutrients
                     </Text>
                   </View>
                   <Switch
@@ -811,7 +811,7 @@ const FeaturesScreen = () => {
                     </View>
                   </View>
                   <Text style={styles.toggleDescription}>
-                    Circle any food and only that selection will be scanned for nutrients
+                  Draw a circle around any food item to scan only that selection for nutrients
                   </Text>
                 </View>
                 <Switch

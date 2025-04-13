@@ -13,7 +13,7 @@ const ModeTooltip = forwardRef(({ visible, onHide, position }, ref) => {
   const translateX = useRef(new Animated.Value(0)).current;
   const checkmarkScale = useRef(new Animated.Value(0)).current;
   const textFadeOut = useRef(new Animated.Value(1)).current;
-  const containerWidth = useRef(new Animated.Value(160 * scale)).current;
+  const containerWidth = useRef(new Animated.Value(180 * scale)).current;
   const borderRadius = useRef(new Animated.Value(12 * scale)).current;
   const arrowOpacity = useRef(new Animated.Value(1)).current;
   const [showCheckmark, setShowCheckmark] = useState(false);
@@ -36,7 +36,7 @@ const ModeTooltip = forwardRef(({ visible, onHide, position }, ref) => {
           useNativeDriver: false,
         }),
         Animated.timing(translateX, {
-          toValue: 20,
+          toValue: 25,
           duration: 200,
           easing: Easing.inOut(Easing.ease),
           useNativeDriver: false,
@@ -92,7 +92,7 @@ const ModeTooltip = forwardRef(({ visible, onHide, position }, ref) => {
       fadeAnim.setValue(0);
       checkmarkScale.setValue(0);
       textFadeOut.setValue(1);
-      containerWidth.setValue(160 * scale);
+      containerWidth.setValue(180 * scale);
       arrowOpacity.setValue(1);
       borderRadius.setValue(12 * scale);
       setShowCheckmark(false);
@@ -149,8 +149,16 @@ const ModeTooltip = forwardRef(({ visible, onHide, position }, ref) => {
         }
       ]} />
       <View style={styles.contentContainer}>
+        <Animated.View style={{ opacity: textFadeOut }}>
+          <Ionicons
+            name="search-outline"
+            size={18 * scale}
+            color={colorScheme === 'dark' ? '#000000' : '#FFFFFF'}
+            style={{ marginRight: 8 * scale }}
+          />
+        </Animated.View>
         <Animated.Text style={[styles.text, { opacity: textFadeOut, color: colorScheme === 'dark' ? '#000000' : '#FFFFFF' }]}>
-          Try tapping this!
+          Try Deep Search!
         </Animated.Text>
       </View>
       {showCheckmark && (
@@ -158,6 +166,7 @@ const ModeTooltip = forwardRef(({ visible, onHide, position }, ref) => {
           styles.checkmarkContainer,
           {
             transform: [{ scale: checkmarkScale }],
+            opacity: checkmarkScale.interpolate({ inputRange: [0, 0.1], outputRange: [0, 1] })
           }
         ]}>
           <Ionicons name="checkmark-circle" size={30} color="#4CAF50" />
@@ -183,6 +192,7 @@ const styles = StyleSheet.create({
     zIndex: 1000,
   },
   contentContainer: {
+    flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     height: 24 * scale,
@@ -197,13 +207,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     position: 'absolute',
-    top: '50%',
-    left: '50%',
-    marginLeft: 0 * scale,
-    marginTop: -5 * scale,
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
     zIndex: 1000000,
-    width: 30 * scale,
-    height: 30 * scale,
   },
   arrow: {
     position: 'absolute',

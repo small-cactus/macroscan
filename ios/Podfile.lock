@@ -1634,7 +1634,7 @@ PODS:
     - React-Core
   - RNKeychain (8.2.0):
     - React-Core
-  - RNReanimated (3.6.2):
+  - RNReanimated (3.10.1):
     - DoubleConversion
     - glog
     - hermes-engine
@@ -2221,7 +2221,7 @@ SPEC CHECKSUMS:
   RNGestureHandler: 0185e60058b516fe374233587dbb48af62ec5f5a
   RNIap: 38aca65c5c190248928fd126a31991bf52a91878
   RNKeychain: bbe2f6d5cc008920324acb49ef86ccc03d3b38e4
-  RNReanimated: dd4f379b94064ded836fa82efaf2c3061f5d3b0a
+  RNReanimated: def444e044c354f38bb0a5926a8583ba19d944c1
   RNScreens: a2d8a2555b4653d7a19706eb172f855657ac30d7
   RNStoreReview: 613c43e9132998ed41a65946e20c223c91b36464
   RNSVG: e77adf5edb2302f0f10dd03a09e92bb9420d914e

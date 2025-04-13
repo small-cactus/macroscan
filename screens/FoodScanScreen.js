@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useContext, useLayoutEffect } from 'react';
 import { useNavigationState } from '@react-navigation/native';
 import { useRoute } from '@react-navigation/native';
 import {
@@ -45,6 +45,8 @@ import FunctionalAIVisualization from './FunctionalAIVisualization';
 import SearchModeInfoSheet from './SearchModeInfoSheet';
 import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 import { Audio } from 'expo-av'; // Added import
+import ManualInputModal from './ManualInputModal'; // Import the new component
+import { Ionicons } from '@expo/vector-icons';
 
 const useOpenAI = false; // Set to true to use OpenAI, false rto use Anthropic
 
@@ -157,6 +159,10 @@ const FoodScanScreen = () => {
   const [timeLeftForScans, setTimeLeftForScans] = useState('');
   const [freeAccurateScansUsed, setFreeAccurateScansUsed] = useState(0);
   const [freeSearchScansUsed, setFreeSearchScansUsed] = useState(0);
+
+  // Add new state variables for manual input
+  const [manualInputModalVisible, setManualInputModalVisible] = useState(false);
+  const [manualUserInput, setManualUserInput] = useState('');
 
   // Add new animated value for tab indicator
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
@@ -937,7 +943,7 @@ const stopLoadingAnimation = () => {
     if (!isFirstDayUnlimited && !isSubscribed) {
       if (selectedMode === ACCURATE_MODE && freeAccurateScansUsed >= 1) {
         console.log('[FoodScanScreen] Accurate scan limit reached on pickImage, showing paywall.');
-        Superwall.shared.register('no-scans');
+        Superwall.shared.register('no-scans-fortune');
         return;
       }
       if (selectedMode === SEARCH_MODE && !(await checkSearchScanLimit())) {
@@ -947,12 +953,12 @@ const stopLoadingAnimation = () => {
       }
       if (isSubscribedPlus && scanCount >= 20) {
         console.log('[FoodScanScreen] Plus scan limit reached on pickImage, showing paywall.');
-        Superwall.shared.register('no-scans');
+        Superwall.shared.register('no-scans-fortune');
         return;
       }
       if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
         console.log('[FoodScanScreen] Free scan limit reached on pickImage, showing paywall.');
-        Superwall.shared.register('no-scans');
+        Superwall.shared.register('no-scans-fortune');
         return;
       }
     }
@@ -995,13 +1001,13 @@ const stopLoadingAnimation = () => {
       // Check accurate scan limit specifically if accurate mode is selected
       if (selectedMode === ACCURATE_MODE && freeAccurateScansUsed >= 1) {
         console.log('[FoodScanScreen] Accurate scan limit reached, showing paywall.');
-        Superwall.shared.register('no-scans'); // Trigger paywall
+        Superwall.shared.register('no-scans-fortune'); // Trigger paywall
         return; // Stop execution
       }
       // Check general scan limit for Free users (this also covers fast mode implicitly)
       if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
         console.log('[FoodScanScreen] Free scan limit reached, showing paywall.');
-        Superwall.shared.register('no-scans'); // Trigger paywall
+        Superwall.shared.register('no-scans-fortune'); // Trigger paywall
         return; // Stop execution
       }
 
@@ -1011,7 +1017,7 @@ const stopLoadingAnimation = () => {
       // This else block should now catch cases where limits are explicitly hit
       // (e.g., freeAccurateScansUsed >= 1, scanCount >= 20 for Plus, scanCount >= 2 for Free)
       console.log('[FoodScanScreen] General scan limit reached, showing paywall.');
-      Superwall.shared.register('no-scans'); // Trigger paywall
+      Superwall.shared.register('no-scans-fortune'); // Trigger paywall
     }
   };
 
@@ -2324,6 +2330,7 @@ const stopLoadingAnimation = () => {
   const renderButtons = () => {
     const scaleAnimScan = useRef(new Animated.Value(1)).current;
     const scaleAnimChoose = useRef(new Animated.Value(1)).current;
+    const scaleAnimManual = useRef(new Animated.Value(1)).current; // Animation for the new button
 
     const onPressInScan = () => {
       Animated.spring(scaleAnimScan, {
@@ -2357,9 +2364,26 @@ const stopLoadingAnimation = () => {
       }).start();
     };
 
+    const onPressInManual = () => {
+      Animated.spring(scaleAnimManual, {
+        toValue: 0.95,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+    const onPressOutManual = () => {
+      Animated.spring(scaleAnimManual, {
+        toValue: 1,
+        useNativeDriver: true,
+        friction: 3,
+      }).start();
+    };
+
+
     return (
-      <View 
-        style={[styles.buttonContainer, !foodData && styles.buttonContainerNoFood]}
+      <View
+        style={[styles.buttonsColumnContainer]} // Use a column layout now
         onLayout={(e) => {
           buttonsYPosition.current = e.nativeEvent.layout;
           // Trigger visibility check after layout updates
@@ -2367,66 +2391,103 @@ const stopLoadingAnimation = () => {
           setShowScrollToButtonIndicator(show);
         }}
       >
-        <Pressable
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            pickImage();
-          }}
-          onPressIn={onPressInChoose}
-          onPressOut={onPressOutChoose}
-          accessibilityLabel="Pick from Gallery"
-          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
-          style={({ pressed }) => [
-            {
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-        >
-          <Animated.View style={{ transform: [{ scale: scaleAnimChoose }] }}>
-            <LinearGradient
-              colors={['#101010', '#1b1b1d']}
-              style={styles.button}
-              start={[0, 0]}
-              end={[1, 1]}
-            >
-              <View style={styles.buttonContent}>
-                <Icon name="images" size={24} color="#fff" style={styles.icon} />
-                <Text style={styles.buttonText}>Choose photo</Text>
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        </Pressable>
+        {/* Row for existing buttons */}
+        <View style={styles.buttonContainer}>
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              pickImage();
+            }}
+            onPressIn={onPressInChoose}
+            onPressOut={onPressOutChoose}
+            accessibilityLabel="Pick from Gallery"
+            android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+            style={({ pressed }) => [
+              {
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnimChoose }] }}>
+              <LinearGradient
+                colors={['#101010', '#1b1b1d']}
+                style={styles.button}
+                start={[0, 0]}
+                end={[1, 1]}
+              >
+                <View style={styles.buttonContent}>
+                  <Icon name="images" size={24} color="#fff" style={styles.icon} />
+                  <Text style={styles.buttonText}>Choose photo</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          </Pressable>
 
-        <Pressable
-          ref={scanButtonRef}
-          onPress={async () => {
-            await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-            takePhoto();
-          }}
-          onPressIn={onPressInScan}
-          onPressOut={onPressOutScan}
-          accessibilityLabel="Take Photo Now"
-          android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
-          style={({ pressed }) => [
-            {
-              opacity: pressed ? 0.9 : 1,
-            },
-          ]}
-        >
-          <Animated.View style={{ transform: [{ scale: scaleAnimScan }] }}>
-            <LinearGradient
-              colors={['#101010', '#555']}
-              style={styles.button}
-              start={[1, 1.3]}
-              end={[1, 0]}
-            >
-              <View style={styles.buttonContent}>
-                <Icon name="scan" size={24} color="#fff" style={styles.icon} />
-                <Text style={styles.buttonText}>Scan meal</Text>
-              </View>
-            </LinearGradient>
-          </Animated.View>
-        </Pressable>
+          <Pressable
+            ref={scanButtonRef}
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              takePhoto();
+            }}
+            onPressIn={onPressInScan}
+            onPressOut={onPressOutScan}
+            accessibilityLabel="Take Photo Now"
+            android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+            style={({ pressed }) => [
+              {
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnimScan }] }}>
+              <LinearGradient
+                colors={['#101010', '#555']}
+                style={styles.button}
+                start={[1, 1.3]}
+                end={[1, 0]}
+              >
+                <View style={styles.buttonContent}>
+                  <Icon name="scan" size={24} color="#fff" style={styles.icon} />
+                  <Text style={styles.buttonText}>Scan meal</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          </Pressable>
+        </View>
+
+        {/* Conditionally render the manual input button */}
+        {!foodData && (
+          <Pressable
+            onPress={async () => {
+              await Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+              handleManualInputPress(); // Call the new handler
+            }}
+            onPressIn={onPressInManual}
+            onPressOut={onPressOutManual}
+            accessibilityLabel="Add a food manually"
+            android_ripple={{ color: 'rgba(255, 255, 255, 0.3)', borderless: false }}
+            style={({ pressed }) => [
+              styles.manualInputButtonContainer, // Centering style
+              {
+                opacity: pressed ? 0.9 : 1,
+              },
+            ]}
+          >
+            <Animated.View style={{ transform: [{ scale: scaleAnimManual }] }}>
+              <LinearGradient
+                colors={colorScheme === 'dark' ? ['#2a2a2d', '#1c1c1e'] : ['#e0e0e0', '#f0f0f0']}
+                style={styles.manualInputButton}
+                start={[0, 0]}
+                end={[1, 1]}
+              >
+                <View style={styles.manualInputButtonContent}>
+                  <Icon name="add-circle-outline" size={22} color={colorScheme === 'dark' ? '#fff' : '#333'} style={styles.manualInputButtonIcon} />
+                  <Text style={styles.manualInputButtonText}>Add a food manually</Text>
+                </View>
+              </LinearGradient>
+            </Animated.View>
+          </Pressable>
+        )}
       </View>
     );
   };
@@ -2475,94 +2536,107 @@ const stopLoadingAnimation = () => {
 
   const modeSelectionAlert = () => {
     const currentMode = selectedMode;
-    
+
     const modeDescriptions = {
       fast: 'Fast Mode provides quick results and is great for packaged foods.',
       accurate: 'Accurate Mode uses detailed analysis and is best for complex meals.',
       search: 'Deep Seach Mode is our experimental feature for advanced search capabilities.',
     };
-    
+
+    // Define all possible modes and their configuration
+    const allModes = [
+      {
+        key: 'fast',
+        label: MODE_LABELS['fast'],
+        async onPress() {
+          await AsyncStorage.setItem('selectedMode', 'fast');
+          crossfadeChipText('fast');
+          Haptics.selectionAsync();
+        },
+        condition: () => true // Always available
+      },
+      {
+        key: 'accurate',
+        label: MODE_LABELS['accurate'],
+        async onPress() {
+          if (isSubscribed || isFirstDayUnlimited) {
+            await AsyncStorage.setItem('selectedMode', 'accurate');
+            crossfadeChipText('accurate');
+            Haptics.selectionAsync();
+          } else {
+            const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
+            if (freeAccurateScansUsed === '1') {
+              Alert.alert(
+                'Daily Limit Reached',
+                'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+              );
+              return;
+            }
+            Alert.alert(
+              'Heads Up!',
+              'You only get one accurate scan a day on the free plan, so make it count!',
+              [
+                { text: 'Cancel', style: 'cancel' },
+                {
+                  text: 'OK',
+                  onPress: async () => {
+                    await AsyncStorage.setItem('selectedMode', 'accurate');
+                    crossfadeChipText('accurate');
+                    Haptics.selectionAsync();
+                  },
+                },
+              ],
+              { cancelable: false }
+            );
+          }
+        },
+        condition: () => true // Always available (limit check inside onPress)
+      },
+      {
+        key: 'search',
+        label: MODE_LABELS['search'],
+        async onPress() {
+          if (isSubscribed || isFirstDayUnlimited) {
+            await AsyncStorage.setItem('selectedMode', 'search');
+            crossfadeChipText('search');
+            Haptics.selectionAsync();
+          } else {
+            const freeSearchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
+            if (freeSearchScansUsed === '1') {
+              Alert.alert(
+                'Daily Limit Reached',
+                'You have already used your daily Search Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
+              );
+              return;
+            }
+            // Remove heads-up alert and directly change the mode
+            await AsyncStorage.setItem('selectedMode', 'search');
+            crossfadeChipText('search');
+            Haptics.selectionAsync();
+          }
+        },
+        condition: () => true // Always available (limit check inside onPress)
+      }
+    ];
+
+    // Filter out the current mode and create the button options
+    const alertButtons = allModes
+      .filter(mode => mode.key !== currentMode && mode.condition())
+      .map(mode => ({
+        text: `Switch to ${mode.label}`,
+        onPress: mode.onPress,
+        style: 'default'
+      }));
+
+    // Add the Cancel button
+    alertButtons.push({ text: 'Cancel', style: 'cancel' });
+
     Alert.alert(
-      'Scan Mode',
-      `Currently using ${MODE_LABELS[currentMode]}.\n\n${modeDescriptions[currentMode]}`,
-      [
-        { text: 'Cancel', style: 'cancel' },
-        { 
-          text: `Switch to ${MODE_LABELS['fast']}`,
-          onPress: async () => {
-            if (currentMode !== 'fast') {
-              await AsyncStorage.setItem('selectedMode', 'fast');
-              crossfadeChipText('fast');
-              Haptics.selectionAsync();
-            }
-          },
-          style: currentMode === 'fast' ? 'default' : 'default'
-        },
-        { 
-          text: `Switch to ${MODE_LABELS['accurate']}`,
-          onPress: async () => {
-            if (currentMode !== 'accurate') {
-              if (isSubscribed || isFirstDayUnlimited) {
-                await AsyncStorage.setItem('selectedMode', 'accurate');
-                crossfadeChipText('accurate');
-                Haptics.selectionAsync();
-              } else {
-                const freeAccurateScansUsed = await AsyncStorage.getItem('freeAccurateScansUsed');
-                if (freeAccurateScansUsed === '1') {
-                  Alert.alert(
-                    'Daily Limit Reached',
-                    'You have already used your daily Accurate Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
-                  );
-                  return;
-                }
-                Alert.alert(
-                  'Heads Up!',
-                  'You only get one accurate scan a day on the free plan, so make it count!',
-                  [
-                    { text: 'Cancel', style: 'cancel' },
-                    {
-                      text: 'OK',
-                      onPress: async () => {
-                        await AsyncStorage.setItem('selectedMode', 'accurate');
-                        crossfadeChipText('accurate');
-                        Haptics.selectionAsync();
-                      },
-                    },
-                  ],
-                  { cancelable: false }
-                );
-              }
-            }
-          },
-          style: currentMode === 'accurate' ? 'default' : 'default'
-        },
-        { 
-          text: `Switch to ${MODE_LABELS['search']}`,
-          onPress: async () => {
-            if (currentMode !== 'search') {
-              if (isSubscribed || isFirstDayUnlimited) {
-                await AsyncStorage.setItem('selectedMode', 'search');
-                crossfadeChipText('search');
-                Haptics.selectionAsync();
-              } else {
-                const freeSearchScansUsed = await AsyncStorage.getItem('freeSearchScansUsed');
-                if (freeSearchScansUsed === '1') {
-                  Alert.alert(
-                    'Daily Limit Reached',
-                    'You have already used your daily Search Mode scan. Please wait until tomorrow or upgrade for unlimited scans.'
-                  );
-                  return;
-                }
-                // Remove heads-up alert and directly change the mode
-                await AsyncStorage.setItem('selectedMode', 'search');
-                crossfadeChipText('search');
-                Haptics.selectionAsync();
-              }
-            }
-          },
-          style: currentMode === 'search' ? 'default' : 'default'
-        },
-      ]
+      'Switch Scan Mode', // Updated title
+      `Currently using ${MODE_LABELS[currentMode]}.
+
+${modeDescriptions[currentMode]}`,
+      alertButtons
     );
   };
 
@@ -3118,25 +3192,54 @@ const stopLoadingAnimation = () => {
       try {
         const hasSeenTooltip = await AsyncStorage.getItem('@has_seen_mode_tooltip');
         if (!showWhatsNew && hasSeenTooltip !== 'true' && selectedMode === 'fast' && modeChipRef.current) {
+          // Reduced timeout from 15000 to 3000 (3 seconds) for first-time users to see it faster
           tooltipTimeout = setTimeout(() => {
-            modeChipRef.current.measure((x, y, width, height, pageX, pageY) => {
-              setTooltipPosition({ x: pageX + width/2, y: pageY + height });
+            // Added try/catch to handle measurement errors
+            try {
+              // First check if we have stored measurements
+              if (modeChipMeasurementsRef.current) {
+                const { pageX, pageY, width, height } = modeChipMeasurementsRef.current;
+                setTooltipPosition({ x: pageX + width/2, y: pageY + height });
+                setShowModeTooltip(true);
+              } else {
+                // Fallback to direct measurement
+                modeChipRef.current.measure((x, y, width, height, pageX, pageY) => {
+                  if (width && height) { // Ensure valid measurements
+                    setTooltipPosition({ x: pageX + width/2, y: pageY + height });
+                    setShowModeTooltip(true);
+                  } else {
+                    // Fallback position if measurements aren't valid
+                    const screenWidth = Dimensions.get('window').width;
+                    setTooltipPosition({ x: screenWidth / 2, y: 200 });
+                    setShowModeTooltip(true);
+                  }
+                });
+              }
+            } catch (measureError) {
+              console.error('Error measuring mode chip position:', measureError);
+              // Show tooltip anyway with fallback position
+              const screenWidth = Dimensions.get('window').width;
+              setTooltipPosition({ x: screenWidth / 2, y: 200 });
               setShowModeTooltip(true);
-            });
-          }, 15000);
+            }
+          }, 3000);
         }
       } catch (error) {
         console.error('Error checking tooltip status:', error);
       }
     };
     
-    checkTooltipStatus();
+    // Add small delay to ensure component is mounted and rendered
+    const initialDelay = setTimeout(() => {
+      checkTooltipStatus();
+    }, 500);
 
     // Cleanup timeout when component unmounts or dependencies change
     return () => {
       if (tooltipTimeout) {
         clearTimeout(tooltipTimeout);
       }
+      clearTimeout(initialDelay);
     };
   }, [selectedMode, showWhatsNew]);
 
@@ -3149,28 +3252,59 @@ const stopLoadingAnimation = () => {
   // Add this effect after the other tooltip effect
   useEffect(() => {
     let tooltipTimeout;
+    let initialDelay;
     
     const checkScanButtonTooltipStatus = async () => {
       try {
         const hasSeenTooltip = await AsyncStorage.getItem('@has_seen_scan_button_tooltip');
         if (!showWhatsNew && hasSeenTooltip !== 'true' && scanButtonRef.current) {
           tooltipTimeout = setTimeout(() => {
-            scanButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
-              setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
+            // Added try/catch to handle measurement errors
+            try {
+              // First check if we have stored measurements
+              if (scanButtonMeasurementsRef.current) {
+                const { pageX, pageY, width, height } = scanButtonMeasurementsRef.current;
+                setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
+                setShowScanButtonTooltip(true);
+              } else {
+                // Fallback to direct measurement
+                scanButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                  if (width && height) { // Ensure valid measurements
+                    setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
+                    setShowScanButtonTooltip(true);
+                  } else {
+                    // Fallback position if measurements aren't valid
+                    const screenWidth = Dimensions.get('window').width;
+                    setScanButtonTooltipPosition({ x: screenWidth / 2, y: 400 });
+                    setShowScanButtonTooltip(true);
+                  }
+                });
+              }
+            } catch (measureError) {
+              console.error('Error measuring scan button position:', measureError);
+              // Show tooltip anyway with fallback position
+              const screenWidth = Dimensions.get('window').width;
+              setScanButtonTooltipPosition({ x: screenWidth / 2, y: 400 });
               setShowScanButtonTooltip(true);
-            });
-          }, 1000); // Show after mode tooltip
+            }
+          }, 5000); // Increased from 1000 to 5000 to give time after mode tooltip
         }
       } catch (error) {
         console.error('Error checking scan button tooltip status:', error);
       }
     };
     
-    checkScanButtonTooltipStatus();
+    // Add small delay to ensure component is mounted and rendered
+    initialDelay = setTimeout(() => {
+      checkScanButtonTooltipStatus();
+    }, 1000);
 
     return () => {
       if (tooltipTimeout) {
         clearTimeout(tooltipTimeout);
+      }
+      if (initialDelay) {
+        clearTimeout(initialDelay);
       }
     };
   }, [showWhatsNew]);
@@ -3225,7 +3359,7 @@ const stopLoadingAnimation = () => {
       if (searchScansUsed >= 1) {
         // User has reached their daily limit
         console.log('[FoodScanScreen] Search scan limit reached, showing paywall.');
-        Superwall.shared.register('no-scans'); // Trigger paywall
+        Superwall.shared.register('no-scans-fortune'); // Trigger paywall
         return false;
       }
       
@@ -3944,6 +4078,262 @@ const stopLoadingAnimation = () => {
     };
   }, []); // Empty dependency array ensures this runs only on mount/unmount
 
+  // Add these refs near the top with other refs
+  const modeChipMeasurementsRef = useRef(null);
+  const scanButtonMeasurementsRef = useRef(null);
+
+  // Use layout effect to position tooltips after layout
+  useLayoutEffect(() => {
+    // This runs after layout but before paint
+    // Perfect time to measure positions
+    
+    // Only run this for first-time users
+    const checkFirstTimeStatus = async () => {
+      try {
+        const hasSeenModeTooltip = await AsyncStorage.getItem('@has_seen_mode_tooltip');
+        const hasSeenButtonTooltip = await AsyncStorage.getItem('@has_seen_scan_button_tooltip');
+        
+        const isModeTooltipFirstTime = hasSeenModeTooltip !== 'true';
+        const isButtonTooltipFirstTime = hasSeenButtonTooltip !== 'true';
+        
+        // If either tooltip needs to be shown for first time
+        if ((isModeTooltipFirstTime || isButtonTooltipFirstTime) && 
+            !showWhatsNew && !isLoading) {
+              
+          // Small delay to ensure layout is complete
+          setTimeout(() => {
+            // Position mode tooltip if needed
+            if (isModeTooltipFirstTime && modeChipRef.current) {
+              try {
+                modeChipRef.current.measure((x, y, width, height, pageX, pageY) => {
+                  // Store measurements for later use
+                  modeChipMeasurementsRef.current = { 
+                    x, y, width, height, pageX, pageY 
+                  };
+                });
+              } catch (e) {
+                console.error('Failed to measure mode chip in layout effect', e);
+              }
+            }
+            
+            // Position scan button tooltip if needed
+            if (isButtonTooltipFirstTime && scanButtonRef.current) {
+              try {
+                scanButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
+                  // Store measurements for later use
+                  scanButtonMeasurementsRef.current = { 
+                    x, y, width, height, pageX, pageY 
+                  };
+                });
+              } catch (e) {
+                console.error('Failed to measure scan button in layout effect', e);
+              }
+            }
+          }, 500);
+        }
+      } catch (error) {
+        console.error('Error in tooltip layout effect:', error);
+      }
+    };
+    
+    checkFirstTimeStatus();
+  }, []);
+
+  // Add handler for the manual input button press
+  const handleManualInputPress = () => {
+    setManualInputModalVisible(true);
+  };
+
+  // Add function to handle submission from the manual input modal
+  const handleManualInputSubmit = async (descriptionFromModal) => {
+    // No need to check description here, modal already did.
+    setManualInputModalVisible(false);
+    console.log('[FoodScanScreen] Manual input submitted via modal:', descriptionFromModal);
+    // Call the function to send the description to the API
+    await sendDescriptionToApi(descriptionFromModal);
+    // No need to clear parent state, modal clears its own state
+  };
+
+  // Placeholder function to send description to API (to be implemented fully later)
+  const sendDescriptionToApi = async (description) => {
+    setIsLoading(true);
+    startLoadingAnimation(); // Use existing loading animation
+    setNoFoodFound(false);
+    setErrorOccured(false);
+    startTimeRef.current = Date.now();
+
+    try {
+      // Get the provider and model
+      const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
+      setSelectedProvider(provider);
+      
+      // Get the appropriate model based on the provider
+      const currentModel = getModel(provider, { 
+        selectedMode: 'fast', // Use fast mode for text-only analysis
+        selectedModel,
+        hasDrawing: false
+      });
+      
+      // Get API key from context
+      const apiKey = apiKeys?.[provider + 'ApiKey'];
+      
+      if (!apiKey) {
+        console.error(`API key not found for ${provider}.`);
+        Alert.alert('ERROR', 'Cloud functions are not active. Please contact support.');
+        setIsLoading(false);
+        stopLoadingAnimation();
+        return;
+      }
+      
+      console.log(`[FoodScanScreen] Using ${provider} with model ${currentModel} for text description`);
+      
+      // Create an instance of the Anthropic client
+      const anthropic = new Anthropic({ apiKey });
+      
+      // Create a text-only prompt for food description
+      const textPrompt = `You are a nutrition expert with deep knowledge of food and its nutritional content.
+A user has provided this text description: "${description}"
+
+Decide if the description is a food item or not. If it is not a food item, respond with "{No Food Found.}" and say nothing else. THIS IS IMPORTANT.
+
+Based on this description alone, please analyze the food and provide detailed nutritional information. Try to be specific about portion sizes and ingredients. If you can't determine exact values, provide reasonable estimates with proper margin of error indicators.
+
+Your response should ONLY be valid JSON with the following structure:
+{
+  "food": {
+    "name": "Name of the food",
+    "class": "Food category (e.g., Breakfast, Snack, Dessert)",
+    "type": "Specific type (e.g., Baked Good, Dairy, Protein)",
+    "calories": { 
+      "amount": "Number - Total calories",
+      "marginOfErrorPercent": "Number - Uncertainty percentage"
+    },
+    "proteins": {
+      "amount": "Number - Grams",
+      "marginOfErrorPercent": "Number"
+    },
+    "carbohydrates": {
+      "amount": "Number - Grams",
+      "marginOfErrorPercent": "Number"
+    },
+    "fats": {
+      "amount": "Number - Grams",
+      "marginOfErrorPercent": "Number"
+    },
+    "fiber": {
+      "amount": "Number - Grams",
+      "marginOfErrorPercent": "Number"
+    },
+    "sodium": {
+      "amount": "Number - Milligrams",
+      "marginOfErrorPercent": "Number"
+    },
+    "ingredients": [
+      {
+        "name": "String - Ingredient name",
+        "wikipediaLink": "String - Wikipedia URL",
+        "description": "String - Brief description"
+      }
+    ],
+    "details": {
+      "summary": "String - Brief description of the food",
+      "prepTime": "String - Estimated preparation time",
+      "servingSize": "String - Exact portion analyzed",
+      "wikipediaLink": "String - Wikipedia URL for the food item"
+    }
+  }
+}
+
+IMPORTANT RULES:
+1. ALL fields must be provided - no null values allowed
+2. Use higher marginOfErrorPercent (20-30%) when uncertain about values
+3. Include all ingredients mentioned in the description
+4. Base serving size on standard portions or what's specified in the description
+5. If the description is too vague or doesn't describe food, like "packing peanuts", respond with "{No Food Found.}" and nothing else.
+6. Provide reasonable estimates based on standard nutritional databases
+7. Include relevant Wikipedia links for ingredients and the main food item
+8. Be specific about serving sizes in the details section`;
+
+      // Send the request to Anthropic
+      const response = await anthropic.messages.create({
+        model: currentModel,
+        max_tokens: 4096,
+        temperature: 0.5,
+        system: textPrompt,
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "text",
+                text: description
+              }
+            ]
+          }
+        ]
+      });
+
+      // Get the response text
+      const responseText = response.content[0].text;
+      console.log('[FoodScanScreen] Anthropic response:', responseText);
+      
+      // Try to parse the JSON
+      try {
+        // Remove any non-JSON content if present
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (!jsonMatch) {
+          // Check specifically for the No Food Found response
+          if (responseText.trim() === '{No Food Found.}') {
+            console.log('[FoodScanScreen] Received No Food Found response.');
+            setNoFoodFound(true);
+            setImage(null); // Ensure no image is displayed
+            setShowPlaceholder(false); // Show the results area (which will now show the no food message)
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning); // Use warning haptic
+            return; // Stop processing here
+          }
+          throw new Error("No valid JSON found in response");
+        }
+        
+        const jsonString = jsonMatch[0];
+        
+        // Also check if the extracted JSON string itself is the No Food Found message
+        if (jsonString === '{No Food Found.}') {
+          console.log('[FoodScanScreen] Received No Food Found response after extraction.');
+          setNoFoodFound(true);
+          setImage(null);
+          setShowPlaceholder(false);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+          return;
+        }
+        
+        const parsedData = JSON.parse(jsonString);
+        console.log('[FoodScanScreen] Parsed nutritional data:', parsedData);
+        
+        // Add metadata and mark as a text-based request
+        parsedData._isProcessingComplete = true;
+        if (parsedData.details) {
+          parsedData.details._isTextDescription = true;
+        }
+        
+        // Update UI with the parsed data
+        setImage(null); // No image for manual entry
+        setShowPlaceholder(false); // Show results area
+        
+        // Process the response through the existing handler
+        await handleSuccessfulScan(parsedData, null, null, false, currentModel + '-text');
+      } catch (parseError) {
+        console.error("[FoodScanScreen] Error parsing JSON from Anthropic response:", parseError);
+        handleError(new Error('Failed to parse nutrition information from the description.'));
+      }
+    } catch (error) {
+      console.error("[FoodScanScreen] Error sending text description to API:", error);
+      handleError(error);
+    } finally {
+      setIsLoading(false);
+      stopLoadingAnimation();
+    }
+  };
+
   return (
     <ScrollView 
       ref={mainScrollViewRef}
@@ -3951,24 +4341,24 @@ const stopLoadingAnimation = () => {
       contentContainerStyle={styles.scrollContentContainer}
       onContentSizeChange={(w, h) => {
         contentHeight.current = h;
-        const show = h > scrollViewHeight.current;
+        const show = foodData && h > scrollViewHeight.current; // Check foodData
         setShowScrollToButtonIndicator(show);
         
         // Call the visibility check function when content size changes
         if (contentHeight.current && scrollViewHeight.current && buttonsYPosition.current) {
           const buttonBottom = buttonsYPosition.current.y + buttonsYPosition.current.height;
           const isVisible = buttonBottom < scrollViewHeight.current;
-          setShowScrollToButtonIndicator(!isVisible);
+          setShowScrollToButtonIndicator(foodData && !isVisible); // Check foodData
         }
       }}
       onLayout={(e) => {
         scrollViewHeight.current = e.nativeEvent.layout.height;
-        const show = contentHeight.current > e.nativeEvent.layout.height;
+        const show = foodData && contentHeight.current > e.nativeEvent.layout.height; // Check foodData
         setShowScrollToButtonIndicator(show);
       }}
       onScroll={({nativeEvent}) => {
         const scrollPosition = nativeEvent.contentOffset.y + nativeEvent.layoutMeasurement.height;
-        const show = scrollPosition < contentHeight.current - 150;
+        const show = foodData && scrollPosition < contentHeight.current - 150; // Check foodData
         setShowScrollToButtonIndicator(show);
       }}
       scrollEventThrottle={16}
@@ -4018,15 +4408,30 @@ const stopLoadingAnimation = () => {
             </Animated.View>
           ) : (
             <View style={styles.imageWrapper}>
-              <Animated.Image
-                source={{ 
-                  uri: typeof image === 'string' && !image.startsWith('data:image/jpeg;base64,')
-                    ? 'data:image/jpeg;base64,' + image
-                    : image 
-                }}
-                style={[styles.foodImage, { opacity: fadeAnimImage }]}
-              />
-              {hadBarcode && (
+              {/* Check if image exists AND it's not a text description result */}
+              {image && (!foodData?.details?._isTextDescription) ? (
+                <Animated.Image
+                  source={{ 
+                    uri: typeof image === 'string' && !image.startsWith('data:image/jpeg;base64,')
+                      ? 'data:image/jpeg;base64,' + image
+                      : image 
+                  }}
+                  style={[styles.foodImage, { opacity: fadeAnimImage }]}
+                />
+              ) : (
+                <Animated.View style={[styles.placeholderContainer, { opacity: fadeAnimImage }]}>
+                  <Ionicons 
+                    name="document-text-outline" 
+                    size={80 * scale} // Make icon larger for main view
+                    color={colorScheme === 'dark' ? '#444' : '#ccc'} 
+                  />
+                  <Text style={[styles.placeholderText, {marginTop: 10 * scale}]}>
+                    Manual Entry
+                  </Text>
+                </Animated.View>
+              )}
+              {/* Only show barcode icon if there was an actual image scan */}
+              {hadBarcode && image && (!foodData?.details?._isTextDescription) && (
                 <TouchableOpacity 
                   style={styles.barcodeIconContainer}
                   onPress={() => {
@@ -4708,7 +5113,7 @@ const stopLoadingAnimation = () => {
       />
 
       {/* Add this at the end of the ScrollView */}
-      {showScrollToButtonIndicator && (
+      {showScrollToButtonIndicator && foodData && ( // Also check foodData here for rendering
         <Animated.View style={styles.scrollToButtonIndicator}>
           <TouchableOpacity 
             onPress={() => {
@@ -4738,6 +5143,126 @@ const stopLoadingAnimation = () => {
           startChipPulseAnimation();
         }}
       />
+
+      {isOverloadedError && (
+        <BlurView
+          intensity={30}
+          tint={colorScheme === 'dark' ? 'dark' : 'light'}
+          style={[
+            StyleSheet.absoluteFillObject,
+            styles.overlayContainer,
+            {
+              position: 'absolute',
+              width: width,
+              height: height, 
+              top: 0,
+              left: 0,
+              zIndex: 1001,
+            }
+          ]}
+        >
+          <Animated.View
+            style={[
+              styles.errorCard,
+              { opacity: errorFadeAnim }
+            ]}
+          >
+            <BlurView
+              intensity={50}
+              tint={colorScheme === 'dark' ? 'dark' : 'light'}
+              style={styles.errorCardContent}
+            >
+              <MaterialCommunityIcons 
+                name={errorType === 'overloaded' ? 'server-network-off' : 'alert-circle-outline'}
+                size={40} 
+                color={colorScheme === 'dark' ? '#FF453A' : '#FF3B30'} 
+                style={styles.errorIcon}
+              />
+              <Text style={[
+                styles.errorTitle,
+                { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+              ]}>
+                {errorType === 'overloaded' ? 'High Demand' : 'Error Occurred'}
+              </Text>
+              <Text style={[
+                styles.errorMessage,
+                { color: colorScheme === 'dark' ? '#AAAAAA' : '#666666' }
+              ]}>
+                {errorType === 'overloaded'
+                  ? "Our servers are experiencing high demand right now. Please wait a moment and try again."
+                  : "Something went wrong while processing your image. Please try again."}
+              </Text>
+              <View style={styles.errorButtonsContainer}>
+                <TouchableOpacity 
+                  style={[styles.retryButton, styles.errorButton]}
+                  onPress={() => {
+                    Animated.timing(errorFadeAnim, {
+                      toValue: 0,
+                      duration: 300,
+                      useNativeDriver: true,
+                    }).start(() => {
+                      setIsOverloadedError(false);
+                      setErrorType(null);
+                    });
+                  }}
+                >
+                  <BlurView
+                    intensity={60}
+                    tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                    style={styles.retryButtonBlur}
+                  >
+                    <View style={styles.retryButtonContent}>
+                      <Icon 
+                        name="close" 
+                        size={20} 
+                        color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} 
+                      />
+                      <Text style={[
+                        styles.retryButtonText,
+                        { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                      ]}>
+                        Cancel
+                      </Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+
+                <TouchableOpacity 
+                  style={[styles.retryButton, styles.errorButton]}
+                  onPress={handleRetry}
+                >
+                  <BlurView
+                    intensity={60}
+                    tint={colorScheme === 'dark' ? 'dark' : 'light'}
+                    style={styles.retryButtonBlur}
+                  >
+                    <View style={styles.retryButtonContent}>
+                      <Icon 
+                        name="refresh" 
+                        size={20} 
+                        color={colorScheme === 'dark' ? '#FFFFFF' : '#000000'} 
+                      />
+                      <Text style={[
+                        styles.retryButtonText,
+                        { color: colorScheme === 'dark' ? '#FFFFFF' : '#000000' }
+                      ]}>
+                        Try Again
+                      </Text>
+                    </View>
+                  </BlurView>
+                </TouchableOpacity>
+              </View>
+            </BlurView>
+          </Animated.View>
+        </BlurView>
+      )}
+
+      {/* Use the new ManualInputModal component */}
+      <ManualInputModal
+        visible={manualInputModalVisible}
+        onClose={() => setManualInputModalVisible(false)}
+        onSubmit={handleManualInputSubmit}
+      />
     </ScrollView>
   );
 };
@@ -4762,13 +5287,55 @@ const scale = Math.min(scaleWidth, scaleHeight);
       // Remove flex: 1 to allow content-based sizing
       paddingBottom: 20 * scale,
     },
-    buttonContainer: {
-      flexDirection: 'row',
-      justifyContent: 'space-around',
+    // Use a column layout for the buttons area
+    buttonsColumnContainer: {
+      flexDirection: 'column',
+      alignItems: 'center', // Center items horizontally
       paddingHorizontal: 20 * scale,
       paddingVertical: 10 * scale,
-      marginTop: 'auto',
+      marginTop: 'auto', // Pushes buttons to the bottom
       backgroundColor: colorScheme === 'dark' ? '#000000' : '#FFFFFF',
+      gap: 15 * scale, // Add gap between the button row and the manual button
+    },
+    // Row layout for the top two buttons
+    buttonContainer: {
+      flexDirection: 'row',
+      justifyContent: 'space-around', // Keep space around for the two buttons
+      width: '100%', // Ensure the row takes full width
+    },
+    // Container for the manual input button to center it
+    manualInputButtonContainer: {
+      width: '80%', // Make the button wider but centered
+      alignSelf: 'center',
+    },
+    // Style for the manual input button itself
+    manualInputButton: {
+      borderRadius: 25 * scale, // Rounded pill shape
+      borderWidth: 1 * scale,
+      borderColor: colorScheme === 'dark' ? '#333' : '#bbb',
+      padding:8 * scale,
+      paddingHorizontal: 20 * scale,
+      shadowColor: colorScheme === 'dark' ? '#000' : '#AAA',
+      shadowOffset: { width: 0, height: 2 * scale },
+      shadowOpacity: 0.8 * scale,
+      shadowRadius: 15 * scale,
+      elevation: 1,
+    },
+    // Content layout for the manual input button
+    manualInputButtonContent: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'center', // Center content within the button
+    },
+    manualInputButtonIcon: {
+      marginRight: 10 * scale,
+    },
+    // Text style for the manual input button
+    manualInputButtonText: {
+      color: colorScheme === 'dark' ? '#d8d8d8' : '#333',
+      textAlign: 'center',
+      fontSize: 16 * scale,
+      fontWeight: '500',
     },
     buttonContainerNoFood: {
       marginBottom: -80 * scale, // Add bottom margin when no food is present
@@ -4875,17 +5442,49 @@ const scale = Math.min(scaleWidth, scaleHeight);
     inputModalView: {
       margin: 20 * scale,
       backgroundColor: colorScheme === 'dark' ? '#161618' : '#FFFFFF',
-      borderRadius: 40 * scale,
-      padding: 25 * scale,
+      borderRadius: 25 * scale, // Slightly less rounded than before
+      padding: 20 * scale,
       alignItems: 'center',
       shadowColor: colorScheme === 'dark' ? '#000' : '#999',
       shadowOffset: {
         width: 0,
         height: 1,
       },
-      shadowOpacity: 100,
-      shadowRadius: 90 * scale,
-      elevation: 100,
+      shadowOpacity: 0.5, // Reduced shadow
+      shadowRadius: 10 * scale,
+      elevation: 5,
+      width: '90%', // Make modal wider
+      maxWidth: 500, // Max width
+    },
+    inputModalTitle: {
+      fontSize: 18 * scale,
+      fontWeight: '600',
+      color: colorScheme === 'dark' ? '#e9e9e9' : '#333333',
+      marginBottom: 8 * scale,
+    },
+    // Multiline input specific style
+    manualInput: {
+      height: 100 * scale, // Taller for multiline
+      marginVertical: 12 * scale,
+      borderWidth: 1,
+      padding: 10 * scale,
+      width: '100%', // Use full width of modal
+      borderColor: colorScheme === 'dark' ? '#4a4a4a' : '#CCCCCC',
+      color: colorScheme === 'dark' ? '#c5c5c5' : '#333333',
+      borderRadius: 10 * scale, // Less rounded input
+      textAlignVertical: 'top', // Start text from the top
+      backgroundColor: colorScheme === 'dark' ? '#222' : '#fdfdfd', // Slightly different background
+    },
+    // Style for the Cancel button in the manual input modal
+    cancelModalButton: {
+      marginTop: 10 * scale,
+      padding: 10 * scale,
+    },
+    cancelModalButtonText: {
+      color: colorScheme === 'dark' ? '#aaa' : '#666',
+      fontSize: 14 * scale,
+      fontWeight: '500',
+      textAlign: 'center',
     },
     input: {
       height: 40 * scale,

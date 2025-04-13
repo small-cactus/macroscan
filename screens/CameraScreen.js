@@ -29,6 +29,7 @@ const { width, height } = Dimensions.get('window');
 const MODE_LABELS = {
   fast: 'Fast Mode',
   accurate: 'Accurate Mode',
+  search: 'Deep Search',
 };
 
 export default function CameraScreen() {
@@ -491,24 +492,35 @@ export default function CameraScreen() {
 
   const handleModePress = async () => {
     const currentMode = selectedMode;
-    const oppositeMode = currentMode === 'fast' ? 'accurate' : 'fast';
-    
+    const otherModes = Object.keys(MODE_LABELS).filter(mode => mode !== currentMode);
+
     Alert.alert(
       'Scan Mode',
       `Currently using ${MODE_LABELS[currentMode]}.\n\n` +
       (currentMode === 'fast' 
         ? 'Fast Mode provides quick results and is great for packaged foods.'
-        : 'Accurate Mode uses detailed analysis and is best for complex meals.'),
+        : currentMode === 'accurate'
+          ? 'Accurate Mode uses detailed analysis and is best for complex meals.'
+          : 'Deep Search uses web search for enhanced results (Beta).'),
       [
         { text: 'Cancel', style: 'cancel' },
-        { 
-          text: `Switch to ${MODE_LABELS[oppositeMode]}`,
+        ...otherModes.map(mode => ({
+          text: `Switch to ${MODE_LABELS[mode]}`,
           onPress: async () => {
-            await AsyncStorage.setItem('selectedMode', oppositeMode);
-            crossfadeChipText(oppositeMode);
+            if (mode === 'accurate' || mode === 'search') {
+              // Example: Check if user has premium access for accurate/search modes
+              // const hasPremium = await checkPremiumStatus(); // Replace with actual check
+              // if (!hasPremium) {
+              //   Alert.alert('Premium Feature', `${MODE_LABELS[mode]} requires a premium subscription.`);
+              //   return;
+              // }
+            }
+            
+            await AsyncStorage.setItem('selectedMode', mode);
+            crossfadeChipText(mode);
             Haptics.selectionAsync();
           }
-        }
+        }))
       ]
     );
   };
@@ -888,11 +900,16 @@ export default function CameraScreen() {
             <TouchableOpacity style={styles.flashButton} onPress={handleModePress}>
               <BlurView intensity={30} style={[
                 styles.blurViewTitle,
-                selectedMode === 'accurate' && { backgroundColor: 'rgba(25, 72, 110, 0.3)' }
+                selectedMode === 'accurate' && { backgroundColor: 'rgba(25, 72, 110, 0.3)' },
+                selectedMode === 'search' && { backgroundColor: 'rgba(88, 45, 155, 0.4)' }
               ]}>
                 <View style={styles.chipContent}>
                   <Ionicons 
-                    name={selectedMode === 'fast' ? 'flash' : 'shield-checkmark'} 
+                    name={
+                      selectedMode === 'fast' ? 'flash' : 
+                      selectedMode === 'accurate' ? 'shield-checkmark' : 
+                      'search'
+                    } 
                     size={24} 
                     color="#fff" 
                     style={{ marginRight: 8 }}

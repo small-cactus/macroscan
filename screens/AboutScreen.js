@@ -32,64 +32,32 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
 
 const CHANGELOG = [
   {
-    title: 'Circle to Scan',
-    details:
-      'Draw a circle around specific foods in your photos to scan just that portion. This helps get more accurate results by focusing only on the food you want to analyze.',
-    icon: 'scan-circle-outline',
+    title: 'Redesigned App',
+    details: 'Major app redesign focusing on fluid animations and strategic use of color to enhance user experience.',
+    icon: 'brush-outline',
     iconLibrary: 'Ionicons',
-    color: '#000',
+    color: '#FF3B30', // Example color, adjust if needed
+    isBeta: false,
+    isOffByDefault: false,
+  },
+  {
+    title: 'Deep Search Mode',
+    details: 'Introduced Deep Search mode, which queries multiple websites, government food databases, and other popular food apps for comprehensive nutritional information beyond our standard database.',
+    icon: 'cloud-search-outline',
+    iconLibrary: 'MaterialCommunityIcons',
+    color: '#5E5CE6', // Example color, adjust if needed
     isBeta: true,
     isOffByDefault: true,
   },
   {
-    title: 'Barcode Scanning',
-    details: 'Added barcode scanning capability to photo mode for quick and accurate food identification.',
-    icon: 'barcode-outline',
+    title: 'Usage Streaks',
+    details: 'Track your consistent app usage with the new Streaks feature. Stay motivated by building and maintaining your daily scan streak!',
+    icon: 'flame-outline',
     iconLibrary: 'Ionicons',
-    color: '#30D158',
+    color: '#FF9500', // Example color, adjust if needed
     isBeta: false,
+    isOffByDefault: false,
   },
-  {
-    title: 'History Search & Filters', 
-    details: 'Added advanced search filters and search bar functionality to quickly find specific scans in your history.',
-    icon: 'search',
-    iconLibrary: 'Ionicons',
-    color: '#0A84FF',
-    isBeta: false,
-  },
-  {
-    title: 'Daily Limit Tracking UI',
-    details: 'New visual feedback when approaching or exceeding daily limits, with clear warnings and blocked actions when over limit.',
-    icon: 'stats-chart',
-    iconLibrary: 'Ionicons',
-    color: '#FFD60A',
-    isBeta: true,
-  },
-  {
-    title: 'Free Accurate Scans',
-    details: 'Free users now get 1 high-accuracy scan per day, with clear counter and upgrade reminders.',
-    icon: 'star',
-    iconLibrary: 'Ionicons',
-    color: '#BF5AF2',
-    isBeta: false,
-    isOffByDefault: true,
-  },
-  {
-    title: 'Home Screen Redesign',
-    details: 'Complete overhaul of scanning interface with mode toggles, quick settings, and visual guides for first-time users.',
-    icon: 'grid',
-    iconLibrary: 'Ionicons',
-    color: '#FF9F0A',
-    isBeta: false,
-  },
-  {
-    title: 'Responsive UI Improvements',
-    details: 'Enhanced layout adapts perfectly to all screen sizes from small phones to large tablets.',
-    icon: 'devices',
-    iconLibrary: 'MaterialIcons',
-    color: '#64D2FF',
-    isBeta: false,
-  }
 ];
 
 const isIphoneSE = () => {
@@ -186,7 +154,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.6.0 (104)</Text>
+            <Text style={styles.version}>Version 1.6.1 (113)</Text>
             <View style={styles.betaContainer}>
               {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>
@@ -204,7 +172,7 @@ const AboutScreen = () => {
             </TouchableOpacity>
           </View>
 
-          <Text style={styles.changelogHeader}>Changelog v1.6.0</Text>
+          <Text style={styles.changelogHeader}>Changelog v1.6.1</Text>
           <View style={styles.betaContainer}>
               <Text style={styles.betaTag}>Big Update</Text>
             </View>

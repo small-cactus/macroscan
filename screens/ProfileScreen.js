@@ -64,6 +64,7 @@ const ProfileScreen = () => {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState('');
   const [streakData, setStreakData] = useState([]);
+  const [isContinuable, setIsContinuable] = useState(false);
   const [scanHistory, setScanHistory] = useState([]);
   const [stats, setStats] = useState({
     totalScans: 0,
@@ -167,6 +168,8 @@ const ProfileScreen = () => {
       let currentStreak = 0;
       const today = new Date();
       today.setHours(0, 0, 0, 0);
+      const yesterday = new Date(today);
+      yesterday.setDate(today.getDate() - 1);
 
       const scannedDays = new Set();
       history.forEach(item => {
@@ -177,13 +180,38 @@ const ProfileScreen = () => {
         }
       });
 
+      const scannedToday = scannedDays.has(today.getTime());
+      const scannedYesterday = scannedDays.has(yesterday.getTime());
+
       for (let i = 0; ; i++) {
         const checkDate = new Date(today);
         checkDate.setDate(today.getDate() - i);
         if (scannedDays.has(checkDate.getTime())) {
           currentStreak++;
-        } else break;
+        } else {
+          // If we didn't scan today, but the loop breaks on the first check (i=0),
+          // it means the streak ended *before* today.
+          // We only count the streak up to yesterday in this case.
+          if (!scannedToday && i === 0) {
+             // Check streak ending yesterday
+             currentStreak = 0; // Reset streak count
+             for (let j = 1; ; j++) { // Start check from yesterday (j=1)
+                const previousDay = new Date(today);
+                previousDay.setDate(today.getDate() - j);
+                if (scannedDays.has(previousDay.getTime())) {
+                   currentStreak++;
+                } else {
+                   break; // Streak ended before yesterday
+                }
+             }
+          }
+          break; // Break the outer loop
+        }
       }
+
+      // Determine if the streak is continuable (scanned yesterday, not today, and had a streak)
+      const canContinue = !scannedToday && scannedYesterday && currentStreak > 0;
+      setIsContinuable(canContinue);
 
       setStreakData(Array.from({ length: 7 }, (_, i) => ({
         day: i + 1,
@@ -333,7 +361,7 @@ const ProfileScreen = () => {
               setTimeout(() => {
                 navigation.reset({
                   index: 0,
-                  routes: [{ name: 'WelcomeScreen' }], // Assuming 'Goodbye' screen exists
+                  routes: [{ name: 'Welcome' }],
                 });
               }, 100);
 
@@ -433,6 +461,7 @@ const ProfileScreen = () => {
                   <StreakVisualization 
                     progressDays={streakData}
                     isDark={isDark}
+                    isContinuable={isContinuable}
                   />
                 ) : (
                   <EnhancedStreakVisualization 

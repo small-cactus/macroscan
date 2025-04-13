@@ -105,7 +105,7 @@ const SettingsScreen = () => {
     // await AsyncStorage.removeItem('@has_seen_whats_new_1_6_0');
     // await AsyncStorage.removeItem('@has_seen_mode_tooltip');
     // await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
-    await Superwall.shared.register('fortune');
+    // await Superwall.shared.register('fortune');
     navigation.navigate(navigateTo);
   };
 

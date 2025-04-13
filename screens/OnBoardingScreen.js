@@ -1490,7 +1490,7 @@ const OnboardingScreen = () => {
 
   const showPaywall = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await Superwall.shared.register('onboardingV2');
+    await Superwall.shared.register('fortune');
     navigation.navigate('SignUp');
   };
 
@@ -4025,7 +4025,7 @@ const calculateGoals = (data) => {
             disabled={isContinueDisabled}
           >
             <Text style={styles.actionButtonText}>
-              {currentIndex === filteredSteps.length - 1 ? 'Get Started' : 'Continue'}
+              {currentIndex === filteredSteps.length - 1 ? 'Start Scanning' : 'Continue'}
             </Text>
           </TouchableOpacity>
         </View>
