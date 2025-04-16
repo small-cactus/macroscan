@@ -64,6 +64,7 @@ import MultiFoodScanScreen from './screens/MultiFoodScanScreen';
 import FoodDetailsScreen from './screens/FoodDetailsScreen';
 import SearchScreen from './screens/SearchScreen';
 import ProfileScreen from './screens/ProfileScreen';
+import ImagePickerTestScreen from './screens/ImagePickerTestScreen';
 
 const { width, height } = Dimensions.get('window');
 
@@ -408,6 +409,11 @@ function App() {
                 <Stack.Screen
                   name="FoodDetailsScreen"
                   component={FoodDetailsScreen}
+                  options={{ headerShown: false }}
+                />
+                <Stack.Screen
+                  name="ImagePickerTestScreen"
+                  component={ImagePickerTestScreen}
                   options={{ headerShown: false }}
                 />
               </Stack.Navigator>

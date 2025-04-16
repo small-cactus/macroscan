@@ -965,7 +965,7 @@ const stopLoadingAnimation = () => {
 
     try {
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: 'Images',
         allowsEditing: false,
         quality: 0.8,
       });

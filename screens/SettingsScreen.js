@@ -57,6 +57,11 @@ const SettingsScreen = () => {
       symbol: "hammer.fill"
     },
     {
+      title: "Image Picker Test",
+      navigateTo: "ImagePickerTestScreen",
+      symbol: "camera.fill"
+    },
+    {
       title: "Help and Support",
       navigateTo: "SupportScreen",
       symbol: "questionmark.circle.fill"
