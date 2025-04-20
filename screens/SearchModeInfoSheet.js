@@ -6,7 +6,7 @@
 // 3. It takes a long time sometimes
 // 4. It is in beta so results may not be good all the time
 
-import React, { useEffect, useRef, useCallback } from 'react';
+import React, { useEffect, useRef, useCallback, useState } from 'react';
 import { 
   View, 
   Text, 
@@ -16,7 +16,9 @@ import {
   Modal,
   SafeAreaView,
   Platform,
-  NativeModules
+  NativeModules,
+  FlatList,
+  ScrollView
 } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -52,6 +54,8 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
   const insets = useSafeAreaInsets();
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
+  const scrollRef = useRef(null);
+  const [activePage, setActivePage] = useState(0);
   
   // Set iOS display to 120Hz for animations if available
   useEffect(() => {
@@ -75,6 +79,9 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
   const overlayOpacity = useSharedValue(0);
   const blurAnim = useSharedValue(0);
   const panY = useSharedValue(0);
+  
+  // For pagination dot animation
+  const dotPosition = useSharedValue(0);
   
   // Track blur intensity in state
   const [blurIntensity, setBlurIntensity] = React.useState(0);
@@ -166,6 +173,23 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
     }
   }, [visible, slideAnim, overlayOpacity, blurAnim, panY]);
 
+  // Auto-scroll to second page after 5 seconds
+  useEffect(() => {
+    let autoScrollTimer;
+    
+    if (visible && activePage === 0) {
+      autoScrollTimer = setTimeout(() => {
+        handlePageChange(1);
+      }, 5000);
+    }
+    
+    return () => {
+      if (autoScrollTimer) {
+        clearTimeout(autoScrollTimer);
+      }
+    };
+  }, [visible, activePage]);
+
   // Gesture handler with Reanimated
   const gestureHandler = useAnimatedGestureHandler({
     onStart: (_, ctx) => {
@@ -228,6 +252,81 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
   const secondaryTextColor = isDark ? '#BBBBBB' : '#666666';
   const accentColor = '#007AFF';
   const featureIconBg = isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.05)';
+
+  // Feature data organized by pages
+  const featurePages = [
+    // Page 1: Features
+    [
+      {
+        icon: "globe",
+        title: "Deep Web Search",
+        description: "We'll search every website for the exact nutrition info for your food."
+      },
+      {
+        icon: "library",
+        title: "Multiple Types of Sources",
+        description: "We combine data from food databases, websites, and government sources."
+      },
+      {
+        icon: "information-circle",
+        title: "Beta Feature",
+        description: "This feature is extremely expensive for me to run. It may take a while to process."
+      }
+    ],
+    // Page 2: Good For / Bad For
+    [
+      {
+        icon: "checkmark-circle",
+        title: "Good For",
+        description: "Promotional foods, limited time foods, and anything well documented but recent."
+      },
+      {
+        icon: "close-circle",
+        title: "Not Ideal For",
+        description: "Home made meals and custom creations. Use the standard scanning tools for these."
+      },
+      {
+        icon: "star",
+        title: "Best Results",
+        description: "The more specific your image is, the better results you'll get from our search."
+      }
+    ]
+  ];
+
+  // Page width for scrolling calculations
+  const pageWidth = width * 0.9;
+
+  // Handle page change
+  const handlePageChange = (pageIndex) => {
+    setActivePage(pageIndex);
+    // Animate the dot position
+    dotPosition.value = withSpring(pageIndex, {
+      damping: 20,
+      stiffness: 100,
+      mass: 1,
+    });
+    // Scroll to the page
+    scrollRef.current?.scrollTo({
+      x: pageIndex * width,
+      animated: true,
+    });
+  };
+
+  // Handle scroll to update active page
+  const handleScroll = (event) => {
+    const contentOffsetX = event.nativeEvent.contentOffset.x;
+    const position = contentOffsetX / width;
+    
+    // Update dotPosition for smooth animation during scrolling
+    dotPosition.value = position;
+    
+    // Only update active page and trigger haptic when crossing a threshold
+    const pageIndex = Math.round(position);
+    if (pageIndex !== activePage) {
+      setActivePage(pageIndex);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+    }
+  };
 
   return (
     <Modal
@@ -296,7 +395,7 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
                     <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad3)" />
                     <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad4)" />
                   </Svg>
-                  <Ionicons name="search" size={36} color="#FFFFFF" style={styles.iconOverlay} />
+                  <Ionicons name="search" size={48} color="#FFFFFF" style={styles.iconOverlay} />
                 </View>
                 <View style={[styles.betaBadge, { backgroundColor: isDark ? '#000' : '#E5E5EA' }]}>
                   <Text style={styles.betaText}>BETA</Text>
@@ -309,34 +408,52 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
               {/* Subtitle */}
               <Text style={[styles.subtitle, { color: secondaryTextColor }]}>Automatically find nutrition info for your food from across the web.</Text>
 
-              {/* Feature list */}
-              <View style={styles.featureList}>
-                <FeatureItem 
-                  icon="globe" 
-                  title="Deep Web Search" 
-                  description="We'll search every website for the best nutrition info about your food."
-                  iconBg={featureIconBg}
-                  textColor={textColor}
-                  secondaryTextColor={secondaryTextColor}
-                />
+              {/* Feature list - Horizontal Scrollable */}
+              <View style={styles.featureListContainer}>
+                <ScrollView
+                  ref={scrollRef}
+                  horizontal
+                  pagingEnabled
+                  showsHorizontalScrollIndicator={false}
+                  onScroll={handleScroll}
+                  scrollEventThrottle={16}
+                  decelerationRate="fast"
+                  snapToInterval={width}
+                  snapToAlignment="center"
+                  contentContainerStyle={styles.scrollContent}
+                >
+                  {featurePages.map((page, pageIndex) => (
+                    <View key={`page-${pageIndex}`} style={styles.featurePage}>
+                      {page.map((feature, index) => (
+                        <FeatureItem
+                          key={`feature-${pageIndex}-${index}`}
+                          icon={feature.icon}
+                          title={feature.title}
+                          description={feature.description}
+                          iconBg={featureIconBg}
+                          textColor={textColor}
+                          secondaryTextColor={secondaryTextColor}
+                        />
+                      ))}
+                    </View>
+                  ))}
+                </ScrollView>
                 
-                <FeatureItem 
-                  icon="library" 
-                  title="Multiple Types of Sources" 
-                  description="We combine data from food databases, websites, and government sources."
-                  iconBg={featureIconBg}
-                  textColor={textColor}
-                  secondaryTextColor={secondaryTextColor}
-                />
-                
-                <FeatureItem 
-                  icon="information-circle" 
-                  title="Beta Feature" 
-                  description="This feature is still in testing. Results may vary and take much longer to process."
-                  iconBg={featureIconBg}
-                  textColor={textColor}
-                  secondaryTextColor={secondaryTextColor}
-                />
+                {/* Pagination Dots */}
+                <View style={styles.paginationContainer}>
+                  {featurePages.map((_, index) => {
+                    return (
+                      <PaginationDot
+                        key={`dot-${index}`}
+                        index={index}
+                        dotPosition={dotPosition}
+                        accentColor={secondaryTextColor}
+                        secondaryTextColor={secondaryTextColor}
+                        onPress={() => handlePageChange(index)}
+                      />
+                    );
+                  })}
+                </View>
               </View>
 
               {/* Action buttons */}
@@ -376,6 +493,48 @@ const FeatureItem = ({ icon, title, description, iconBg, textColor, secondaryTex
     </View>
   </View>
 );
+
+// Helper component for pagination dots
+const PaginationDot = ({ index, dotPosition, accentColor, secondaryTextColor, onPress }) => {
+  // Create animated styles outside the render function
+  const animatedDotStyle = useAnimatedStyle(() => {
+    const dotWidth = interpolate(
+      dotPosition.value,
+      [index - 1, index, index + 1],
+      [width * 0.02, width * 0.05, width * 0.02],
+      Extrapolate.CLAMP
+    );
+    
+    const opacity = interpolate(
+      dotPosition.value,
+      [index - 1, index, index + 1],
+      [0.5, 1, 0.5],
+      Extrapolate.CLAMP
+    );
+    
+    return {
+      width: dotWidth,
+      opacity,
+      backgroundColor: index === Math.round(dotPosition.value) 
+        ? accentColor 
+        : secondaryTextColor,
+    };
+  });
+  
+  return (
+    <TouchableOpacity
+      onPress={onPress}
+      activeOpacity={0.8}
+    >
+      <Animated.View
+        style={[
+          styles.paginationDot,
+          animatedDotStyle
+        ]}
+      />
+    </TouchableOpacity>
+  );
+};
 
 const styles = StyleSheet.create({
   modalContainer: {
@@ -452,16 +611,24 @@ const styles = StyleSheet.create({
     lineHeight: height * 0.03,
     paddingHorizontal: 16 * scale,
   },
-  featureList: {
+  featureListContainer: {
     width: '100%',
-    marginBottom: height * 0.05,
+    marginBottom: height * 0.03,
+  },
+  scrollContent: {
+    paddingHorizontal: 0,
+  },
+  featurePage: {
+    width: width,
+    paddingVertical: height * 0.02,
+    paddingHorizontal: width * 0.05,
   },
   featureItem: {
     flexDirection: 'row',
     alignItems: 'flex-start',
     marginBottom: height * 0.03,
     width: '100%',
-    paddingHorizontal: width * 0.05,
+    paddingHorizontal: width * 0.02,
   },
   featureIconContainer: {
     width: width * 0.11,
@@ -511,6 +678,22 @@ const styles = StyleSheet.create({
   secondaryButtonText: {
     fontSize: width * 0.04,
     fontWeight: '500',
+  },
+  paginationContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    width: '100%',
+    position: 'absolute',
+    bottom: height * 0.01,
+    zIndex: 10,
+    height: 20 * scale,
+  },
+  paginationDot: {
+    height: 8 * scale,
+    borderRadius: 4 * scale,
+    marginHorizontal: 4 * scale,
+    backgroundColor: '#000',
   },
 });
 

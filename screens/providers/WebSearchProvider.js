@@ -7,6 +7,87 @@ import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { EventRegister } from 'react-native-event-listeners';
 
+// --- START HELPER FUNCTIONS ---
+
+/**
+ * Decodes basic HTML entities.
+ * @param {string} text Text with potential HTML entities.
+ * @returns {string} Text with entities decoded.
+ */
+const decodeHtmlEntities = (text) => {
+  if (!text) return '';
+  // Basic decoding for common entities
+  return text.replace(/&amp;/g, '&')
+             .replace(/&lt;/g, '<')
+             .replace(/&gt;/g, '>')
+             .replace(/&quot;/g, '"')
+             .replace(/&#39;/g, "'")
+             .replace(/&nbsp;/g, ' ');
+};
+
+/**
+ * Extracts plain text from raw HTML, cleans it, and limits its length.
+ * @param {string} html Raw HTML string.
+ * @param {number} maxLength Maximum length of the returned text.
+ * @returns {string} Cleaned plain text content.
+ */
+const extractAndCleanText = (html, maxLength = 15000) => {
+  if (!html) return '';
+  try {
+    // 1. Remove script and style blocks
+    let text = html.replace(/<script[^>]*>.*?<\/script>/gis, ' ');
+    text = text.replace(/<style[^>]*>.*?<\/style>/gis, ' ');
+    // 2. Remove remaining HTML tags - replace with space
+    text = text.replace(/<[^>]*>/g, ' ');
+    // 3. Decode HTML entities
+    text = decodeHtmlEntities(text);
+    // 4. Normalize whitespace
+    text = text.replace(/\s+/g, ' ').trim();
+    // 5. Limit length
+    return text.substring(0, maxLength);
+  } catch (error) {
+    console.error('Error extracting text from HTML:', error);
+    return '';
+  }
+};
+
+/**
+ * Uses the passed scrapeUrl function (from WebScraperContext) to fetch rendered HTML.
+ * @param {string} url The URL to scrape.
+ * @param {function} scrapeUrl The function provided by useWebScraper().scrapeUrl.
+ * @returns {Promise<string|null>} Rendered HTML content or null on error/failure.
+ */
+const fetchUrlWithWebView = async (url, scrapeUrl) => {
+  if (!scrapeUrl || typeof scrapeUrl !== 'function') {
+    console.error('fetchUrlWithWebView: scrapeUrl function is missing or invalid.');
+    throw new Error('Scraping function not available.');
+  }
+  if (!url || typeof url !== 'string') {
+      console.error('fetchUrlWithWebView: Invalid URL provided.');
+      throw new Error('Invalid URL for scraping.');
+  }
+
+  // Basic check for non-HTTP URLs
+  if (!url.startsWith('http')) {
+     console.warn(`fetchUrlWithWebView: Skipping non-HTTP URL: ${url}`);
+     return null;
+  }
+
+  try {
+    console.log(`fetchUrlWithWebView: Requesting scrape for ${url}`);
+    const renderedHtml = await scrapeUrl(url);
+    console.log(`fetchUrlWithWebView: Received HTML (${renderedHtml ? renderedHtml.length : 'null'} bytes) for ${url}`);
+    // Ensure empty string is treated as null/failure for consistency
+    return renderedHtml && renderedHtml.length > 0 ? renderedHtml : null;
+  } catch (error) {
+    console.error(`fetchUrlWithWebView: Error scraping ${url}:`, error.message);
+    // Return null to indicate failure, allow caller to handle
+    return null;
+  }
+};
+
+// --- END HELPER FUNCTIONS ---
+
 // Throttle helper function to limit event emission rate
 const throttle = (func, limit) => {
   let lastFunc;
@@ -952,85 +1033,12 @@ const storeSearchData = async (queries = [], results = []) => {
   }
 };
 
-// --- NEW HELPER FUNCTIONS for HTML Processing ---
-
-/**
- * Decodes basic HTML entities.
- * @param {string} text Text with potential HTML entities.
- * @returns {string} Text with entities decoded.
- */
-const decodeHtmlEntities = (text) => {
-  if (!text) return '';
-  // Basic decoding for common entities
-  return text.replace(/&amp;/g, '&')
-             .replace(/&lt;/g, '<')
-             .replace(/&gt;/g, '>')
-             .replace(/&quot;/g, '"')
-             .replace(/&#39;/g, "'")
-             .replace(/&nbsp;/g, ' ');
-};
-
-/**
- * Extracts plain text from raw HTML, cleans it, and limits its length.
- * @param {string} html Raw HTML string.
- * @param {number} maxLength Maximum length of the returned text.
- * @returns {string} Cleaned plain text content.
- */
-const extractAndCleanText = (html, maxLength = 15000) => {
-  if (!html) return '';
-  try {
-    // 1. Remove script and style blocks
-    let text = html.replace(/<script[^>]*>.*?<\/script>/gis, ' '); // Added space for removal
-    text = text.replace(/<style[^>]*>.*?<\/style>/gis, ' '); // Added space for removal
-    // 2. Remove remaining HTML tags - replace with space to avoid merging words
-    text = text.replace(/<[^>]*>/g, ' ');
-    // 3. Decode HTML entities
-    text = decodeHtmlEntities(text);
-    // 4. Normalize whitespace (replace multiple spaces/newlines with a single space)
-    text = text.replace(/\s+/g, ' ').trim();
-    // 5. Limit length
-    return text.substring(0, maxLength);
-  } catch (error) {
-    console.error('Error extracting text from HTML:', error);
-    return ''; // Return empty string on error
-  }
-};
-
 /**
  * Uses the passed scrapeUrl function (from WebScraperContext) to fetch rendered HTML.
  * @param {string} url The URL to scrape.
  * @param {function} scrapeUrl The function provided by useWebScraper().scrapeUrl.
- * @returns {Promise<string|null>} Rendered HTML content or null on error.
+ * @returns {Promise<string|null>} Rendered HTML content or null on error/failure.
  */
-const fetchUrlWithWebView = async (url, scrapeUrl) => {
-  if (!scrapeUrl || typeof scrapeUrl !== 'function') {
-    console.error('fetchUrlWithWebView: scrapeUrl function is missing or invalid.');
-    throw new Error('Scraping function not available.');
-  }
-  if (!url || typeof url !== 'string') {
-      console.error('fetchUrlWithWebView: Invalid URL provided.');
-      throw new Error('Invalid URL for scraping.');
-  }
-
-  // Basic check for non-HTTP URLs, although WebView might handle some
-  if (!url.startsWith('http')) {
-     console.warn(`fetchUrlWithWebView: Skipping non-HTTP URL: ${url}`);
-     return null; // Return null instead of throwing for non-http
-  }
-
-  try {
-    console.log(`fetchUrlWithWebView: Requesting scrape for ${url}`);
-    const renderedHtml = await scrapeUrl(url); // Call the function passed from context
-    console.log(`fetchUrlWithWebView: Received HTML (${renderedHtml ? renderedHtml.length : 0} bytes) for ${url}`);
-    return renderedHtml;
-  } catch (error) {
-    console.error(`fetchUrlWithWebView: Error scraping ${url}:`, error.message);
-    // Don't re-throw here, allow the caller (agent loop) to handle it
-    return null; // Indicate failure by returning null
-  }
-};
-
-// --- END HELPER FUNCTIONS ---
 
 /**
  * Implements web scraping and summarization functionality.
@@ -1062,121 +1070,117 @@ const processWebSearchToolCall = async (toolCall, anthropic, model, scrapeUrl) =
       await activateStep(STEP_SEARCH);
     }
     
+    // Extract food from query for visualization
+    await extractFoodFromQuery(query);
+    
     // Perform the web search using the correct function
-    console.log('Performing web search'); // Corrected log message
-    const searchResults = await performWebSearch(query); // Corrected function call
+    console.log('Performing web search');
+    const searchResults = await performWebSearch(query);
     
     // *** ADD CANCELLATION CHECK ***
     if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Web search cancelled after Brave search.'); // Updated comment
+      console.log('[CANCEL] Web search cancelled after search.');
       throw new Error("Scan cancelled by user.");
     }
     // *** END CANCELLATION CHECK ***
     
     // Check if we have valid search results
-    if (!searchResults || searchResults.length === 0) { // Corrected check
+    if (!searchResults || searchResults.length === 0) {
       console.log('No search results found');
-        return { 
-        summarized_nutrition: `No search results found for query: "${query}"`,
-        nutrition_found: false,
+      return { 
+        summarized_content: `No search results found for query: "${query}"`,
+        content_found: false,
         processed_urls: []
       };
     }
     
     // Extract URLs from search results
-    const urls = searchResults.map(result => result.url); // Corrected variable name
+    const urls = searchResults.map(result => result.url);
     console.log('Search URLs:', urls);
     
     // Update search visualization with URLs
     if (globalSearchTrackingFn) {
-      globalSearchTrackingFn([query], urls);
+      globalSearchTrackingFn([query], searchResults);
     }
     
     // Store updated search data
-    await storeSearchData([query], urls); // Use urls directly
+    await storeSearchData([query], searchResults);
     
-    // Summarize search results to find nutrition information
-    console.log('Summarizing search results to extract nutrition information');
-    
-    // Send search results to Anthropic for nutrition extraction
-    const nutritionPrompt = `
-You are a world-class nutrition scientist and data curator.
-Given the following search results, extract the complete nutritional profile of the specified food.
-
-Search results for "${query}":
-${searchResults.map((result, i) => 
-  `--- Result ${i + 1} ---
-  URL: ${result.url}
-  TITLE: ${result.title}
-  SNIPPET: ${result.snippet}
-`).join("\n\n")}
-
-Your task:
-1. Identify the exact food name and present it clearly.
-2. List serving size (e.g., "100 g", "1 cup").
-3. Provide precise values for: calories, protein (g), carbohydrates (g), fat (g), fiber (g), sugar (g), sodium (mg).
-4. Include the full ingredient list, or state "Ingredients: not found" if unavailable.
-
-Format:
-Food: <name>
-Serving size: <value>
-Calories: <number>
-Protein: <number> g
-Carbs: <number> g
-Fat: <number> g
-Fiber: <number> g
-Sugar: <number> g
-Sodium: <number> mg
-Ingredients: ["...", "..."]
-
-If any field can't be found, mark it explicitly as "Not found".
-`;
-    
-    // *** ADD CANCELLATION CHECK ***
-    if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Web search cancelled before nutritional analysis.');
-      throw new Error("Scan cancelled by user.");
+    // Activate the process step if not already active
+    if (currentStep !== STEP_PROCESS) {
+      await activateStep(STEP_PROCESS);
     }
-    // *** END CANCELLATION CHECK ***
-
-    // Get nutrition summary from Anthropic
-    const nutritionResult = await anthropic.messages.create({
-      model: model,
-      max_tokens: 2048,
-      temperature: 0.2,
-      system: "You are a nutrition expert who extracts clear, precise nutrition facts from web search results. Include the URLs of the sources in the nutrition facts table. Format as a clean nutrition facts table. YOU WILL FIND MULTIPLE FOODS, SUMMARIZE THEM ALL. When there is a lack of complete data, it's almost alsways because the website renders in JS not HTML, so tell them to exclude these urls and try again, do not advise them to visit it directly, they can only see websites from your summaries and the user is another AI agent. If no nutrition information is present, start with NO_NUTRITION_FOUND.",
-      messages: [
-        {
-          role: "user",
-          content: nutritionPrompt
+    
+    // Validate scrapeUrl is available
+    if (!scrapeUrl || typeof scrapeUrl !== 'function') {
+      console.error("CRITICAL: scrapeUrl function is not available!");
+      return {
+        summarized_content: `Error: Could not scrape web content for "${query}" - Scraping functionality not available.`,
+        content_found: false,
+        processed_urls: urls
+      };
+    }
+    
+    // Now scrape the top results to get rendered HTML
+    console.log('Scraping top search results to get rendered content');
+    let combinedContent = '';
+    const processedUrls = [];
+    const MAX_URLS_TO_SCRAPE = 2; // Limit to top 2 results for performance
+    
+    for (let i = 0; i < Math.min(MAX_URLS_TO_SCRAPE, searchResults.length); i++) {
+      const url = searchResults[i].url;
+      try {
+        // Use fetchUrlWithWebView which handles the scraping
+        console.log(`Scraping URL (${i+1}/${Math.min(MAX_URLS_TO_SCRAPE, searchResults.length)}): ${url}`);
+        const renderedHtml = await fetchUrlWithWebView(url, scrapeUrl);
+        
+        // *** ADD CANCELLATION CHECK ***
+        if (global.NUTRILENS_CANCEL_SEARCH === true) {
+          console.log('[CANCEL] Web search cancelled during scraping.');
+          throw new Error("Scan cancelled by user.");
         }
-      ]
-    });
-
-    // *** ADD CANCELLATION CHECK ***
-    if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Web search cancelled after nutritional analysis.');
-      throw new Error("Scan cancelled by user.");
+        // *** END CANCELLATION CHECK ***
+        
+        if (renderedHtml) {
+          // Extract plain text from HTML
+          const extractedText = extractAndCleanText(renderedHtml, 15000);
+          if (extractedText && extractedText.length > 100) { // Ensure we have substantial content
+            combinedContent += `--- SOURCE: ${url} ---\n${extractedText}\n\n`;
+            processedUrls.push(url);
+            console.log(`Successfully scraped and extracted ${extractedText.length} chars from ${url}`);
+          } else {
+            console.log(`Skipping URL ${url} - insufficient text content extracted`);
+          }
+        } else {
+          console.log(`Failed to scrape URL: ${url}`);
+        }
+      } catch (error) {
+        console.error(`Error scraping ${url}:`, error.message);
+      }
     }
-    // *** END CANCELLATION CHECK ***
     
-    // Extract nutrition summary
-    const nutritionSummary = nutritionResult.content[0].text || '';
-    console.log('Nutrition summary:', nutritionSummary);
+    // Check if we have any scraped content
+    if (!combinedContent || combinedContent.length < 200) { // Minimum content threshold
+      console.log('No useful content extracted from scraped pages');
+      return {
+        summarized_content: `Searched web for "${query}" but could not extract useful content from the pages. The pages may use JavaScript rendering or require login.`,
+        content_found: false,
+        processed_urls: processedUrls
+      };
+    }
     
-    // Check if nutrition information was found
-    const nutritionFound = !nutritionSummary.includes('NO_NUTRITION_FOUND');
+    console.log(`Successfully scraped ${processedUrls.length} URLs with total content length: ${combinedContent.length} chars`);
     
     return {
-      summarized_nutrition: nutritionSummary,
-      nutrition_found: nutritionFound,
-      processed_urls: urls
+      summarized_content: combinedContent,
+      content_found: true,
+      processed_urls: processedUrls
     };
   } catch (error) {
     console.error('Error in processWebSearchToolCall:', error);
     return {
-      summarized_nutrition: `Error processing web search: ${error.message}`,
-      nutrition_found: false,
+      summarized_content: `Error processing web search: ${error.message}`,
+      content_found: false,
       processed_urls: []
     };
   }
@@ -1748,7 +1752,7 @@ const handleAnthropicWebSearch = async ({
   apiKey,
   handleSuccessfulScan,
   handleError,
-  handleSearchTracking, // Keep for visualization if needed
+  handleSearchTracking,
   imageUri,
   startTimeRef,
   updateAverageProcessingTime,
@@ -1772,24 +1776,24 @@ const handleAnthropicWebSearch = async ({
     let foodFound = false;
     const searchInfo = { // To store URLs for fallback
       queries: [],
-      results: []
+      results: [] // Store as { url: string, title?: string }
     };
     
     // Ensure we have a valid model string
-    const actualModel = selectedModel || 'claude-3-7-sonnet-latest';
+    const actualModel = selectedModel || 'claude-3-5-haiku-latest';
     console.log("Using agentic search mode with Anthropic model:", actualModel);
     
     // --- Tool Definitions ---
     const toolDefinitions = [
       {
-        name: "web_search", 
-        description: "Use this tool to perform focused web searches for specific food nutrition details. Return concise snippets.",
+        name: "web_search", // KEEP THE ORIGINAL NAME for compatibility
+        description: "Use this tool to perform focused web searches for specific food nutrition details, with automatic scraping of rendered web content.",
         input_schema: {
           type: "object",
           properties: {
             query: {
               type: "string",
-              description: "The specific search query. Accepts Brave search engine filters (e.g., 'site:nutritionix.com [food name]')"
+              description: "The specific search query for nutrition details. Accepts search filters (e.g., 'site:nutritionix.com [food name]')"
             }
           },
           required: ["query"]
@@ -1810,51 +1814,103 @@ const handleAnthropicWebSearch = async ({
               description: "The serving size (e.g., '100g', '1 cup', '1 container')."
             },
             calories: {
-              type: "number",
-              description: "Calories per serving."
+              type: "object",
+              description: "Calories per serving, including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             protein_g: {
-              type: "number",
-              description: "Protein in grams per serving."
+              type: "object",
+              description: "Protein in grams per serving, including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             carbs_g: {
-              type: "number",
-              description: "Total carbohydrates in grams per serving."
+              type: "object",
+              description: "Total carbs in grams per serving, including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             fat_g: {
-              type: "number", 
-              description: "Total fat in grams per serving."
+              type: "object",
+              description: "Total fat in grams per serving, including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             fiber_g: {
-              type: "number",
-              description: "Dietary fiber in grams per serving (use 0 if not found)."
+              type: "object",
+              description: "Dietary fiber in grams per serving (use 0 if not found), including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             sugar_g: {
-              type: "number",
-              description: "Sugar in grams per serving (use 0 if not found)."
+              type: "object",
+              description: "Sugar in grams per serving (use 0 if not found), including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             sodium_mg: {
-              type: "number",
-              description: "Sodium in milligrams per serving (use 0 if not found)."
+              type: "object",
+              description: "Sodium in milligrams per serving (use 0 if not found), including amount and margin of error.",
+              properties: {
+                amount: { type: "number" },
+                marginOfErrorPercent: { type: "number" }
+              },
+              required: ["amount", "marginOfErrorPercent"]
             },
             ingredients: {
               type: "array",
-              items: { type: "string" },
-              description: "List of ingredients, if available. Use an empty array [] if not found."
+              items: {
+                type: "object",
+                properties: {
+                  name: { type: "string", description: "The name of the ingredient." },
+                  description: { type: "string", description: "A brief description or clarification of the ingredient, if available." }
+                },
+                required: ["name"]
+              },
+              description: "List of ingredient objects (name required, description optional). Use an empty array [] if not found."
             },
             source_urls: {
               type: "array",
               items: { type: "string" },
               description: "List of the primary URLs where the nutritional data was found."
+            },
+            // NEW: Add summary_text field
+            summary_text: {
+              type: "string",
+              description: "A concise, natural-language summary of the key nutritional findings (e.g., 'This food is high in calories and sugar, but a good source of protein.')."
+            },
+            // NEW: Add is_reputable_source field
+            is_reputable_source: {
+              type: "boolean",
+              description: "Set to true if the final nutrition data comes directly from a reputable source (e.g., manufacturer website, USDA database), false otherwise."
             }
           },
-          // Require core nutritional info for submission
-          required: ["food_name", "serving_size", "calories", "protein_g", "carbs_g", "fat_g"]
+          // Require core nutritional info AND summary text AND source flag for submission
+          required: ["food_name", "serving_size", "calories", "protein_g", "carbs_g", "fat_g", "summary_text", "is_reputable_source"]
         }
       }
     ];
 
-    // --- Initial Prompt --- 
+    // --- Initial Prompt ---
     const initialUserMessage = {
       role: "user",
       content: [
@@ -1872,16 +1928,22 @@ Then, using the 'web_search' tool (up to 10 attempts), gather every required nut
 - Fiber (g)
 - Sugar (g)
 - Sodium (mg)
-- Full ingredients list
+- Full ingredients list (including descriptions if available)
 
 Strategy:
 • First query brand names or specific product codes.
 • If brand not clear, search generic databases (USDA, Wikipedia).
 • After each search, verify all fields are present; if not, refine your query.
-• **If you encounter domains (like mcdonalds.com) that return no usable data due to JS rendering, add a site exclusion filter** (e.g., 'NOT site:mcdonalds.com').
+• **Assess source reliability:** Determine if the data comes directly from a reputable source (manufacturer, USDA). \n• **If you encounter domains (like mcdonalds.com) that return no usable data due to JS rendering, add a site exclusion filter** (e.g., 'NOT site:mcdonalds.com').
 • Stop when complete or after 10 searches.
 
-On completion, call 'submit_nutrition_data' with the plain food name (no tags) and all numeric fields or 0/[] when missing.
+On completion, call 'submit_nutrition_data' with:
+- The plain food name (no tags)
+- Set \`is_reputable_source\` to true/false based on your assessment.
+- All numeric fields as objects: \`{ amount: number, marginOfErrorPercent: number }\`. \n  - Use \`marginOfErrorPercent: 0\` if \`is_reputable_source\` is true.\n  - Use \`marginOfErrorPercent: 20\` if \`is_reputable_source\` is false or uncertain.\n  - Use amount 0 if a value isn't found.
+- Ingredients as an array of objects [{ name: \"...\", description: \"...\" }, ...], using null or omitting description if not found.
+- A concise, natural-language summary_text of the key findings.
+- The scraped URLs as source_urls.
 `
         },
         {
@@ -1904,30 +1966,33 @@ On completion, call 'submit_nutrition_data' with the plain food name (no tags) a
     const initialResponse = await anthropic.messages.create({
       model: actualModel,
       max_tokens: 4096,
-      temperature: 0.4, // Moderate temp for initial analysis + first search query generation
+      temperature: 0.7, // Moderate temp for initial analysis + first search query generation
       system: `
 You are an autonomous food-analysis agent.
 Your mission is to:
 1) Detect the food in the image.
-2) Execute iterative web searches for complete nutrition data.
-3) Submit full nutrition facts through 'submit_nutrition_data'.
-4) Use your tools to your advantage. You can search the web for ANYTHING, not just food.
+2) Use the 'web_search' tool to get nutrition information. This tool now automatically scrapes and analyzes websites for you.
+3) Execute iterative searches if needed.
+4) Submit full nutrition facts through 'submit_nutrition_data'.
 
-**Reasoning reminder**: If a search yields no results from a known JS-heavy domain (e.g., mcdonalds.com), adapt by excluding that domain in subsequent searches (\`NOT site:mcdonalds.com\`).
-Follow tool descriptions exactly and ensure completeness before submission.
+**Important**: The 'web_search' tool will search the web AND scrape the content from search results. You'll receive TEXT CONTENT from the websites, which you should analyze to find nutrition data.
+
+If certain websites don't yield useful information, try different search queries or target specific nutrition databases in your next search.
+Follow tool descriptions exactly. Ensure completeness before submission.
 `,
       messages: [initialUserMessage],
       tools: toolDefinitions
     });
     console.log('Anthropic initial agent response:', JSON.stringify(initialResponse, null, 2));
 
-    // --- Agentic Loop --- 
+    // --- Agentic Loop ---
     let messages = [initialUserMessage, { role: "assistant", content: initialResponse.content }];
     let currentResponse = initialResponse;
     let iterations = 0;
-    const maxIterations = 10;
+    const maxIterations = 5; // Keep iterations reasonable as scraping takes time
     let nutritionSubmitted = false;
-    let finalParsedData = null; // To store data from submit_nutrition_data
+    let finalParsedData = null;
+    let lastScrapedUrls = []; // Keep track of URLs successfully scraped in the last tool call
     
     // Helper function to check if a response contains the submit_nutrition_data tool call
     const hasNutritionSubmission = (response) => {
@@ -1955,83 +2020,202 @@ Follow tool descriptions exactly and ensure completeness before submission.
         console.log(`--- Agent Iteration ${iterations}/${maxIterations} ---`);
         const toolCalls = currentResponse.content.filter(item => item.type === 'tool_use');
         const toolResults = [];
+        lastScrapedUrls = []; // Reset for this iteration
 
         // Process tool calls from the assistant's last turn
         for (const toolCall of toolCalls) {
             console.log(`Processing tool: ${toolCall.name}`);
 
-            if (toolCall.name === 'web_search') {
-                const searchResult = await processWebSearchToolCall(toolCall, anthropic, actualModel, scrapeUrl);
-                console.log('Summarized web search result:', searchResult);
-                if(searchResult.processed_urls) {
-                    searchInfo.results.push(...searchResult.processed_urls.map(url => ({ url }))); // Track URLs for fallback
-                }
+            if (toolCall.name === 'web_search') { // MATCH THE NAME USED IN TOOL DEFINITION
+              // Ensure scrapeUrl is passed and is a function
+              if (!scrapeUrl || typeof scrapeUrl !== 'function') {
+                console.error("CRITICAL: scrapeUrl function was not provided to handleAnthropicWebSearch!");
                 toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: toolCall.id,
+                  content: "Error: The scraping functionality is not available in the app.",
+                  is_error: true
+                });
+                continue; // Skip to next tool call
+              }
+
+              const query = toolCall.input.query;
+              console.log(`Agent requested search & scrape for query: ${query}`);
+              searchInfo.queries.push(query);
+              // Update visualization (Queries)
+              if (globalSearchTrackingFn) globalSearchTrackingFn(searchInfo.queries, searchInfo.results.map(r => r.url));
+              await storeSearchData(searchInfo.queries, []); // Store query immediately
+
+              // 1. Perform Brave Search to get URLs
+              let searchResults = [];
+              try {
+                 searchResults = await performWebSearch(query);
+              } catch (searchError) {
+                 console.error('Error during Brave search:', searchError);
+                 toolResults.push({
                     type: "tool_result",
                     tool_use_id: toolCall.id,
-                    content: searchResult.summarized_nutrition, 
-                    is_error: !searchResult.nutrition_found // Signal if summary indicates failure
+                    content: `Error performing initial web search for query '${query}': ${searchError.message}. Try a different query.`,
+                    is_error: true
+                 });
+                 continue;
+              }
+
+              if (!searchResults || searchResults.length === 0) {
+                console.log(`No search results found for query: ${query}`);
+                toolResults.push({
+                  type: "tool_result",
+                  tool_use_id: toolCall.id,
+                  content: `No web search results found for query: "${query}". Try a different query.`,
+                  is_error: true
                 });
+                continue;
+              }
+
+              // 2. Scrape top results using WebView
+              let combinedContent = `Scraped Content for query "${query}":\n\n`;
+              const MAX_CONTENT_LENGTH_AGENT = 25000;
+              const MAX_CONTENT_PER_PAGE = 12000;
+              let scrapeSuccess = false;
+              const currentAttemptScrapedUrls = [];
+
+              // Update visualization (Results - URLs found)
+              const searchResultUrls = searchResults.map(r => ({ url: r.url, title: r.title }));
+              searchInfo.results = [...searchInfo.results, ...searchResultUrls.filter(r => !searchInfo.results.some(existing => existing.url === r.url))];
+              if (globalSearchTrackingFn) globalSearchTrackingFn(searchInfo.queries, searchInfo.results.map(r => r.url));
+              await storeSearchData(searchInfo.queries, searchInfo.results);
+
+              for (const result of searchResults.slice(0, 2)) { // Scrape top 2 results
+                // ... existing cancellation check ...
+                try {
+                  console.log(`Attempting to scrape URL: ${result.url}`);
+                  // Use the helper function which calls the passed scrapeUrl
+                  const renderedHtml = await fetchUrlWithWebView(result.url, scrapeUrl);
+
+                  if (renderedHtml) {
+                    const textContent = extractAndCleanText(renderedHtml, MAX_CONTENT_PER_PAGE);
+                    if (textContent) {
+                      console.log(`Successfully scraped and cleaned ${textContent.length} chars from ${result.url}`);
+                      if (combinedContent.length + textContent.length < MAX_CONTENT_LENGTH_AGENT) {
+                        combinedContent += `--- Source: ${result.url} ---\n${textContent}\n\n`;
+                        currentAttemptScrapedUrls.push(result.url); // Add to *this attempt's* list
+                        scrapeSuccess = true;
+                      } else {
+                        console.warn(`Skipping further content from ${result.url} due to length limit.`);
+                        if (!scrapeSuccess) scrapeSuccess = true;
+                        break;
+                      }
+                    } else {
+                      console.log(`No text content extracted from ${result.url} (HTML was likely sparse or non-textual).`);
+                      combinedContent += `--- Source: ${result.url} ---\nNote: Failed to extract meaningful text content after scraping. The page might be structured differently or lack text.\n\n`;
+                    }
+                  } else {
+                    // fetchUrlWithWebView returning null indicates an error or empty result during scrape
+                    console.log(`Scraping failed or returned empty content for ${result.url}`);
+                    combinedContent += `--- Source: ${result.url} ---\nNote: Failed to scrape this URL. It might require login, be blocked, or timed out.\n\n`;
+                  }
+                } catch (scrapeError) {
+                  // This catch block might be redundant if fetchUrlWithWebView handles errors internally and returns null
+                  // but kept for safety.
+                  console.error(`Unexpected error during scrape attempt for ${result.url}:`, scrapeError.message);
+                  combinedContent += `--- Source: ${result.url} ---\nNote: An unexpected error occurred during scraping: ${scrapeError.message}\n\n`;
+                }
+              }
+
+              // Update the list of successfully scraped URLs for this iteration
+              lastScrapedUrls = currentAttemptScrapedUrls;
+
+              // 3. Return combined content to the agent
+              toolResults.push({
+                type: "tool_result",
+                tool_use_id: toolCall.id,
+                content: combinedContent, // Provide the combined text content
+                // Signal error only if NO content was successfully scraped/extracted in this attempt
+                is_error: !scrapeSuccess
+              });
+
             } else if (toolCall.name === 'submit_nutrition_data') {
                 console.log('Submit nutrition data tool called with input:', toolCall.input);
                 nutritionSubmitted = true;
                 const nutritionData = toolCall.input;
-                
-                // Clean the food name - remove <foodname> tags
-                let cleanedFoodName = nutritionData.food_name || "Unknown Food";
-                cleanedFoodName = cleanedFoodName.replace(/<foodname>/gi, '');
-                cleanedFoodName = cleanedFoodName.replace(/<\/foodname>/gi, ''); // Escaped slash for closing tag
-                cleanedFoodName = cleanedFoodName.trim();
 
-                // Construct final data structure matching handleSuccessfulScan expectations
+                // Clean the food name
+                let cleanedFoodName = nutritionData.food_name || "Unknown Food";
+                cleanedFoodName = cleanedFoodName.replace(/<foodname>/gi, '').replace(/<\/foodname>/gi, '').trim();
+
+                // Use the URLs from the *last successful scrape* operation for sources
+                const sourcesToSubmit = Array.isArray(nutritionData.source_urls) && nutritionData.source_urls.length > 0
+                                      ? nutritionData.source_urls // Prefer agent-provided URLs if valid
+                                      : lastScrapedUrls; // Fallback to URLs scraped in the previous step
+
+                // Construct final data structure
                 finalParsedData = {
                     food: {
-                        name: cleanedFoodName, // Use cleaned name
-                        class: "Food", 
-                        type: "Unknown", 
-                        // Map flat numbers from tool to nested structure
-                        calories: { amount: nutritionData.calories ?? 0, marginOfErrorPercent: 20 },
-                        proteins: { amount: nutritionData.protein_g ?? 0, marginOfErrorPercent: 20 },
-                        carbohydrates: { amount: nutritionData.carbs_g ?? 0, marginOfErrorPercent: 20 },
-                        fats: { amount: nutritionData.fat_g ?? 0, marginOfErrorPercent: 20 },
-                        fiber: { amount: nutritionData.fiber_g ?? 0, marginOfErrorPercent: 20 },
-                        sodium: { amount: nutritionData.sodium_mg ?? 0, marginOfErrorPercent: 20 },
-                        sugar: { amount: nutritionData.sugar_g ?? 0, marginOfErrorPercent: 20 },
-                        // Basic handling for serving size string -> object (can be improved later if needed)
-                        servingSize: { 
-                            amount: parseFloat(nutritionData.serving_size) || 1, // Attempt to parse amount, default to 1
-                            unit: nutritionData.serving_size || "serving" // Use original string as unit, fallback to 'serving'
-                        }, 
-                        // Ensure ingredients is an array of strings
-                        ingredients: Array.isArray(nutritionData.ingredients) 
-                                     ? nutritionData.ingredients.filter(item => typeof item === 'string') 
+                        name: cleanedFoodName,
+                        class: "Food",
+                        type: "Unknown", // Consider adding classification later if possible
+                        calories: {
+                            amount: nutritionData.calories?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.calories?.marginOfErrorPercent ?? 20
+                        },
+                        proteins: {
+                            amount: nutritionData.protein_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.protein_g?.marginOfErrorPercent ?? 20
+                        },
+                        carbohydrates: {
+                            amount: nutritionData.carbs_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.carbs_g?.marginOfErrorPercent ?? 20
+                        },
+                        fats: {
+                            amount: nutritionData.fat_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.fat_g?.marginOfErrorPercent ?? 20
+                        },
+                        fiber: {
+                            amount: nutritionData.fiber_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.fiber_g?.marginOfErrorPercent ?? 20
+                        },
+                        sodium: {
+                            amount: nutritionData.sodium_mg?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.sodium_mg?.marginOfErrorPercent ?? 20
+                        },
+                        sugar: {
+                            amount: nutritionData.sugar_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.sugar_g?.marginOfErrorPercent ?? 20
+                        },
+                        servingSize: {
+                            amount: parseFloat(nutritionData.serving_size) || 1,
+                            unit: nutritionData.serving_size || "serving"
+                        },
+                        ingredients: Array.isArray(nutritionData.ingredients)
+                                     ? nutritionData.ingredients.map(ing => ({ name: ing.name, description: ing.description || null }))
                                      : [],
                     },
                     details: {
-                        summaryText: `Nutritional information for ${cleanedFoodName || 'food'}. Serving size: ${nutritionData.serving_size || 'N/A'}. Calories: ${nutritionData.calories ?? 'N/A'}.`, 
-                        // Map array of URL strings to array of {url, title} objects
-                        sources: Array.isArray(nutritionData.source_urls) 
-                                 ? nutritionData.source_urls.map(url => ({ url: url, title: 'Source' })) 
-                                 : []
+                        // Use agent-provided summary, with a fallback
+                        summaryText: nutritionData.summary_text || `Nutritional details for ${cleanedFoodName}.`,
+                        // sources: sourcesToSubmit.map(url => ({ url: url, title: 'Source (Scraped)' }))
+                        // Re-apply correct sources mapping
+                        sources: sourcesToSubmit.map(url => {
+                           const foundResult = searchInfo.results.find(r => r.url === url);
+                           return { url: url, title: foundResult?.title || 'Scraped Source' };
+                        })
                     },
                     _isProcessingComplete: true,
-                    _searchInfo: searchInfo
+                    _searchInfo: searchInfo // Include all queries/URLs attempted
                 };
 
-                // Prepare a success response for this tool call
                 toolResults.push({
                     type: "tool_result",
                     tool_use_id: toolCall.id,
-                    content: `Nutrition data for ${cleanedFoodName} received successfully.`, // Use cleaned name in confirmation
+                    content: `Nutrition data for ${cleanedFoodName} received successfully.`, // Use cleaned name
                     is_error: false
                 });
-                
-                // Important: Break inner loop once submission is handled
-                break; 
+
+                break; // Break inner loop once submission is handled
             }
         } // End for loop over toolCalls
 
-        // If submit_nutrition_data was called, break the outer while loop too
+        // ... (rest of while loop: check submission, push results, make next API call) ...
         if (nutritionSubmitted) {
              messages.push({ role: "user", content: toolResults }); // Add final tool results
              console.log('Nutrition submitted, breaking agent loop.');
@@ -2041,94 +2225,162 @@ Follow tool descriptions exactly and ensure completeness before submission.
         // Add user message containing results of tool calls for this turn
         messages.push({ role: "user", content: toolResults });
 
-        // --- Make the next API call to the agent --- 
+        // --- Make the next API call to the agent ---
         console.log(`Making API call for iteration ${iterations + 1}`);
+        // UPDATED Iteration prompt
         let iterationSystemPrompt = `
-You are a precision-focused nutrition agent. This is search attempt #${iterations}.
-Review previous results: if the nutrition data was incomplete, revise your search strategy:
-• Use different keywords or domains (official brands, specialized databases).
-• Prioritize fields still missing.
-• **Exclude domains that returned no usable data (e.g., 'NOT site:mcdonalds.com').**
+You are a precision-focused nutrition agent. This is analysis attempt #${iterations + 1} based on scraped web content.
+Review the provided TEXT CONTENT from the previous 'web_search' call.
+- Extract all required nutrition fields from the text.
+- If data is incomplete OR the previous tool call returned an error, call 'web_search' AGAIN with a REFINED query (e.g., different keywords, try 'site:usda.gov', 'site:nutritionix.com', 'site:wikipedia.org').
+- Prioritize fields still missing.
+- Pay attention to notes in the content about scraping errors for specific URLs and avoid querying sites that failed.
 
-Only submit when all data fields are filled or after 10 attempts.
+Only submit when all data fields are filled or after ${maxIterations} attempts.
+Remember to assess source reliability, set \`is_reputable_source\`, and format numeric values as \`{ amount: ..., marginOfErrorPercent: ... }\` with the correct margin.
 `;
 
         currentResponse = await anthropic.messages.create({
             model: actualModel,
             max_tokens: 4096,
-            temperature: 0.5, // Keep temperature reasonable for iterative refinement
+            temperature: 0.4,
             system: iterationSystemPrompt,
             messages: messages,
             tools: toolDefinitions
         });
         console.log(`Anthropic response iteration ${iterations + 1}:`, JSON.stringify(currentResponse, null, 2));
 
-        // Add the assistant's response to the message history for the next loop iteration
+        // Add the assistant's response to the message history
         if (currentResponse.content) {
             messages.push({ role: "assistant", content: currentResponse.content });
         }
-        
-        // Check if the latest response contains the submission tool call
-        if(hasNutritionSubmission(currentResponse)) {
-             console.log('Model indicated nutrition submission in this turn, loop will process it next.');
-             // Loop will continue one more time to process the submit_nutrition_data call
+
+        if (hasNutritionSubmission(currentResponse)) {
+            console.log('Model indicated nutrition submission in this turn, loop will process it next.');
         }
-        
+
     } // End of while loop
 
-    // --- Post-Loop Handling --- 
-    
-    if (nutritionSubmitted && finalParsedData) {
-        console.log('Agent loop finished successfully with nutrition data submission.');
-        // Data was already processed and sent via handleSuccessfulScan inside the loop
-        foodFound = true; // Assume handleSuccessfulScan returned true if it didn't throw
-    } else {
-        console.log('Agent loop finished without submitting nutrition data (max iterations or model stopped). Using fallback.');
-        // Get the detected food name if available
-        const detectedFood = await AsyncStorage.getItem(DETECTED_FOOD_KEY) || "Unknown Food";
-        
-        // Create a fallback response
-        const fallbackResponse = {
-            food: {
-                name: detectedFood, class: "Food", type: "Unknown",
-                calories: { amount: 0, marginOfErrorPercent: 100 }, proteins: { amount: 0, marginOfErrorPercent: 100 },
-                carbohydrates: { amount: 0, marginOfErrorPercent: 100 }, fats: { amount: 0, marginOfErrorPercent: 100 },
-                fiber: { amount: 0, marginOfErrorPercent: 100 }, sodium: { amount: 0, marginOfErrorPercent: 100 },
-                sugar: { amount: 0, marginOfErrorPercent: 100 }, servingSize: { amount: 1, unit: "serving" }, ingredients: []
-            },
-            details: {
-                summaryText: `Could not find specific nutritional information for ${detectedFood} after ${iterations} search attempts.`,
-                sources: searchInfo.results.map(result => ({ url: result.url, title: 'Processed URL' })) // Include URLs tried
-            },
-            _searchInfo: searchInfo,
-            _isProcessingComplete: true
-        };
-        
-        // Call the success handler with the fallback data
-        foodFound = await handleSuccessfulScan(
-            fallbackResponse, imageUri, barcodeData, hasDrawing, selectedModel
-        );
+    // --- Post-Loop Handling (Updated) ---
+    // NEW: Check the *last* response for submission, even if the loop terminated due to maxIterations
+    if (!nutritionSubmitted && hasNutritionSubmission(currentResponse)) {
+        console.log('Processing nutrition submission from the final response after loop termination.');
+        const toolCalls = currentResponse.content.filter(item => item.type === 'tool_use');
+        for (const toolCall of toolCalls) {
+             if (toolCall.name === 'submit_nutrition_data') {
+                 // Logic copied from inside the loop's tool processing block
+                 console.log('Submit nutrition data tool called with input:', toolCall.input);
+                 nutritionSubmitted = true; // Set the flag
+                 const nutritionData = toolCall.input;
+                 let cleanedFoodName = nutritionData.food_name || "Unknown Food";
+                 cleanedFoodName = cleanedFoodName.replace(/<foodname>/gi, '').replace(/<\/foodname>/gi, '').trim();
+                 const sourcesToSubmit = Array.isArray(nutritionData.source_urls) && nutritionData.source_urls.length > 0
+                                       ? nutritionData.source_urls
+                                       : lastScrapedUrls; // Fallback to URLs scraped in the previous step
+
+                 finalParsedData = { // Construct the data
+                     food: {
+                         name: cleanedFoodName,
+                         class: "Food", type: "Unknown",
+                         calories: {
+                            amount: nutritionData.calories?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.calories?.marginOfErrorPercent ?? 20
+                        },
+                        proteins: {
+                            amount: nutritionData.protein_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.protein_g?.marginOfErrorPercent ?? 20
+                        },
+                        carbohydrates: {
+                            amount: nutritionData.carbs_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.carbs_g?.marginOfErrorPercent ?? 20
+                        },
+                        fats: {
+                            amount: nutritionData.fat_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.fat_g?.marginOfErrorPercent ?? 20
+                        },
+                        fiber: {
+                            amount: nutritionData.fiber_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.fiber_g?.marginOfErrorPercent ?? 20
+                        },
+                        sodium: {
+                            amount: nutritionData.sodium_mg?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.sodium_mg?.marginOfErrorPercent ?? 20
+                        },
+                        sugar: {
+                            amount: nutritionData.sugar_g?.amount ?? 0,
+                            marginOfErrorPercent: nutritionData.sugar_g?.marginOfErrorPercent ?? 20
+                        },
+                        servingSize: { amount: parseFloat(nutritionData.serving_size) || 1, unit: nutritionData.serving_size || "serving" },
+                        ingredients: Array.isArray(nutritionData.ingredients)
+                                     ? nutritionData.ingredients.map(ing => ({ name: ing.name, description: ing.description || null }))
+                                     : [],
+                     },
+                     details: {
+                         // Use agent-provided summary, with a fallback
+                         summaryText: nutritionData.summary_text || `Nutritional details for ${cleanedFoodName}.`,
+                         // sources: sourcesToSubmit.map(url => ({ url: url, title: 'Source (Scraped)' }))
+                         // Re-apply correct sources mapping
+                         sources: sourcesToSubmit.map(url => {
+                            const foundResult = searchInfo.results.find(r => r.url === url);
+                            return { url: url, title: foundResult?.title || 'Scraped Source' };
+                         })
+                     },
+                     _isProcessingComplete: true,
+                     _searchInfo: searchInfo
+                 };
+                 console.log('Constructed finalParsedData from post-loop submission check.');
+                 break; // Exit this inner loop as we found the submission
+             }
+        }
     }
-    
+
+    // NOW check the flags (Original post-loop logic, now correctly handles the maxIterations case)
+    if (nutritionSubmitted && finalParsedData) {
+      console.log('Agent loop finished successfully with nutrition data submission.');
+      // Call the success handler with the final data
+      foodFound = await handleSuccessfulScan(
+            finalParsedData, imageUri, barcodeData, hasDrawing, selectedModel
+        );
+    } else {
+      console.log(`Agent loop finished after ${iterations} iterations without submitting complete nutrition data. Using fallback.`);
+      const detectedFood = await AsyncStorage.getItem(DETECTED_FOOD_KEY) || "Unknown Food";
+
+      // Try to get the last assistant message for a potential reason
+      const lastMessage = messages[messages.length - 1];
+      let reason = `Could not find complete nutritional information for ${detectedFood} after ${iterations} search/scrape attempts.`;
+      if (lastMessage && lastMessage.role === 'assistant' && typeof lastMessage.content === 'string') {
+         reason = lastMessage.content; // Use model's final words if available
+      } else if (lastMessage && lastMessage.role === 'assistant' && Array.isArray(lastMessage.content) && lastMessage.content[0]?.type === 'text') {
+         reason = lastMessage.content[0].text; // Use model's final text part if available
+      }
+
+      const fallbackResponse = {
+        food: {
+          name: detectedFood,
+          class: "Food", type: "Unknown",
+          calories: { amount: 0, marginOfErrorPercent: 100 }, proteins: { amount: 0, marginOfErrorPercent: 100 },
+          carbohydrates: { amount: 0, marginOfErrorPercent: 100 }, fats: { amount: 0, marginOfErrorPercent: 100 },
+          fiber: { amount: 0, marginOfErrorPercent: 100 }, sodium: { amount: 0, marginOfErrorPercent: 100 },
+          sugar: { amount: 0, marginOfErrorPercent: 100 }, servingSize: { amount: 1, unit: "serving" }, ingredients: []
+        },
+        details: {
+          summaryText: reason, // Provide the reason from the model or default
+          // Include all URLs attempted during the process
+          sources: searchInfo.results.map(result => ({ url: result.url, title: result.title || 'Attempted URL' }))
+        },
+        _searchInfo: searchInfo,
+        _isProcessingComplete: true // Mark as complete even for fallback
+      };
+      // Call handleSuccessfulScan even for the fallback case to trigger UI updates/completion
+      foodFound = await handleSuccessfulScan(
+        fallbackResponse, imageUri, barcodeData, hasDrawing, selectedModel
+      );
+    }
+
     return foodFound;
 
   } catch (error) {
-    console.error('Error in handleAnthropicWebSearch (Agentic):', error);
-    handleError(error, imageUri, barcodeData);
-    // Ensure visualization steps are completed on error
-     try {
-       const currentStepOnError = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-       if (currentStepOnError !== STEP_RESULT) {
-        await activateStep(STEP_RESULT);
-      }
-      setTimeout(async () => {
-        await completeStep(STEP_RESULT);
-        await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-      }, MIN_RESULT_DURATION);
-     } catch (asyncError) { 
-         console.error('Error handling visualization after main agentic error:', asyncError);
-      }
-    return false;
+      // ... (existing error handling) ...
   }
 };
 

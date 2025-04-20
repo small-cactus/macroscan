@@ -17,8 +17,8 @@ const STEP_COMPLETED = 'completed';
 
 // Define minimum durations for each step
 const MIN_RECOGNIZE_DURATION = 1000; // Increased for smoother transition
-const MIN_SEARCH_DURATION = 2000; // Increased to ensure search step visibility
-const MIN_PROCESS_DURATION = 3000; // Increased for smoother transition
+const MIN_SEARCH_DURATION = 4000; // Increased to ensure search step visibility
+const MIN_PROCESS_DURATION = 5000; // Increased for smoother transition
 const MIN_RESULT_DURATION = 2000; // Increased for smoother transition
 const STEP_TRANSITION_DELAY = 1000; // Added delay between steps
 
@@ -120,7 +120,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   const [recognizeSubtitle, setRecognizeSubtitle] = useState('Analyzing image for food...');
   const [searchSubtitle, setSearchSubtitle] = useState('Searching nutrition databases...');
   const [processSubtitle, setProcessSubtitle] = useState('Calculating nutritional values...');
-  const [resultSubtitle, setResultSubtitle] = useState('Generating personalized nutrition insights...');
+  const [resultSubtitle, setResultSubtitle] = useState('Putting everything together...');
   
   // Detected food name
   const [detectedFood, setDetectedFood] = useState('');
@@ -348,7 +348,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       case 'recognize': defaultSubtitle = 'Analyzing image for food...'; subtitleSetter = setRecognizeSubtitle; break;
       case 'search': defaultSubtitle = 'Searching nutrition databases...'; subtitleSetter = setSearchSubtitle; break;
       case 'process': defaultSubtitle = 'Calculating nutritional values...'; subtitleSetter = setProcessSubtitle; break;
-      case 'result': defaultSubtitle = 'Generating personalized nutrition insights...'; subtitleSetter = setResultSubtitle; break;
+      case 'result': defaultSubtitle = 'Putting everything together...'; subtitleSetter = setResultSubtitle; break;
     }
     if (subtitleSetter && defaultSubtitle) {
         // console.log(`[VISUALIZER] Setting default subtitle for ${step}: "${defaultSubtitle}"`);
@@ -536,7 +536,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           switch (nextStep) {
             case 'search': defaultNextSubtitle = 'Searching nutrition databases...'; break;
             case 'process': defaultNextSubtitle = 'Calculating nutritional values...'; break;
-            case 'result': defaultNextSubtitle = 'Generating personalized nutrition insights...'; break;
+            case 'result': defaultNextSubtitle = 'Putting everything together...'; break;
           }
           if (defaultNextSubtitle) nextStepSubtitleSetter(defaultNextSubtitle);
         }
@@ -752,7 +752,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     setRecognizeSubtitle('Analyzing image for food...');
     setSearchSubtitle('Searching nutrition databases...');
     setProcessSubtitle('Calculating nutritional values...');
-    setResultSubtitle('Generating personalized nutrition insights...');
+    setResultSubtitle('Putting everything together...');
     
     // Reset detected food and search results
     setDetectedFood('');
@@ -1679,8 +1679,8 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
                   style={[styles.stepText]}
                   isCompleted={stepState === STEP_COMPLETED}
                   completedColor={isDark ? '#CCC' : '#999999'}
-                  baseColor={isDark ? '#FFF' : '#000'}
-                  shimmerDuration={1600}
+                  baseColor={'#000'}
+                  shimmerDuration={1200}
                 />
               )}
             </Animated.View>
@@ -1804,7 +1804,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     setRecognizeSubtitle('Analyzing image for food...');
     setSearchSubtitle('Searching nutrition databases...');
     setProcessSubtitle('Calculating nutritional values...');
-    setResultSubtitle('Generating personalized nutrition insights...');
+    setResultSubtitle('Putting everything together...');
     
     // Reset detected food and search results
     setDetectedFood('');
@@ -2226,7 +2226,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           {renderStep('food-apple', 'Food Recognition', 'recognize')}
           {renderStep('web', 'Web Search', 'search')}
           {renderStep('brain', 'AI Processing', 'process')}
-          {renderStep('flag', 'Results', 'result', true)}
+          {renderStep('flag', 'Finalizing...', 'result', true)}
         </View>
         
         <Animated.View 

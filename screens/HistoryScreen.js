@@ -11,6 +11,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { SymbolView } from 'expo-symbols';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import * as Haptics from 'expo-haptics';
+import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
 
@@ -20,6 +21,34 @@ const baseHeight = 932; // iPhone 14 Pro Max height
 const scaleWidth = width / baseWidth;
 const scaleHeight = height / baseHeight;
 const scale = Math.min(scaleWidth, scaleHeight);
+
+// Define the Gradient Background Component (copied from SearchModeInfoSheet.js icon)
+const DeepSearchGradientBackground = () => (
+  <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+    <Defs>
+      <RadialGradient id="hist_grad1" cx="25%" cy="25%" r="80%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#FFB74D" stopOpacity="1" />
+        <Stop offset="100%" stopColor="#FFB74D" stopOpacity="0" />
+      </RadialGradient>
+      <RadialGradient id="hist_grad2" cx="75%" cy="30%" r="70%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#FF5252" stopOpacity="1" />
+        <Stop offset="100%" stopColor="#FF5252" stopOpacity="0" />
+      </RadialGradient>
+      <RadialGradient id="hist_grad3" cx="50%" cy="60%" r="75%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#42A5F5" stopOpacity="0.9" />
+        <Stop offset="100%" stopColor="#42A5F5" stopOpacity="0" />
+      </RadialGradient>
+      <RadialGradient id="hist_grad4" cx="65%" cy="75%" r="60%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#AB47BC" stopOpacity="0.8" />
+        <Stop offset="100%" stopColor="#AB47BC" stopOpacity="0" />
+      </RadialGradient>
+    </Defs>
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#hist_grad1)" />
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#hist_grad2)" />
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#hist_grad3)" />
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#hist_grad4)" />
+  </Svg>
+);
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -157,7 +186,8 @@ const HistoryScreen = () => {
     fast: false,
     startDate: null,
     endDate: null,
-    circleScan: false
+    circleScan: false,
+    deepSearch: false
   });
   const [showDatePicker, setShowDatePicker] = useState(false);
   const [datePickerMode, setDatePickerMode] = useState('start');
@@ -877,24 +907,57 @@ const HistoryScreen = () => {
 
   const renderMetadataBadges = (scanMetadata) => {
     if (!scanMetadata) return null;
-    
+
+    const isDeepSearch = scanMetadata.scanMode === 'search';
+    const isAccurate = scanMetadata.scanMode === 'accurate';
+
+    // Determine the appropriate text for the mode badge
+    let modeText = 'Fast Mode';
+    if (isAccurate) modeText = 'Accurate Mode';
+    if (isDeepSearch) modeText = 'Deep Search';
+
     return (
       <View style={styles.metadataBadgesContainer}>
-        <View style={[styles.metadataBadge, scanMetadata.scanMode === 'accurate' && styles.accurateBadge]}>
-          <Text style={styles.metadataBadgeText}>
-            {scanMetadata.scanMode === 'accurate' ? 'Accurate' : 'Fast'} Mode
+        {/* Mode Badge */}
+        <View 
+          style={[
+            styles.metadataBadge,
+            isAccurate && styles.accurateBadge, // Keep existing style for accurate
+            isDeepSearch && styles.deepSearchBadge // Add a new style for deep search container
+          ]}
+        >
+          {isDeepSearch && <DeepSearchGradientBackground />} 
+          <Text 
+            style={[
+              styles.metadataBadgeText,
+              // Apply specific styles for deep search text
+              isDeepSearch && {
+                color: '#FFFFFF',
+                paddingHorizontal: 8 * scale, // Add padding to text
+                paddingVertical: 4 * scale,   // Add padding to text
+                zIndex: 1, // Ensure text is above gradient
+              }
+            ]}
+          >
+            {modeText}
           </Text>
         </View>
+
+        {/* Barcode Badge */}
         {scanMetadata.usedBarcode && (
           <View style={[styles.metadataBadge, styles.barcodeBadge]}>
             <Text style={styles.metadataBadgeText}>Barcode</Text>
           </View>
         )}
+
+        {/* Circle Scan Badge */}
         {scanMetadata.usedCircleScan && (
           <View style={[styles.metadataBadge, styles.circleScanBadge]}>
             <Text style={styles.metadataBadgeText}>Circle Scan</Text>
           </View>
         )}
+
+        {/* Processing Time Badge */}
         <View style={styles.metadataBadge}>
           <Text style={styles.metadataBadgeText}>{scanMetadata.processingTime}s</Text>
         </View>
@@ -922,7 +985,7 @@ const HistoryScreen = () => {
     }
 
     // Apply scan type filters
-    if (filters.barcode || filters.accurate || filters.fast || filters.circleScan) {
+    if (filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.deepSearch) {
       filtered = filtered.filter(item => {
         if (!item.scanMetadata) {
           willBeVisible[item.date] = false;
@@ -932,7 +995,8 @@ const HistoryScreen = () => {
           (filters.barcode && item.scanMetadata.usedBarcode) ||
           (filters.accurate && item.scanMetadata.scanMode === 'accurate') ||
           (filters.fast && item.scanMetadata.scanMode === 'fast') ||
-          (filters.circleScan && item.scanMetadata.usedCircleScan)
+          (filters.circleScan && item.scanMetadata.usedCircleScan) ||
+          (filters.deepSearch && item.scanMetadata.scanMode === 'search')
         );
         if (!matches) willBeVisible[item.date] = false;
         return matches;
@@ -959,7 +1023,7 @@ const HistoryScreen = () => {
     hadMatches = filtered.length > 0;
 
     // Only trigger error haptic for filters, not search (search error is handled in onSubmitEditing)
-    if (!hadMatches && (filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.startDate || filters.endDate)) {
+    if (!hadMatches && (filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.deepSearch || filters.startDate || filters.endDate)) {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
     }
 
@@ -1027,7 +1091,8 @@ const HistoryScreen = () => {
       fast: false,
       startDate: null,
       endDate: null,
-      circleScan: false
+      circleScan: false,
+      deepSearch: false
     });
     setSearchQuery('');
   };
@@ -1049,6 +1114,29 @@ const HistoryScreen = () => {
           }}
           contentContainerStyle={styles.filterChipsContent}
         >
+          {/* Moved Deep Search Chip to the front */}
+          <TouchableOpacity
+            style={[styles.filterChip, filters.deepSearch && styles.filterChipActive]}
+            onPress={() => {
+              Haptics.selectionAsync();
+              setFilters(prev => ({ ...prev, deepSearch: !prev.deepSearch }));
+            }}
+          >
+            <View style={styles.filterChipGradientIconContainer}>
+              <DeepSearchGradientBackground />
+              <Ionicons 
+                name="search" 
+                size={18 * scale} // Increased size
+                color="#FFFFFF" 
+                style={styles.filterChipGradientIconOverlay} 
+              />
+            </View>
+            <Text style={[styles.filterChipText, filters.deepSearch && styles.filterChipTextActive]}>
+              Deep Search
+            </Text>
+          </TouchableOpacity>
+
+          {/* Barcode Chip */}
           <TouchableOpacity
             style={[styles.filterChip, filters.barcode && styles.filterChipActive]}
             onPress={() => {
@@ -1068,6 +1156,7 @@ const HistoryScreen = () => {
             </Text>
           </TouchableOpacity>
 
+          {/* Accurate Chip */}
           <TouchableOpacity
             style={[styles.filterChip, filters.accurate && styles.filterChipActive]}
             onPress={() => {
@@ -1165,7 +1254,7 @@ const HistoryScreen = () => {
             </Text>
           </TouchableOpacity>
 
-          {(filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.startDate || filters.endDate) && (
+          {(filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.deepSearch || filters.startDate || filters.endDate) && (
             <TouchableOpacity
               style={[styles.filterChip, styles.clearFilterChip]}
               onPress={() => {
@@ -1447,24 +1536,43 @@ const HistoryScreen = () => {
               <View style={styles.controlsOverlay}>
                 {selectedItem.scanMetadata && (
                   <View style={styles.metadataOverlay}>
+                    {/* Mode Badge in Modal */}
                     <View style={[
-                      styles.metadataBadge, 
-                      selectedItem.scanMetadata.scanMode === 'accurate' && styles.accurateBadge
+                      styles.metadataBadge,
+                      selectedItem.scanMetadata.scanMode === 'accurate' && styles.accurateBadge,
+                      selectedItem.scanMetadata.scanMode === 'search' && styles.deepSearchBadge // Add style for deep search
                     ]}>
-                      <Text style={styles.metadataBadgeText}>
-                        {selectedItem.scanMetadata.scanMode === 'accurate' ? 'Accurate' : 'Fast'} Mode
+                      {selectedItem.scanMetadata.scanMode === 'search' && <DeepSearchGradientBackground />} 
+                      <Text style={[
+                        styles.metadataBadgeText,
+                        // Apply specific styles for deep search text in modal
+                        selectedItem.scanMetadata.scanMode === 'search' && {
+                          color: '#FFFFFF',
+                          paddingHorizontal: 8 * scale, // Add padding to text
+                          paddingVertical: 4 * scale,   // Add padding to text
+                          zIndex: 1, // Ensure text is above gradient
+                        }
+                      ]}>
+                        {selectedItem.scanMetadata.scanMode === 'accurate' ? 'Accurate' : 
+                          selectedItem.scanMetadata.scanMode === 'search' ? 'Deep Search' : 'Fast'} Mode
                       </Text>
                     </View>
+                    
+                    {/* Barcode Badge in Modal */}
                     {selectedItem.scanMetadata.usedBarcode && (
                       <View style={[styles.metadataBadge, styles.barcodeBadge]}>
                         <Text style={styles.metadataBadgeText}>Barcode</Text>
                       </View>
                     )}
+
+                    {/* Circle Scan Badge in Modal */}
                     {selectedItem.scanMetadata.usedCircleScan && (
                       <View style={[styles.metadataBadge, styles.circleScanBadge]}>
                         <Text style={styles.metadataBadgeText}>Circle Scan</Text>
                       </View>
                     )}
+
+                    {/* Processing Time Badge in Modal */}
                     <View style={styles.metadataBadge}>
                       <Text style={styles.metadataBadgeText}>
                         {selectedItem.scanMetadata.processingTime}s
@@ -1837,6 +1945,14 @@ const getDynamicStyles = (colorScheme) =>
       borderRadius: 8 * scale,
       borderWidth: 1 * scale,
       borderColor: colorScheme === 'dark' ? '#3a3a3c' : '#d0d0d0',
+      overflow: 'hidden', // Ensure gradient stays within bounds
+      position: 'relative', // Add relative positioning
+    },
+    deepSearchBadge: {
+      backgroundColor: 'transparent', // Override default background
+      borderColor: colorScheme === 'dark' ? '#666' : '#bbb',
+      paddingHorizontal: 0, // Remove padding from container
+      paddingVertical: 0,   // Remove padding from container
     },
     accurateBadge: {
       backgroundColor: colorScheme === 'dark' ? '#1a3f5c' : '#e1f0ff',
@@ -1930,6 +2046,21 @@ const getDynamicStyles = (colorScheme) =>
     filterChipTextActive: {
       color: '#FFFFFF',
       fontWeight: '600',
+    },
+    filterChipGradientIconContainer: {
+      width: 32 * scale, // Made bigger
+      height: 32 * scale, // Made bigger
+      borderRadius: 10 * scale, // More rounded
+      marginRight: 6 * scale,
+      marginLeft: -3 * scale,
+      overflow: 'hidden',
+      position: 'relative',
+      justifyContent: 'center',
+      alignItems: 'center',
+    },
+    filterChipGradientIconOverlay: {
+      position: 'absolute', // Position overlay on top
+      // Removed text shadow properties
     },
     clearFilterChip: {
       backgroundColor: colorScheme === 'dark' ? '#FF453A' : '#FF3B30',

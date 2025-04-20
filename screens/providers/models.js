@@ -11,7 +11,7 @@ export const MODELS = {
   anthropic: {
     regular: 'claude-3-haiku-20240307',
     complex: 'claude-3-5-sonnet-20240620',
-    agentic: 'claude-3-7-sonnet-latest'
+    agentic: 'claude-3-5-haiku-latest'
   }
 };
 

@@ -47,6 +47,7 @@ import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 import { Audio } from 'expo-av'; // Added import
 import ManualInputModal from './ManualInputModal'; // Import the new component
 import { Ionicons } from '@expo/vector-icons';
+import { useWebScraper } from '../contexts/WebScraperContext';
 
 const useOpenAI = false; // Set to true to use OpenAI, false rto use Anthropic
 
@@ -1243,6 +1244,11 @@ const stopLoadingAnimation = () => {
               },
               onBrandDetected: (brand) => {
                 setDetectedBrand(brand);
+              },
+              // Pass scrapeUrl with fallback
+              scrapeUrl: typeof scrapeUrl === 'function' ? scrapeUrl : async (url) => {
+                console.error('[FOODSCAN] scrapeUrl is not available in sendImageToApi! Using fallback that returns null');
+                return null;
               }
             });
           } else {
@@ -2973,7 +2979,7 @@ ${modeDescriptions[currentMode]}`,
             
             // Show paywall if never shown before or 20 minutes (1200000 ms) have passed
             if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
-              await Superwall.shared.register('fortune-finished');
+              await Superwall.shared.register('fortune');
               // Update the last shown time
               await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
             }
@@ -3898,6 +3904,9 @@ ${modeDescriptions[currentMode]}`,
       // Get API key from AsyncStorage
       const apiKey = await AsyncStorage.getItem('@apikey');
       
+      // Log whether scrapeUrl is available before passing it
+      console.log('[FOODSCAN] scrapeUrl is', scrapeUrl ? 'available' : 'NOT AVAILABLE');
+      
       // Call the web search provider with tracking function
       console.log('[FOODSCAN] Calling WebSearchProvider.handleWebSearch');
       const result = await WebSearchProvider.handleWebSearch({
@@ -3919,6 +3928,11 @@ ${modeDescriptions[currentMode]}`,
         setNoFoodFound,
         setFoodData,
         setActiveTab,
+        // Pass the scrapeUrl function with a fallback to prevent undefined errors
+        scrapeUrl: typeof scrapeUrl === 'function' ? scrapeUrl : async (url) => {
+          console.error('[FOODSCAN] scrapeUrl is not a function! Using fallback that returns null');
+          return null;
+        }
       });
       
       console.log('[FOODSCAN] WebSearchProvider.handleWebSearch completed');
@@ -4507,6 +4521,13 @@ IMPORTANT RULES:
   );
 
   const [hasShownScanTooltip, setHasShownScanTooltip] = useState(false);
+
+  // Get scrapeUrl from the WebScraperContext
+  const { scrapeUrl } = useWebScraper();
+  // Log if scrapeUrl is available (for debugging)
+  useEffect(() => {
+    console.log('FoodScanScreen: scrapeUrl is', scrapeUrl ? 'available' : 'NOT available');
+  }, [scrapeUrl]);
 
   return (
     <ScrollView 
