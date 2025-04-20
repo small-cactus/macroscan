@@ -160,6 +160,11 @@ const FoodScanScreen = () => {
   const [freeAccurateScansUsed, setFreeAccurateScansUsed] = useState(0);
   const [freeSearchScansUsed, setFreeSearchScansUsed] = useState(0);
 
+  // Add new state for paywall tracking
+  const [totalScanCount, setTotalScanCount] = useState(0);
+  const [lastPaywallTime, setLastPaywallTime] = useState(0);
+  const postScanPaywallTimerRef = useRef(null);
+
   // Add new state variables for manual input
   const [manualInputModalVisible, setManualInputModalVisible] = useState(false);
   const [manualUserInput, setManualUserInput] = useState('');
@@ -317,7 +322,7 @@ const FoodScanScreen = () => {
 
     // Optionally, handle texts that might need to appear if processing takes longer
     setTimeout(() => {
-      setLoadingTextQueue((prevQueue) => [...prevQueue, "Still working on it..."]);
+      setLoadingTextQueue((prevQueue) => [...prevQueue, "Taking longer than usual..."]);
     }, averageTime + 2000); // 2 seconds after average time
   };
 
@@ -500,6 +505,7 @@ const stopLoadingAnimation = () => {
             mode = await AsyncStorage.getItem('selectedMode') || 'fast';
             setSelectedMode(mode);
           }
+          setInitialModeLoaded(mode); // <-- Store the initially loaded mode
 
           // Get the current model using the getModel helper
           const currentModel = getModel(provider, {
@@ -942,7 +948,7 @@ const stopLoadingAnimation = () => {
     // Check scan limits before allowing image picking
     if (!isFirstDayUnlimited && !isSubscribed) {
       if (selectedMode === ACCURATE_MODE && freeAccurateScansUsed >= 1) {
-        console.log('[FoodScanScreen] Accurate scan limit reached on pickImage, showing paywall.');
+        console.log('[Paywall] Accurate scan limit reached, showing no-scans-fortune');
         Superwall.shared.register('no-scans-fortune');
         return;
       }
@@ -952,12 +958,12 @@ const stopLoadingAnimation = () => {
         return;
       }
       if (isSubscribedPlus && scanCount >= 20) {
-        console.log('[FoodScanScreen] Plus scan limit reached on pickImage, showing paywall.');
+        console.log('[Paywall] Plus scan limit reached, showing no-scans-fortune');
         Superwall.shared.register('no-scans-fortune');
         return;
       }
       if (!isSubscribed && !isSubscribedPlus && scanCount >= 5) {
-        console.log('[FoodScanScreen] Free scan limit reached on pickImage, showing paywall.');
+        console.log('[Paywall] Free scan limit reached, showing no-scans-fortune');
         Superwall.shared.register('no-scans-fortune');
         return;
       }
@@ -2504,8 +2510,8 @@ const stopLoadingAnimation = () => {
       setSelectedMode(newMode);
       
       // Reset the hasSeenSearchInfoSheetThisSession when changing away from search mode
-      // or when switching to search mode from another mode
-      if (selectedMode === 'search' || newMode === 'search') {
+      // but not when switching to search mode from another mode
+      if (selectedMode === 'search' && newMode !== 'search') {
         setHasSeenSearchInfoSheetThisSession(false);
       }
 
@@ -2684,34 +2690,94 @@ ${modeDescriptions[currentMode]}`,
   // Add this with other state declarations
   const [hasScannedEver, setHasScannedEver] = useState(false);
 
+  // Track if post-scan paywall has been shown
+  const [hasShownPostScanPaywall, setHasShownPostScanPaywall] = useState(false);
+
+  // Load shown flag on mount
+  useEffect(() => {
+    (async () => {
+      const shown = await AsyncStorage.getItem('@paywall_shown_after_scan');
+      setHasShownPostScanPaywall(shown === 'true');
+    })();
+  }, []);
+
+  // Show 'fortune-finished' paywall once after first-ever scan, on focus
+  useFocusEffect(
+    useCallback(() => {
+      const maybeShowPostScan = async () => {
+        try {
+          if (hasScannedEver && !hasShownPostScanPaywall) {
+            // paywall handled in scan completion only
+          }
+        } catch (error) {
+          console.error('Error showing post-scan paywall:', error);
+        }
+      };
+      maybeShowPostScan();
+    }, [hasScannedEver, hasShownPostScanPaywall])
+  );
+
   // Update the useFocusEffect for paywall
   useFocusEffect(
     useCallback(() => {
+      // Timer reference for the 3-second delay
+      let paywallTimerId = null;
+
       const checkAndShowPaywall = async () => {
         try {
           // Check if user has ever scanned
           const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
           setHasScannedEver(hasEverScanned === 'true');
 
-          // Only proceed with paywall check if user has scanned before
+          // Only proceed if user has scanned before
           if (hasEverScanned === 'true') {
-            const lastShownTime = await AsyncStorage.getItem('@paywall_last_shown');
-            const currentTime = Date.now();
-            
-            // If never shown before or 20 minutes (1200000 ms) have passed
-            if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
-              await Superwall.shared.register('fortune');
-              // Update the last shown time
-              await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
-            }
+            // Start the 3-second timer
+            paywallTimerId = setTimeout(async () => {
+              try {
+                // Check if the SearchModeInfoSheet is visible *inside* the timeout
+                // This uses the latest state value when the timeout executes
+                if (!showSearchInfoSheet) {
+                  const lastShownTimeStr = await AsyncStorage.getItem('@paywall_last_shown');
+                  const currentTime = Date.now();
+                  const cooldownPeriod = 45 * 60 * 1000; // 45 minutes in milliseconds
+                  const lastShownTime = lastShownTimeStr ? parseInt(lastShownTimeStr, 10) : 0;
+
+                  // If never shown before or 45 minutes have passed
+                  if (!lastShownTime || (currentTime - lastShownTime) >= cooldownPeriod) {
+                    console.log('[Paywall] Conditions met, showing paywall.');
+                    await Superwall.shared.register('fortune-finished');
+                    // Update the last shown time
+                    await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+                  } else {
+                    console.log('[Paywall] Cooldown active, not showing paywall.');
+                  }
+                } else {
+                  console.log('[Paywall] Search info sheet visible, not showing paywall.');
+                }
+              } catch (error) {
+                console.error('Error inside paywall timeout:', error);
+              }
+            }, 3000); // 3-second delay
+          } else {
+            console.log('[Paywall] User has not scanned yet, not checking paywall timer.');
           }
         } catch (error) {
-          console.error('Error handling paywall display:', error);
+          console.error('Error setting up paywall check:', error);
         }
       };
 
       checkAndShowPaywall();
-    }, [])
+
+      // Cleanup function to clear the timeout if the screen loses focus
+      return () => {
+        if (paywallTimerId) {
+          clearTimeout(paywallTimerId);
+          console.log('[Paywall] Cleared paywall timer on blur.');
+        }
+      };
+      // Add showSearchInfoSheet as a dependency to re-evaluate the effect if it changes
+      // This ensures the check inside the timeout uses the most current value.
+    }, [showSearchInfoSheet])
   );
 
   // Update handleSuccessfulScan to mark that user has scanned
@@ -2835,14 +2901,29 @@ ${modeDescriptions[currentMode]}`,
         useNativeDriver: true,
       }).start();
       
-      // Check if this is the first scan ever
-      const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
-      if (hasEverScanned !== 'true') {
-        // This is the first scan, show paywall and mark as scanned
-        await AsyncStorage.setItem('@has_ever_scanned', 'true');
-        setHasScannedEver(true);
-        await Superwall.shared.register('fortune');
-        await AsyncStorage.setItem('@paywall_last_shown', Date.now().toString());
+      // Update scan count and potentially show paywall
+      // Mark user as having scanned at least once
+      await AsyncStorage.setItem('@has_ever_scanned', 'true');
+
+      // Increment and save total scan count 
+      const newScanCount = totalScanCount + 1;
+      setTotalScanCount(newScanCount);
+      await AsyncStorage.setItem('@total_scan_count', newScanCount.toString());
+
+      // Show 'fortune-finished' paywall on 3rd scan with a delay
+      if (newScanCount === 3) {
+        // Use a timer to delay showing paywall until user has had time to see results
+        if (postScanPaywallTimerRef.current) {
+          clearTimeout(postScanPaywallTimerRef.current);
+        }
+        
+        // Show paywall after 10 seconds to give user time to see results
+        postScanPaywallTimerRef.current = setTimeout(async () => {
+          console.log('[Paywall] Showing third-scan fortune-finished paywall');
+          await Superwall.shared.register('fortune-finished');
+          await AsyncStorage.setItem('@last_paywall_time', Date.now().toString());
+          postScanPaywallTimerRef.current = null;
+        }, 10000);
       }
 
       // Rest of your success handling code...
@@ -2892,7 +2973,7 @@ ${modeDescriptions[currentMode]}`,
             
             // Show paywall if never shown before or 20 minutes (1200000 ms) have passed
             if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
-              await Superwall.shared.register('fortune');
+              await Superwall.shared.register('fortune-finished');
               // Update the last shown time
               await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
             }
@@ -3266,17 +3347,20 @@ ${modeDescriptions[currentMode]}`,
                 const { pageX, pageY, width, height } = scanButtonMeasurementsRef.current;
                 setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
                 setShowScanButtonTooltip(true);
+                setHasShownScanTooltip(true); // Mark as shown
               } else {
                 // Fallback to direct measurement
                 scanButtonRef.current.measure((x, y, width, height, pageX, pageY) => {
                   if (width && height) { // Ensure valid measurements
                     setScanButtonTooltipPosition({ x: pageX + width/2, y: pageY });
                     setShowScanButtonTooltip(true);
+                    setHasShownScanTooltip(true); // Mark as shown
                   } else {
                     // Fallback position if measurements aren't valid
                     const screenWidth = Dimensions.get('window').width;
                     setScanButtonTooltipPosition({ x: screenWidth / 2, y: 400 });
                     setShowScanButtonTooltip(true);
+                    setHasShownScanTooltip(true); // Mark as shown
                   }
                 });
               }
@@ -3286,8 +3370,9 @@ ${modeDescriptions[currentMode]}`,
               const screenWidth = Dimensions.get('window').width;
               setScanButtonTooltipPosition({ x: screenWidth / 2, y: 400 });
               setShowScanButtonTooltip(true);
+              setHasShownScanTooltip(true); // Mark as shown
             }
-          }, 5000); // Increased from 1000 to 5000 to give time after mode tooltip
+          }, 1000); // Increased to 8 seconds to ensure it appears after mode tooltip (which shows at 3 seconds)
         }
       } catch (error) {
         console.error('Error checking scan button tooltip status:', error);
@@ -3962,6 +4047,7 @@ ${modeDescriptions[currentMode]}`,
   const [showSearchInfoSheet, setShowSearchInfoSheet] = useState(false);
   const [hasSeenSearchInfoSheetThisSession, setHasSeenSearchInfoSheetThisSession] = useState(false);
   const [searchInfoSheetKey, setSearchInfoSheetKey] = useState(0);
+  const [initialModeLoaded, setInitialModeLoaded] = useState(null); // <-- Add new state here
 
   // Update the useEffect that depends on selectedMode
   useEffect(() => {
@@ -3978,6 +4064,12 @@ ${modeDescriptions[currentMode]}`,
 
       // New logic to show the info sheet for Search Mode based on time
       if (selectedMode === 'search') {
+        // <-- Add condition: Do not show if search mode was loaded initially
+        if (selectedMode === initialModeLoaded) {
+          console.log('[SearchInfoSheet] Search mode was already selected on load, skipping info sheet.');
+          return; 
+        }
+
         try {
           const lastSeenTimestampStr = await AsyncStorage.getItem('@last_seen_search_info_sheet');
           const lastSeenTimestamp = lastSeenTimestampStr ? parseInt(lastSeenTimestampStr, 10) : 0;
@@ -3989,13 +4081,13 @@ ${modeDescriptions[currentMode]}`,
             setSearchInfoSheetKey(prevKey => prevKey + 1);
             // Show the sheet
             setShowSearchInfoSheet(true);
-            // Update the last seen timestamp
-            await AsyncStorage.setItem('@last_seen_search_info_sheet', currentTime.toString());
-            // Optionally keep track within the session if needed elsewhere, but time check is primary
-            setHasSeenSearchInfoSheetThisSession(true); 
+            // Don't update the timestamp here - only when user clicks "Get Started"
+            // Don't mark as seen in session so it can be shown again if dismissed
           } else {
-            // If shown recently, ensure the session flag reflects that it's been seen (might be redundant depending on usage)
-            setHasSeenSearchInfoSheetThisSession(true);
+            // If shown recently and user clicked "Get Started", maintain that status
+            if (lastSeenTimestamp) {
+              setHasSeenSearchInfoSheetThisSession(true);
+            }
           }
         } catch (error) {
           console.error("Error checking/setting search info sheet timestamp:", error);
@@ -4003,13 +4095,14 @@ ${modeDescriptions[currentMode]}`,
           if (!hasSeenSearchInfoSheetThisSession) {
              setSearchInfoSheetKey(prevKey => prevKey + 1);
              setShowSearchInfoSheet(true);
-             setHasSeenSearchInfoSheetThisSession(true);
+             // Don't set hasSeenSearchInfoSheetThisSession here
           }
         }
       }
     };
     handleModeChange();
-  }, [selectedMode, isLoading, prevMode]); // Removed hasSeenSearchInfoSheetThisSession from deps for showing logic
+    // <-- Add initialModeLoaded to dependency array
+  }, [selectedMode, isLoading, prevMode, initialModeLoaded]); 
 
   // Add this function to start the pulsing animation for the mode chip
   const startChipPulseAnimation = () => {
@@ -4333,6 +4426,87 @@ IMPORTANT RULES:
       stopLoadingAnimation();
     }
   };
+
+  // Load scan count and paywall timing on component mount
+  useEffect(() => {
+    const loadPaywallState = async () => {
+      try {
+        const storedScanCount = await AsyncStorage.getItem('@total_scan_count');
+        const storedPaywallTime = await AsyncStorage.getItem('@last_paywall_time');
+        
+        setTotalScanCount(storedScanCount ? parseInt(storedScanCount) : 0);
+        setLastPaywallTime(storedPaywallTime ? parseInt(storedPaywallTime) : 0);
+      } catch (error) {
+        console.error('Error loading paywall state:', error);
+      }
+    };
+    
+    loadPaywallState();
+  }, []);
+
+  // Add Fortune general paywall on app launch with 5min/6hr rules
+  const [appUsageTime, setAppUsageTime] = useState(0);
+  const appUsageIntervalRef = useRef(null);
+
+  // Track app usage time
+  useEffect(() => {
+    const loadAppUsageTime = async () => {
+      try {
+        const savedTime = await AsyncStorage.getItem('@app_usage_time');
+        setAppUsageTime(savedTime ? parseInt(savedTime) : 0);
+      } catch (error) {
+        console.error('Error loading app usage time:', error);
+      }
+    };
+
+    loadAppUsageTime();
+    
+    // Update usage time every 5 seconds
+    appUsageIntervalRef.current = setInterval(async () => {
+      try {
+        const newTime = appUsageTime + 5000;
+        setAppUsageTime(newTime);
+        await AsyncStorage.setItem('@app_usage_time', newTime.toString());
+      } catch (error) {
+        console.error('Error updating app usage time:', error);
+      }
+    }, 5000);
+    
+    return () => {
+      if (appUsageIntervalRef.current) {
+        clearInterval(appUsageIntervalRef.current);
+      }
+    };
+  }, [appUsageTime]);
+
+  // General fortune paywall on focus
+  useFocusEffect(
+    useCallback(() => {
+      const checkGeneralPaywall = async () => {
+        try {
+          // Only show if 5+ minutes used and 6 hours since last show
+          const lastShownGeneral = await AsyncStorage.getItem('@general_paywall_last_shown');
+          const currentTime = Date.now();
+          const sixHours = 6 * 60 * 60 * 1000;
+          
+          const hasPassedCooldown = !lastShownGeneral || 
+                                 (currentTime - parseInt(lastShownGeneral)) >= sixHours;
+          
+          if (appUsageTime >= 5 * 60 * 1000 && hasPassedCooldown) {
+            console.log('[Paywall] Showing general fortune paywall (5min/6hr rule)');
+            await Superwall.shared.register('fortune');
+            await AsyncStorage.setItem('@general_paywall_last_shown', currentTime.toString());
+          }
+        } catch (error) {
+          console.error('Error handling general paywall:', error);
+        }
+      };
+      
+      checkGeneralPaywall();
+    }, [appUsageTime])
+  );
+
+  const [hasShownScanTooltip, setHasShownScanTooltip] = useState(false);
 
   return (
     <ScrollView 
@@ -5135,10 +5309,15 @@ IMPORTANT RULES:
         onRevertChip={() => {
           // Revert to the previous mode
           setSelectedMode(prevMode);
-          setHasSeenSearchInfoSheetThisSession(false);
+          // Don't set hasSeenSearchInfoSheetThisSession to false so it can show again
           AsyncStorage.setItem('selectedMode', prevMode);
         }}
         onGetStarted={() => {
+          // When user clicks "Get Started" mark it as seen in this session
+          setHasSeenSearchInfoSheetThisSession(true);
+          // Update the timestamp in AsyncStorage
+          const currentTime = Date.now();
+          AsyncStorage.setItem('@last_seen_search_info_sheet', currentTime.toString());
           // Trigger the pulse animation when user clicks Get Started
           startChipPulseAnimation();
         }}

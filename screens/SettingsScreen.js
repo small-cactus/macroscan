@@ -56,11 +56,11 @@ const SettingsScreen = () => {
       navigateTo: "DebuggingScreen",
       symbol: "hammer.fill"
     },
-    {
-      title: "Image Picker Test",
-      navigateTo: "ImagePickerTestScreen",
-      symbol: "camera.fill"
-    },
+    // {
+    //   title: "Image Picker Test",
+    //   navigateTo: "ImagePickerTestScreen",
+    //   symbol: "camera.fill"
+    // },
     {
       title: "Help and Support",
       navigateTo: "SupportScreen",
@@ -108,8 +108,9 @@ const SettingsScreen = () => {
     // await AsyncStorage.setItem('@openai_api_key', 'OPENAI_API_KEY_REMOVED');
     // await AsyncStorage.setItem('@gemini_api_key', 'GEMINI_API_KEY_REMOVED');
     // await AsyncStorage.removeItem('@has_seen_whats_new_1_6_0');
-    // await AsyncStorage.removeItem('@has_seen_mode_tooltip');
-    // await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
+    await AsyncStorage.removeItem('@has_seen_mode_tooltip');
+    await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
+    await AsyncStorage.removeItem('@last_seen_search_info_sheet');
     // await Superwall.shared.register('fortune');
     navigation.navigate(navigateTo);
   };

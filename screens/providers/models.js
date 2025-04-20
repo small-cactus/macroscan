@@ -10,7 +10,8 @@ export const MODELS = {
   },
   anthropic: {
     regular: 'claude-3-haiku-20240307',
-    complex: 'claude-3-5-sonnet-20240620'
+    complex: 'claude-3-5-sonnet-20240620',
+    agentic: 'claude-3-7-sonnet-latest'
   }
 };
 
@@ -47,7 +48,7 @@ export const getModel = (
 
   // Case 3: Search mode
   if (selectedMode === 'search') {
-    return MODELS[provider].regular;
+    return MODELS[provider].agentic;
   }
 
   // Case 4: Fast mode - can use either model based on user preference

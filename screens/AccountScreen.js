@@ -464,6 +464,8 @@ export default function AccountScreen() {
                 'hasViewedFeaturesTutorial',
                 '@has_seen_whats_new_1_6_0',
                 '@visited_steps',
+                '@has_seen_mode_tooltip',
+                '@has_seen_scan_button_tooltip',
 
                 // paywall
                 '@paywall_last_shown',

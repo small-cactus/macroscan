@@ -54,6 +54,9 @@ const PRODUCT_HISTORY_KEY = '@product_history';
 // Toggle to use our new streak visualization instead of enhanced one
 const USE_NEW_STREAK_VISUALIZATION = true;
 
+// Key for onboarding inputs (should NOT be deleted)
+const ONBOARDING_INPUTS_KEY = '@user_data';
+
 const ProfileScreen = () => {
   const colorScheme = useColorScheme();
   const isDark = colorScheme === 'dark';
@@ -304,55 +307,59 @@ const ProfileScreen = () => {
             try {
               setIsDeleting(true);
               // Updated list of keys from AccountScreen.js
-              const keysToRemove = [
-                // User related
-                '@user',
-                '@user_goals',
-                // '@user_data', //stores all goal related inputs that are saved in onboarding
-                '@user_logged_in',
-                '@apikey',
-                'userName',
-                'userImageUri', // Added from AccountScreen logic
-
-                // Product and history related
-                '@product_history',
-                '@average_processing_times', // Added from AccountScreen logic
-                // LAST_PLACEHOLDER_KEY, // These might not be defined here
-                // LAST_PLACEHOLDER_TIME_KEY,
-                // FILTER_SECTION_STATE_KEY,
-
-                // App state and settings
-                'selectedModel',
-                'selectedMode',
-                '@selected_provider',
-                'foodSelectionEnabled', // Added from AccountScreen logic
-                '@openai_api_key', // Added from AccountScreen logic
-                '@gemini_api_key', // Added from AccountScreen logic
-                '@anthropic_api_key', // Added from AccountScreen logic
-                '@selected_macro', // Added from AccountScreen logic
-
-                // Usage tracking
-                'dailyScanCount',
-                'firstUseDate',
-                'dateLastUsed',
-                'freeAccurateScansUsed', // Added from AccountScreen logic
-                'selectedProcessing', // Added from AccountScreen logic
-                'selectedProvider', // Added from AccountScreen logic
-                'previousModel', // Added from AccountScreen logic
-                'hasScannedEver', // Added from AccountScreen logic
-
-                // Onboarding and tutorials
-                'hasViewedTutorial',
-                'hasViewedFeaturesTutorial', // Added from AccountScreen logic
-                '@has_seen_whats_new_1_6_0', // Added from AccountScreen logic
-                '@visited_steps', // Added from AccountScreen logic
-
-                // paywall
-                '@paywall_last_shown',
-                '@has_ever_scanned', // Added from AccountScreen logic
-              ];
+                const keysToRemove = [
+                  // User related
+                  '@user',
+                  '@user_goals',
+                  // '@user_data', //stores all goal related inputs that are saved in onboarding
+                  '@user_logged_in',
+                  '@apikey',
+                  'userName',
+                  'userImageUri',
+  
+                  // Product and history related
+                  '@product_history',
+                  '@average_processing_times',
+                  'LAST_PLACEHOLDER_KEY',
+                  'LAST_PLACEHOLDER_TIME_KEY',
+                  'FILTER_SECTION_STATE_KEY',
+  
+                  // App state and settings
+                  'selectedModel',
+                  'selectedMode',
+                  '@selected_provider',
+                  'foodSelectionEnabled',
+                  '@openai_api_key',
+                  '@gemini_api_key',
+                  '@anthropic_api_key',
+                  '@selected_macro',
+  
+                  // Usage tracking
+                  'dailyScanCount',
+                  'firstUseDate',
+                  'dateLastUsed',
+                  'freeAccurateScansUsed',
+                  'selectedProcessing',
+                  'selectedProvider',
+                  'previousModel',
+                  'hasScannedEver',
+  
+                  // Onboarding and tutorials
+                  'hasViewedTutorial',
+                  'hasViewedFeaturesTutorial',
+                  '@has_seen_whats_new_1_6_0',
+                  '@visited_steps',
+                  '@has_seen_mode_tooltip',
+                  '@has_seen_scan_button_tooltip',
+  
+                  // paywall
+                  '@paywall_last_shown',
+                  '@has_ever_scanned',
+                ];
               
-              await AsyncStorage.multiRemove(keysToRemove);
+              // Remove all keys except onboarding inputs
+              const filteredKeysToRemove = keysToRemove.filter(key => key !== ONBOARDING_INPUTS_KEY);
+              await AsyncStorage.multiRemove(filteredKeysToRemove);
               
               // Clear user context
               if (updateUser) updateUser(null);

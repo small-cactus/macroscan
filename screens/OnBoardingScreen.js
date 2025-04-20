@@ -1490,7 +1490,7 @@ const OnboardingScreen = () => {
 
   const showPaywall = async () => {
     Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-    await Superwall.shared.register('fortune');
+    // await Superwall.shared.register('fortune');
     navigation.navigate('SignUp');
   };
 

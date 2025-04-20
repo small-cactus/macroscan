@@ -755,7 +755,7 @@ const FeaturesScreen = () => {
             {(!isUnlocked && !isFirstDayUnlimited) ? (
               <TouchableOpacity
                 onPress={async () => {
-                  await Superwall.shared.register('no-scans');
+                  await Superwall.shared.register('locked-fortune');
                 }}
               >
                 <View style={[styles.toggleContainer, styles.toggleContainerLocked]}>

@@ -298,7 +298,7 @@ IMPORTANT RULES:
 1. Analyze the image carefully to identify the food item(s).
 2. Use search_web tool to find accurate nutritional information.
 3. Compare multiple sources for the most reliable data.
-4. If no food is visible, respond with "{No Food Found.}" only.
+4. If no food is visible, respond with "{No Food Found.}" only!!!!!!!!!!!!!!!!
 5. Format your final response as structured JSON.
 
 <careful_analysis_instructions>
@@ -319,6 +319,8 @@ Brand/Restaurant: [Include any brand or restaurant identification, or "None visi
 Portion size: [Your initial estimate of the portion size]
 Packaging: [Describe any packaging or container, or "None visible" if not applicable]
 Distinguishing features: [Any notable visual characteristics that help with identification]
+
+EXTRMELY IMPORTANT: If you cannot identify the food item, respond with "{No Food Found.}" only. Do not say anything else or respond with empty json.
 
 Only after providing this structured format, continue with your detailed description and proceed with any web searches needed.
 </initial_response_format>

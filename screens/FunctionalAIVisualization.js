@@ -227,7 +227,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   // Add a controlled state update function that enforces proper step order
   // This function should be stable and not depend on stepStates directly.
   const updateStepStatesInOrder = useCallback((updates) => {
-    console.log('[VISUALIZER] Updating step states with enforced ordering:', updates);
+    // console.log('[VISUALIZER] Updating step states with enforced ordering:', updates);
     
     // Use functional update form of setStepStates
     setStepStates((prevStates) => {
@@ -258,13 +258,13 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         for (let i = 0; i < orderedSteps.length; i++) {
           const step = orderedSteps[i];
           if (i < activeStepIndex && newStates[step] !== STEP_COMPLETED) {
-            console.log(`[VISUALIZER-ORDERING] Enforcing: ${step} must be COMPLETED (before active)`);
+            // console.log(`[VISUALIZER-ORDERING] Enforcing: ${step} must be COMPLETED (before active)`);
             newStates[step] = STEP_COMPLETED;
           } else if (i === activeStepIndex && newStates[step] !== STEP_ACTIVE) {
-            console.warn(`[VISUALIZER-ORDERING] Warning: Requested update seems inconsistent. Forcing ${step} to ACTIVE.`);
+            // console.warn(`[VISUALIZER-ORDERING] Warning: Requested update seems inconsistent. Forcing ${step} to ACTIVE.`);
             newStates[step] = STEP_ACTIVE;
           } else if (i > activeStepIndex && newStates[step] !== STEP_WAITING) {
-            console.log(`[VISUALIZER-ORDERING] Enforcing: ${step} must be WAITING (after active)`);
+            // console.log(`[VISUALIZER-ORDERING] Enforcing: ${step} must be WAITING (after active)`);
             newStates[step] = STEP_WAITING;
           }
         }
@@ -283,14 +283,14 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           // Ensure all steps before the last completed step are also completed
           for (let i = 0; i < lastCompletedIndex; i++) {
             if (newStates[orderedSteps[i]] !== STEP_COMPLETED) {
-              console.log(`[VISUALIZER-ORDERING] Enforcing: ${orderedSteps[i]} must be COMPLETED (before last completed)`);
+              // console.log(`[VISUALIZER-ORDERING] Enforcing: ${orderedSteps[i]} must be COMPLETED (before last completed)`);
               newStates[orderedSteps[i]] = STEP_COMPLETED;
             }
           }
           // Ensure all steps after the last completed step are waiting
           for (let i = lastCompletedIndex + 1; i < orderedSteps.length; i++) {
             if (newStates[orderedSteps[i]] !== STEP_WAITING) {
-              console.log(`[VISUALIZER-ORDERING] Enforcing: ${orderedSteps[i]} must be WAITING (after last completed)`);
+              // console.log(`[VISUALIZER-ORDERING] Enforcing: ${orderedSteps[i]} must be WAITING (after last completed)`);
               newStates[orderedSteps[i]] = STEP_WAITING;
             }
           }
@@ -310,11 +310,11 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   const startStep = useCallback((step) => {
     // *** Read the latest state from the ref ***
     const currentStates = stepStatesRef.current;
-    console.log(`[VISUALIZER] Attempting to start step: ${step}. Current states from ref:`, currentStates);
+    // console.log(`[VISUALIZER] Attempting to start step: ${step}. Current states from ref:`, currentStates);
 
     // Check if the step is already active or completed
     if (currentStates[step] !== STEP_WAITING) {
-      console.log(`[VISUALIZER] Cannot start step ${step} - not in WAITING state (current: ${currentStates[step]})`);
+      // console.log(`[VISUALIZER] Cannot start step ${step} - not in WAITING state (current: ${currentStates[step]})`);
       return; // Exit function, no state change needed
     }
 
@@ -322,15 +322,15 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     const currentStepIndex = stepOrder.indexOf(step);
     const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
     if (previousStep && currentStates[previousStep] !== STEP_COMPLETED) {
-        console.warn(`[VISUALIZER] Cannot start step ${step} because previous step ${previousStep} is not completed (${currentStates[previousStep]}). Aborting start.`);
+        // console.warn(`[VISUALIZER] Cannot start step ${step} because previous step ${previousStep} is not completed (${currentStates[previousStep]}). Aborting start.`);
         return; // Exit function, no state change needed
     }
 
-    console.log(`[VISUALIZER] Conditions met. Starting step: ${step}`);
+    // console.log(`[VISUALIZER] Conditions met. Starting step: ${step}`);
 
     // Record the start time for this step *before* updating state
     stepStartTimeRefs.current[step] = Date.now();
-    console.log(`[VISUALIZER] Recorded start time for ${step}: ${stepStartTimeRefs.current[step]}`);
+    // console.log(`[VISUALIZER] Recorded start time for ${step}: ${stepStartTimeRefs.current[step]}`);
 
     // Update state: Set current step to ACTIVE
     currentStepRef.current = step;
@@ -351,7 +351,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       case 'result': defaultSubtitle = 'Generating personalized nutrition insights...'; subtitleSetter = setResultSubtitle; break;
     }
     if (subtitleSetter && defaultSubtitle) {
-        console.log(`[VISUALIZER] Setting default subtitle for ${step}: "${defaultSubtitle}"`);
+        // console.log(`[VISUALIZER] Setting default subtitle for ${step}: "${defaultSubtitle}"`);
         subtitleSetter(defaultSubtitle);
     }
 
@@ -410,7 +410,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
             subtitleIndex = (subtitleIndex + 1) % subtitlesArray.length;
             const nextSubtitle = subtitlesArray[subtitleIndex];
             // Update subtitle state
-            console.log(`[VISUALIZER-CYCLE] Cycling ${step} subtitle to: "${nextSubtitle}"`);
+            // console.log(`[VISUALIZER-CYCLE] Cycling ${step} subtitle to: "${nextSubtitle}"`);
             subtitleSetter(nextSubtitle);
             triggerSubtitleHaptic();
         }, intervalDuration);
@@ -423,11 +423,11 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   const completeStep = useCallback((step) => {
     // *** Read the latest state from the ref ***
     const currentStates = stepStatesRef.current;
-    console.log(`[VISUALIZER] Attempting to complete step: ${step}. Current states from ref:`, currentStates);
+    // console.log(`[VISUALIZER] Attempting to complete step: ${step}. Current states from ref:`, currentStates);
 
     // 1. Check if already completed
     if (currentStates[step] === STEP_COMPLETED) {
-      console.log(`[VISUALIZER] Step ${step} already COMPLETED`);
+      // console.log(`[VISUALIZER] Step ${step} already COMPLETED`);
       // Clear any lingering completion timeout for this step
       if (completionTimeoutRefs.current[step]) {
           clearTimeout(completionTimeoutRefs.current[step]);
@@ -438,7 +438,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
     // 2. Check if the step is ACTIVE (required for completion)
     if (currentStates[step] !== STEP_ACTIVE) {
-      console.log(`[VISUALIZER] Cannot complete step ${step} - not in ACTIVE state (current: ${currentStates[step]})`);
+      // console.log(`[VISUALIZER] Cannot complete step ${step} - not in ACTIVE state (current: ${currentStates[step]})`);
       return; // No change needed
     }
 
@@ -446,7 +446,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     const currentStepIndex = stepOrder.indexOf(step);
     const previousStep = currentStepIndex > 0 ? stepOrder[currentStepIndex - 1] : null;
     if (previousStep && currentStates[previousStep] !== STEP_COMPLETED) {
-      console.warn(`[VISUALIZER] Attempting to complete ${step} but previous step ${previousStep} is not COMPLETED (${currentStates[previousStep]}). State inconsistency?`);
+      // console.warn(`[VISUALIZER] Attempting to complete ${step} but previous step ${previousStep} is not COMPLETED (${currentStates[previousStep]}). State inconsistency?`);
     }
 
     // 4. Check minimum duration
@@ -462,10 +462,10 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       const remaining = minDuration - elapsed;
       // *** Check if a completion timeout is already running for this step ***
       if (completionTimeoutRefs.current[step]) {
-          console.log(`[VISUALIZER] Minimum duration check for ${step} already scheduled, waiting.`);
+          // console.log(`[VISUALIZER] Minimum duration check for ${step} already scheduled, waiting.`);
           return; // Already waiting, do nothing
       }
-      console.log(`[VISUALIZER] Step ${step} hasn't reached minimum duration, scheduling re-attempt in ${remaining}ms`);
+      // console.log(`[VISUALIZER] Step ${step} hasn't reached minimum duration, scheduling re-attempt in ${remaining}ms`);
       // *** Store the new timeout ID ***
       completionTimeoutRefs.current[step] = setTimeout(() => {
         // Clear the stored ref *before* re-calling completeStep
@@ -477,7 +477,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     }
 
     // --- MINIMUM DURATION MET --- 
-    console.log(`[VISUALIZER] Conditions met. Completing step: ${step}`);
+    // console.log(`[VISUALIZER] Conditions met. Completing step: ${step}`);
 
     // Clear any potentially existing (but now irrelevant) completion timeout for this step
     if (completionTimeoutRefs.current[step]) {
@@ -495,7 +495,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     if (stepCompleteSoundRef.current && !stepSoundPlayedRef.current[step]) {
       stepSoundPlayedRef.current[step] = true; // Set flag immediately
       stepCompleteSoundRef.current.replayAsync().catch(error => {
-        console.error('[VISUALIZER] Error playing step complete sound:', error);
+        // console.error('[VISUALIZER] Error playing step complete sound:', error);
         stepSoundPlayedRef.current[step] = false; // Reset flag on error
       });
     }
@@ -508,7 +508,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         case 'process': cycleIntervalRef = processCycleIntervalRef; break;
     }
     if (cycleIntervalRef && cycleIntervalRef.current) {
-        console.log(`[VISUALIZER] Clearing subtitle cycle interval for ${step}`);
+        // console.log(`[VISUALIZER] Clearing subtitle cycle interval for ${step}`);
         clearInterval(cycleIntervalRef.current);
         cycleIntervalRef.current = null;
     }
@@ -542,7 +542,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         }
         // Start next step after delay (using the stable startStep)
         const startNextTimeout = setTimeout(() => {
-           console.log(`[VISUALIZER] Triggering start for next step ${nextStep} after completion delay`);
+          //  console.log(`[VISUALIZER] Triggering start for next step ${nextStep} after completion delay`);
            startStep(nextStep);
         }, STEP_TRANSITION_DELAY);
         timeoutRefs.current.push(startNextTimeout);
@@ -561,7 +561,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     setIsValidatingState(true);
     
     try {
-      console.log('[VISUALIZER] Validating step states:', JSON.stringify(stepStates));
+      // console.log('[VISUALIZER] Validating step states:', JSON.stringify(stepStates));
       
       // No longer updating states directly here - just log issues for debugging
       // All state updates go through updateStepStatesInOrder
@@ -582,7 +582,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         for (let i = 0; i < activeStepIndex; i++) {
           const step = orderedSteps[i];
           if (stepStates[step] !== STEP_COMPLETED) {
-            console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be COMPLETED (before active step)`);
+            // console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be COMPLETED (before active step)`);
           }
         }
         
@@ -590,7 +590,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         for (let i = activeStepIndex + 1; i < orderedSteps.length; i++) {
           const step = orderedSteps[i];
           if (stepStates[step] !== STEP_WAITING) {
-            console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be WAITING (after active step)`);
+            // console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be WAITING (after active step)`);
           }
         }
       } else {
@@ -608,7 +608,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           for (let i = 0; i < lastCompletedIndex; i++) {
             const step = orderedSteps[i];
             if (stepStates[step] !== STEP_COMPLETED) {
-              console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be COMPLETED (before last completed step)`);
+              // console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be COMPLETED (before last completed step)`);
             }
           }
           
@@ -616,13 +616,13 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           for (let i = lastCompletedIndex + 1; i < orderedSteps.length; i++) {
             const step = orderedSteps[i];
             if (stepStates[step] !== STEP_WAITING) {
-              console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be WAITING (after last completed step)`);
+              // console.log(`[VISUALIZER-VALIDATION] Issue: ${step} should be WAITING (after last completed step)`);
             }
           }
         }
       }
     } catch (error) {
-      console.error('[VISUALIZER] Error during state validation:', error);
+      // console.error('[VISUALIZER] Error during state validation:', error);
     } finally {
       setIsValidatingState(false);
     }
@@ -657,7 +657,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     if (scanCompleteSoundRef.current && !scanCompleteSoundPlayedRef.current) {
       scanCompleteSoundPlayedRef.current = true; // Set flag immediately
       scanCompleteSoundRef.current.replayAsync().catch(error => {
-        console.error('[VISUALIZER] Error playing scan complete sound:', error);
+        // console.error('[VISUALIZER] Error playing scan complete sound:', error);
         scanCompleteSoundPlayedRef.current = false; // Reset flag on error
       });
     }
@@ -673,7 +673,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Reset the component
   const reset = async () => {
-    console.log('[VISUALIZER] Resetting component');
+    // console.log('[VISUALIZER] Resetting component');
     
     // Clear all timeouts and intervals
     timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
@@ -778,19 +778,19 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
     // When search queries are updated, it means we're in the search step
     if (queriesUpdated) {
-      console.log('[VISUALIZER] Search queries updated, handling step transitions');
+      // console.log('[VISUALIZER] Search queries updated, handling step transitions');
 
       // Make sure we complete the recognize step and activate the search step
       // *** Use ref state ***
       if (currentLocalStates.recognize === STEP_ACTIVE) {
-        console.log('[VISUALIZER] Search queries updated while in recognize step, completing recognize');
+        // console.log('[VISUALIZER] Search queries updated while in recognize step, completing recognize');
         completeStep('recognize'); // completeStep is safe now
       }
 
       // If search step isn't active, start it
       // *** Use ref state ***
       if (currentLocalStates.search === STEP_WAITING) {
-        console.log('[VISUALIZER] Search queries updated, starting search step');
+        // console.log('[VISUALIZER] Search queries updated, starting search step');
         startStep('search'); // startStep is safe now
       }
     }
@@ -798,24 +798,24 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     // When search results are updated, we should transition to the process step
     // BUT only after a minimum duration to ensure the search step is visible
     if (resultsUpdated) {
-      console.log('[VISUALIZER] Search results updated, handling step transitions');
+      // console.log('[VISUALIZER] Search results updated, handling step transitions');
 
       // Make sure both recognize and search are complete/active
       // *** Use ref state ***
       if (currentLocalStates.recognize === STEP_WAITING || currentLocalStates.recognize === STEP_ACTIVE) {
-        console.log('[VISUALIZER] Search results updated but recognize step not completed, completing it');
+        // console.log('[VISUALIZER] Search results updated but recognize step not completed, completing it');
         completeStep('recognize');
       }
 
       // CRITICAL: Explicitly complete search and start process
       // *** Use ref state ***
       if (currentLocalStates.search === STEP_WAITING) {
-        console.log('[VISUALIZER] Search results updated but search step not started, starting it');
+        // console.log('[VISUALIZER] Search results updated but search step not started, starting it');
         startStep('search');
 
         // After a proper delay, complete search and start process
         const transitionTimeout = setTimeout(() => {
-          console.log('[VISUALIZER] Enforced minimum search duration reached, completing search step');
+          // console.log('[VISUALIZER] Enforced minimum search duration reached, completing search step');
           // IMPORTANT: First mark search as complete
           completeStep('search');
 
@@ -836,11 +836,11 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         const searchActiveDuration = Date.now() - searchStartTime;
         const remainingTime = Math.max(300, MIN_SEARCH_DURATION - searchActiveDuration);
 
-        console.log(`[VISUALIZER] Search results received, search active for ${searchActiveDuration}ms, remaining: ${remainingTime}ms`);
+        // console.log(`[VISUALIZER] Search results received, search active for ${searchActiveDuration}ms, remaining: ${remainingTime}ms`);
 
         // Ensure search is visible for minimum duration before transitioning
         const transitionTimeout = setTimeout(() => {
-          console.log('[VISUALIZER] Completing search step after minimum duration');
+          // console.log('[VISUALIZER] Completing search step after minimum duration');
           // IMPORTANT: First mark search as complete
           completeStep('search');
 
@@ -861,13 +861,13 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Improve food detection update to make subtitle changes immediate
   const updateWithFoodItems = useCallback((items) => {
-    console.log('[VISUALIZER] updateWithFoodItems called with:', items);
+    // console.log('[VISUALIZER] updateWithFoodItems called with:', items);
     
     if (!items || !items.length) return;
     
     const foodName = items[0];
     if (foodName) {
-      console.log(`[VISUALIZER] Setting detectedFood to: ${foodName}`);
+      // console.log(`[VISUALIZER] Setting detectedFood to: ${foodName}`);
       
       // IMMEDIATE UI UPDATES - set these directly for faster feedback
       setDetectedFood(foodName);
@@ -901,7 +901,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Update with search queries
   const updateWithSearchQueries = useCallback((queries) => {
-    console.log('[VISUALIZER] updateWithSearchQueries called with:', queries);
+    // console.log('[VISUALIZER] updateWithSearchQueries called with:', queries);
     if (!queries || !queries.length) return;
     
     // Update search subtitle with first query
@@ -951,7 +951,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Update handleSearchStepUpdate call in updateWithSearchResults
   const updateWithSearchResults = useCallback((results) => {
-    console.log('[VISUALIZER] updateWithSearchResults called with:', results?.length, 'results');
+    // console.log('[VISUALIZER] updateWithSearchResults called with:', results?.length, 'results');
     if (!results || !results.length) return;
     
     // Update search results count
@@ -980,18 +980,18 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   // Add explicit transition management for process → result step
   const manageProcessToResultTransition = useCallback(() => {
     if (stepStates.process === STEP_ACTIVE) {
-      console.log('[VISUALIZER] Managing process to result transition');
+      // console.log('[VISUALIZER] Managing process to result transition');
       
       // Calculate how long process has been active
       const processStartTime = stepStartTimeRefs.current.process || 0;
       const processActiveDuration = Date.now() - processStartTime;
       const remainingTime = Math.max(300, MIN_PROCESS_DURATION - processActiveDuration);
       
-      console.log(`[VISUALIZER] Process step active for ${processActiveDuration}ms, remaining: ${remainingTime}ms`);
+      // console.log(`[VISUALIZER] Process step active for ${processActiveDuration}ms, remaining: ${remainingTime}ms`);
       
       // Ensure process is visible for minimum duration before transitioning
       const transitionTimeout = setTimeout(() => {
-        console.log('[VISUALIZER] Completing process step after minimum duration');
+        // console.log('[VISUALIZER] Completing process step after minimum duration');
         
         // First mark process as complete
         completeStep('process');
@@ -1018,8 +1018,8 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Add dependencies to updateWithScanData
   const updateWithScanData = useCallback((data) => {
-    console.log('[VISUALIZER] updateWithScanData called with food:', data?.food?.name);
-    console.log('[VISUALIZER] API completion status:', data?._isProcessingComplete);
+    // console.log('[VISUALIZER] updateWithScanData called with food:', data?.food?.name);
+    // console.log('[VISUALIZER] API completion status:', data?._isProcessingComplete);
     if (!data) return;
     
     // Track if we updated any state to trigger appropriate step transitions
@@ -1133,13 +1133,13 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Mark API as finished
   const setAPIFinished = (finished) => {
-    console.log(`[VISUALIZER] setAPIFinished called with: ${finished}`);
-    console.log(`[VISUALIZER] Current isAPIFinished: ${isAPIFinished}`);
-    console.log(`[VISUALIZER] Current stepStates:`, JSON.stringify(stepStates));
-    console.log(`[VISUALIZER] Current step from ref: ${currentStepRef.current}`);
+    // console.log(`[VISUALIZER] setAPIFinished called with: ${finished}`);
+    // console.log(`[VISUALIZER] Current isAPIFinished: ${isAPIFinished}`);
+    // console.log(`[VISUALIZER] Current stepStates:`, JSON.stringify(stepStates));
+    // console.log(`[VISUALIZER] Current step from ref: ${currentStepRef.current}`);
     
     if (finished && !isAPIFinished) {
-      console.log('[VISUALIZER] Setting isAPIFinished to true');
+      // console.log('[VISUALIZER] Setting isAPIFinished to true');
           setIsAPIFinished(true);
       
       // Disable polling when API is finished
@@ -1163,7 +1163,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       // Complete the active step
       if (currentStepIndex >= 0) {
         const currentStep = orderedSteps[currentStepIndex];
-        console.log(`[VISUALIZER] API finished - completing active step: ${currentStep}`);
+        // console.log(`[VISUALIZER] API finished - completing active step: ${currentStep}`);
         completeStep(currentStep);
         lastCompletedIndex = currentStepIndex;
       }
@@ -1175,12 +1175,12 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       }
       
       if (completionsInOrder.length > 0) {
-        console.log(`[VISUALIZER] API finished - scheduling completion of remaining steps:`, completionsInOrder);
+        // console.log(`[VISUALIZER] API finished - scheduling completion of remaining steps:`, completionsInOrder);
         
         let delay = 500;
         completionsInOrder.forEach(step => {
             const startTimeout = setTimeout(() => {
-            console.log(`[VISUALIZER] Starting remaining step: ${step}`);
+            // console.log(`[VISUALIZER] Starting remaining step: ${step}`);
             startStep(step);
             }, delay);
             timeoutRefs.current.push(startTimeout);
@@ -1188,7 +1188,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           delay += 1000;
           
             const completeTimeout = setTimeout(() => {
-            console.log(`[VISUALIZER] Completing remaining step: ${step}`);
+            // console.log(`[VISUALIZER] Completing remaining step: ${step}`);
             completeStep(step);
               
             // Show accuracy box after the last step
@@ -1209,7 +1209,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       
       // If we're already not visible, force all steps to complete immediately
       if (!isVisible) {
-        console.log('[VISUALIZER] API finished but component not visible, forcing immediate completion');
+        // console.log('[VISUALIZER] API finished but component not visible, forcing immediate completion');
         forceCompleteAllSteps();
       }
     }
@@ -1217,10 +1217,10 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Initialize the animation when component becomes visible
   useEffect(() => {
-    console.log(`[VISUALIZER] isVisible changed to: ${isVisible}`);
+    // console.log(`[VISUALIZER] isVisible changed to: ${isVisible}`);
     
     if (isVisible) {
-      console.log('[VISUALIZER] Component became visible, animating container in');
+      // console.log('[VISUALIZER] Component became visible, animating container in');
       
       // Animate in the container
       Animated.spring(containerAnim, {
@@ -1232,14 +1232,14 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         
       // Start with the recognize step
       const startTimeout = setTimeout(() => {
-        console.log('[VISUALIZER] Starting recognize step after delay');
+        // console.log('[VISUALIZER] Starting recognize step after delay');
         startStep('recognize');
         
         // If we already have detected food, complete recognize step after a delay
         if (detectedFood) {
-          console.log(`[VISUALIZER] Already have detected food: ${detectedFood}, scheduling recognize step completion`);
+          // console.log(`[VISUALIZER] Already have detected food: ${detectedFood}, scheduling recognize step completion`);
           const completeTimeout = setTimeout(() => {
-            console.log('[VISUALIZER] Completing recognize step due to existing detectedFood');
+            // console.log('[VISUALIZER] Completing recognize step due to existing detectedFood');
             completeStep('recognize');
           }, 2000);
           
@@ -1251,7 +1251,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     } else if (!isVisible && isAPIFinished) {
       // If we're hiding while API is finished, make sure all steps are completed
       // before actually cleaning up
-      console.log('[VISUALIZER] Component becoming invisible but API is finished, forcing step completion');
+      // console.log('[VISUALIZER] Component becoming invisible but API is finished, forcing step completion');
       
       // Complete any active steps
       forceCompleteAllSteps();
@@ -1259,7 +1259,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     
     // Cleanup on unmount or when becoming invisible
     return () => {
-      console.log('[VISUALIZER] Running cleanup, clearing timeouts and intervals');
+      // console.log('[VISUALIZER] Running cleanup, clearing timeouts and intervals');
       timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
       intervalRefs.current.forEach(interval => clearInterval(interval));
     };
@@ -1271,7 +1271,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       return;
     }
     
-    console.log('[VISUALIZER] Setting up polling for global state updates');
+    // console.log('[VISUALIZER] Setting up polling for global state updates');
     
     const pollInterval = setInterval(() => {
       if (!global.NUTRILENS_VISUALIZATION_ACCESS || !shouldPollRef.current) {
@@ -1283,32 +1283,32 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         const latestData = global.NUTRILENS_VISUALIZATION_ACCESS.getData();
         
         // --- BEGIN DETAILED LOGGING ---
-        console.log('[VISUALIZER-POLL-DEBUG] Raw latestData:', JSON.stringify(latestData));
+        // console.log('[VISUALIZER-POLL-DEBUG] Raw latestData:', JSON.stringify(latestData));
         if (latestData) {
-            console.log('[VISUALIZER-POLL-DEBUG] latestData.stepStates:', JSON.stringify(latestData.stepStates));
-            console.log('[VISUALIZER-POLL-DEBUG] latestData.subtitles:', JSON.stringify(latestData.subtitles));
-            console.log('[VISUALIZER-POLL-DEBUG] latestData.updateTime:', latestData.updateTime);
-            console.log('[VISUALIZER-POLL-DEBUG] lastPollTimeRef.current:', lastPollTimeRef.current);
+            // console.log('[VISUALIZER-POLL-DEBUG] latestData.stepStates:', JSON.stringify(latestData.stepStates));
+            // console.log('[VISUALIZER-POLL-DEBUG] latestData.subtitles:', JSON.stringify(latestData.subtitles));
+            // console.log('[VISUALIZER-POLL-DEBUG] latestData.updateTime:', latestData.updateTime);
+            // console.log('[VISUALIZER-POLL-DEBUG] lastPollTimeRef.current:', lastPollTimeRef.current);
         }
         // --- END DETAILED LOGGING ---
 
         // Check if data has been updated since our last poll
         if (latestData && latestData.updateTime > lastPollTimeRef.current) {
-          console.log('[VISUALIZER] Found new data in global state at timestamp:', latestData.updateTime);
+          // console.log('[VISUALIZER] Found new data in global state at timestamp:', latestData.updateTime);
           lastPollTimeRef.current = latestData.updateTime;
 
           // *** Guard against undefined stepStates ***
           if (!latestData.stepStates) {
-            console.warn('[VISUALIZER-POLL] Global data is missing stepStates, skipping state update.');
+            // console.warn('[VISUALIZER-POLL] Global data is missing stepStates, skipping state update.');
           } else {
             // *** Add critical logging of global step states ***
-            console.log('[VISUALIZER] Global step states:', {
-              recognize: latestData.stepStates.recognize,
-              search: latestData.stepStates.search,
-              process: latestData.stepStates.process,
-              result: latestData.stepStates.result,
-              current: latestData.currentStep
-            });
+            // console.log('[VISUALIZER] Global step states:', {
+            //   recognize: latestData.stepStates.recognize,
+            //   search: latestData.stepStates.search,
+            //   process: latestData.stepStates.process,
+            //   result: latestData.stepStates.result,
+            //   current: latestData.currentStep
+            // });
           }
 
           // Check for new food detection
@@ -1359,7 +1359,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
                 }
               }
           } else {
-            console.warn('[VISUALIZER-POLL] Global data is missing subtitles, skipping subtitle update.');
+            // console.warn('[VISUALIZER-POLL] Global data is missing subtitles, skipping subtitle update.');
           }
 
           // If food, queries, or results were updated, make sure step transitions happen
@@ -1399,7 +1399,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
               if (globalState) {
                  // Priority 1: Start a step if it's active globally but waiting locally
                  if (globalState.active && localState === STEP_WAITING) {
-                   console.log(`[VISUALIZER-POLL] Step ${step} needs starting (Globally Active, Locally Waiting). Scheduling start.`);
+                   // console.log(`[VISUALIZER-POLL] Step ${step} needs starting (Globally Active, Locally Waiting). Scheduling start.`);
                    // Schedule startStep for the next event loop tick
                    setTimeout(() => startStep(step), 0);
                    actionTaken = true;
@@ -1409,7 +1409,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
                  // Priority 2: Complete a step if it's completed globally but not locally
                  // We only complete if it's currently ACTIVE locally to ensure minimum duration logic runs
                  if (globalState.completed && localState === STEP_ACTIVE) {
-                    console.log(`[VISUALIZER-POLL] Step ${step} needs completing (Globally Completed, Locally Active). Scheduling complete.`);
+                    // console.log(`[VISUALIZER-POLL] Step ${step} needs completing (Globally Completed, Locally Active). Scheduling complete.`);
                     // Schedule completeStep for the next event loop tick
                     setTimeout(() => completeStep(step), 0);
                     actionTaken = true;
@@ -1418,7 +1418,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
                  
                  // Optional: Handle case where global is completed but local is waiting (less common, might indicate a skip)
                  if (globalState.completed && localState === STEP_WAITING) {
-                    console.warn(`[VISUALIZER-POLL] Step ${step} is COMPLETED globally but WAITING locally. Attempting to schedule start.`);
+                    // console.warn(`[VISUALIZER-POLL] Step ${step} is COMPLETED globally but WAITING locally. Attempting to schedule start.`);
                     // Schedule startStep for the next event loop tick
                     setTimeout(() => startStep(step), 0); // Start it, completion will be handled later
                     actionTaken = true;
@@ -1426,11 +1426,11 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
                  }
                  
               } else {
-                 console.warn(`[VISUALIZER-POLL] Global state for step '${step}' is missing or invalid.`);
+                 // console.warn(`[VISUALIZER-POLL] Global state for step '${step}' is missing or invalid.`);
               }
             }
             if (!actionTaken) {
-                console.log("[VISUALIZER-POLL] No step state actions required in this cycle.");
+                // console.log("[VISUALIZER-POLL] No step state actions required in this cycle.");
             }
             // --- END REVISED LOGIC ---
             
@@ -1443,7 +1443,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
           // Check if API finished
           if (latestData.apiFinished && !isAPIFinished) {
-            console.log('[VISUALIZER] API marked as finished in global state, updating local state');
+            // console.log('[VISUALIZER] API marked as finished in global state, updating local state');
             // Small delay before setting API as finished to allow current step animations to complete
             // Use direct state setter here
             setTimeout(() => {
@@ -1452,7 +1452,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           }
         }
       } catch (error) {
-        console.error('[VISUALIZER] Error polling global state:', error);
+        // console.error('[VISUALIZER] Error polling global state:', error);
       }
     }, 250); // Poll interval 250ms
     
@@ -1467,7 +1467,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   
   // Add a function to force completion of all steps immediately
   const forceCompleteAllSteps = () => {
-    console.log('[VISUALIZER] Force completing all steps immediately');
+    // console.log('[VISUALIZER] Force completing all steps immediately');
     
     // Create a batch update
     const updates = {};
@@ -1484,11 +1484,11 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   
   // Add effect to handle detectedFood changes
   useEffect(() => {
-    console.log(`[VISUALIZER] detectedFood changed to: ${detectedFood}, recognize step state: ${stepStates.recognize}`);
+    // console.log(`[VISUALIZER] detectedFood changed to: ${detectedFood}, recognize step state: ${stepStates.recognize}`);
     
     // If food is detected but recognize step is still active, complete it
     if (detectedFood && stepStates.recognize === STEP_ACTIVE) {
-      console.log('Food detected, completing recognize step:', detectedFood);
+      // console.log('Food detected, completing recognize step:', detectedFood);
       const completeTimeout = setTimeout(() => {
               completeStep('recognize');
       }, 1500);
@@ -1499,20 +1499,20 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   
   // Add new effect to log step state changes
   useEffect(() => {
-    console.log('[VISUALIZER] Step states changed:', JSON.stringify(stepStates));
+    // console.log('[VISUALIZER] Step states changed:', JSON.stringify(stepStates));
   }, [stepStates]);
   
   // Add debug function to reveal current state
   const logState = () => {
-    console.log('[VISUALIZER-DEBUG] Current state:', {
-      stepStates,
-      currentStep: currentStepRef.current,
-      detectedFood,
-      searchResultsCount,
-      isAPIFinished,
-      isPolling: shouldPollRef.current,
-      lastPollTime: lastPollTimeRef.current
-    });
+    // console.log('[VISUALIZER-DEBUG] Current state:', {
+    //   stepStates,
+    //   currentStep: currentStepRef.current,
+    //   detectedFood,
+    //   searchResultsCount,
+    //   isAPIFinished,
+    //   isPolling: shouldPollRef.current,
+    //   lastPollTime: lastPollTimeRef.current
+    // });
   };
 
   // Add an effect to handle transitions from global state when they might be missed by polling
@@ -1531,7 +1531,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       
       // If this step is completed but the next isn't started, log it for polling to handle.
       if (currentLocalStates[currentStep] === STEP_COMPLETED && currentLocalStates[nextStep] === STEP_WAITING) {
-        console.log(`[VISUALIZER-RECOVERY] Detected completed step ${currentStep} with waiting next step ${nextStep}. Polling will handle start.`);
+        // console.log(`[VISUALIZER-RECOVERY] Detected completed step ${currentStep} with waiting next step ${nextStep}. Polling will handle start.`);
         // No longer directly calling startStep here - let polling manage it.
         // startStep(nextStep);
         break; // Only detect one inconsistency at a time
@@ -1754,7 +1754,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
   // Add a specific API key reset function for external calls 
   const resetForNewScan = async () => {
-    console.log('[VISUALIZER] Resetting visualization for new scan');
+    // console.log('[VISUALIZER] Resetting visualization for new scan');
     
     // Cancel any pending animations and timers
     Animated.stopAnimation(containerAnim);
@@ -1774,10 +1774,8 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     
     // Clear all timeouts and intervals
     timeoutRefs.current.forEach(timeout => clearTimeout(timeout));
-    intervalRefs.current.forEach(interval => clearInterval(interval));
-    timeoutRefs.current = [];
-    intervalRefs.current = [];
-     // Clear subtitle cycle intervals
+    intervalRefs.current.forEach(interval => clearInterval(interval)); // Clear general intervals if any
+    // Clear subtitle cycle intervals
     if (recognizeCycleIntervalRef.current) clearInterval(recognizeCycleIntervalRef.current);
     if (searchCycleIntervalRef.current) clearInterval(searchCycleIntervalRef.current);
     if (processCycleIntervalRef.current) clearInterval(processCycleIntervalRef.current);
@@ -1791,77 +1789,16 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     // Reset ref arrays
     timeoutRefs.current = [];
     intervalRefs.current = [];
-    
-    // Force clear all listeners to ensure we don't have duplicates
-    listeners.current.forEach(listener => {
-      EventRegister.removeEventListener(listener);
-    });
-    listeners.current = [];
-    
-    // Reset animation values to initial state
-    containerAnim.setValue(0);
-    recognizeAnim.setValue(0);
-    searchAnim.setValue(0);
-    processAnim.setValue(0);
-    resultAnim.setValue(0);
-    recognizeSubtitleAnim.setValue(0);
-    searchSubtitleAnim.setValue(0);
-    processSubtitleAnim.setValue(0);
-    resultSubtitleAnim.setValue(0);
-    recognizeCheckAnim.setValue(0);
-    searchCheckAnim.setValue(0);
-    processCheckAnim.setValue(0);
-    resultCheckAnim.setValue(0);
-    accuracyBoxAnim.setValue(0);
-    
-    // Reset spinners
-    Object.values(spinnerRefs).forEach(spinAnim => {
-      spinAnim.stopAnimation();
-      spinAnim.setValue(0);
-    });
-    
-    // Hard reset to initial state
-    setStepStates({
-      recognize: STEP_WAITING,
-      search: STEP_WAITING,
-      process: STEP_WAITING,
-      result: STEP_WAITING
-    });
-    
-    setTextAnimCompleted({
-      recognize: false,
-      search: false,
-      process: false,
-      result: false
-    });
-    
-    // Reset refs
-    currentStepRef.current = null;
-    lastCompletedStepRef.current = null;
-    stepStartTimeRefs.current = {
-      recognize: 0,
-      search: 0,
-      process: 0,
-      result: 0
-    };
-    
-    // Reset last events tracking
-    lastEventsRef.current = {
-      step_update: {},
-      step_complete: {},
-      subtitle_update: {},
-      food_detected: null,
-      api_finished: false
-    };
-    
-    // Reset the sound played flags
-    stepSoundPlayedRef.current = {
-      recognize: false,
-      search: false,
-      process: false,
-      result: false,
-    };
-    scanCompleteSoundPlayedRef.current = false; // Reset final sound flag
+     // Clear subtitle cycle intervals
+    if (recognizeCycleIntervalRef.current) clearInterval(recognizeCycleIntervalRef.current);
+    if (searchCycleIntervalRef.current) clearInterval(searchCycleIntervalRef.current);
+    if (processCycleIntervalRef.current) clearInterval(processCycleIntervalRef.current);
+    recognizeCycleIntervalRef.current = null;
+    searchCycleIntervalRef.current = null;
+    processCycleIntervalRef.current = null;
+    // Clear pending completion timeouts
+    Object.values(completionTimeoutRefs.current).forEach(timeout => clearTimeout(timeout));
+    completionTimeoutRefs.current = {};
 
     // Reset subtitles
     setRecognizeSubtitle('Analyzing image for food...');
@@ -1900,7 +1837,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     // Emit reset event to ensure all components are in sync
     EventRegister.emit('ai_visualization_reset');
     
-    console.log('[VISUALIZER] Reset for new scan completed');
+    // console.log('[VISUALIZER] Reset for new scan completed');
   };
 
   // Track the last processed events to prevent duplicates
@@ -1918,7 +1855,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   // Setup event listeners with controlled state updates
   // Wrap in useCallback to stabilize its identity
   const setupEventListeners = useCallback(() => {
-    console.log('[VISUALIZER] Setting up event listeners');
+    // console.log('[VISUALIZER] Setting up event listeners');
     
     // Add scan ID validation function
     const isCurrentScan = (data) => {
@@ -1935,20 +1872,20 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     // Enhanced start step with controlled updates
     const enhancedStartStep = debounce((step) => {
       if (stepStates[step] === STEP_WAITING) {
-        console.log(`[VISUALIZER-EVENT] Enhancing start step for: ${step}`);
+        // console.log(`[VISUALIZER-EVENT] Enhancing start step for: ${step}`);
         startStep(step);
       } else {
-        console.log(`[VISUALIZER-EVENT] Not starting step ${step}, current state:`, stepStates[step]);
+        // console.log(`[VISUALIZER-EVENT] Not starting step ${step}, current state:`, stepStates[step]);
       }
     }, 100);
     
     // Enhanced complete step with controlled updates
     const enhancedCompleteStep = debounce((step) => {
       if (stepStates[step] === STEP_ACTIVE) {
-        console.log(`[VISUALIZER-EVENT] Enhancing complete step for: ${step}`);
+        // console.log(`[VISUALIZER-EVENT] Enhancing complete step for: ${step}`);
         completeStep(step);
       } else if (stepStates[step] === STEP_WAITING) {
-        console.log(`[VISUALIZER-EVENT] Cannot complete waiting step ${step}, starting it first`);
+        // console.log(`[VISUALIZER-EVENT] Cannot complete waiting step ${step}, starting it first`);
         startStep(step);
         
         // Schedule completion after minimum duration
@@ -1964,7 +1901,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         
         timeoutRefs.current.push(completeTimeout);
       } else {
-        console.log(`[VISUALIZER-EVENT] Not completing step ${step}, current state:`, stepStates[step]);
+        // console.log(`[VISUALIZER-EVENT] Not completing step ${step}, current state:`, stepStates[step]);
       }
     }, 100);
     
@@ -2030,7 +1967,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       EventRegister.addEventListener(EVENTS.STEP_UPDATE, (data) => {
         // Ignore events from other scans
         if (!isCurrentScan(data)) {
-          console.log(`[VISUALIZER] Ignoring event from scan ${data?.scanId}, current scan: ${currentScanIdRef.current}`);
+          // console.log(`[VISUALIZER] Ignoring event from scan ${data?.scanId}, current scan: ${currentScanIdRef.current}`);
           return;
         }
         
@@ -2042,7 +1979,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           }
           lastEventsRef.current.step_update[eventKey] = Date.now();
           
-          console.log(`[VISUALIZER-EVENT] Received step update: ${data.step}, active: ${data.active}`);
+          // console.log(`[VISUALIZER-EVENT] Received step update: ${data.step}, active: ${data.active}`);
           if (data.active) {
             enhancedStartStep(data.step);
           }
@@ -2063,7 +2000,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           }
           lastEventsRef.current.step_complete[data.step] = Date.now();
           
-          console.log(`[VISUALIZER-EVENT] Received step completion: ${data.step}`);
+          // console.log(`[VISUALIZER-EVENT] Received step completion: ${data.step}`);
           enhancedCompleteStep(data.step);
         }
       })
@@ -2083,7 +2020,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           }
           lastEventsRef.current.subtitle_update[eventKey] = Date.now();
           
-          console.log(`[VISUALIZER-EVENT] Received subtitle update for ${data.step}: ${data.subtitle}`);
+          // console.log(`[VISUALIZER-EVENT] Received subtitle update for ${data.step}: ${data.subtitle}`);
           debouncedUpdateSubtitle(data.step, data.subtitle);
         }
       })
@@ -2103,7 +2040,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           }
           lastEventsRef.current.food_detected = foodName;
           
-          console.log(`[VISUALIZER-EVENT] Received food detection: ${foodName}`);
+          // console.log(`[VISUALIZER-EVENT] Received food detection: ${foodName}`);
           debouncedUpdateFood(foodName);
         }
       })
@@ -2123,7 +2060,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           }
           lastEventsRef.current.api_finished = true;
           
-          console.log('[VISUALIZER-EVENT] Received API finished');
+          // console.log('[VISUALIZER-EVENT] Received API finished');
           debouncedSetAPIFinished(isFinished);
         }
       })
@@ -2136,7 +2073,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         if (!isCurrentScan(data)) return;
         
         if (data) {
-          console.log('[VISUALIZER-EVENT] Received search data update');
+          // console.log('[VISUALIZER-EVENT] Received search data update');
           debouncedUpdateSearchData(data);
         }
       })
@@ -2150,16 +2087,16 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       
       // Listen for reset events first to get current scan ID
       const resetListener = EventRegister.addEventListener('ai_visualization_reset', (data) => {
-        console.log('[VISUALIZER] Reset event received', data);
+        // console.log('[VISUALIZER] Reset event received', data);
         
         // Update current scan ID if provided
         if (data && data.scanId) {
-          console.log(`[VISUALIZER] Setting current scan ID to: ${data.scanId}`);
+          // console.log(`[VISUALIZER] Setting current scan ID to: ${data.scanId}`);
           currentScanIdRef.current = data.scanId;
         } else {
           // If no scan ID provided, generate a fallback
           const fallbackId = `fallback_${Date.now()}`;
-          console.log(`[VISUALIZER] No scan ID provided, using fallback: ${fallbackId}`);
+          // console.log(`[VISUALIZER] No scan ID provided, using fallback: ${fallbackId}`);
           currentScanIdRef.current = fallbackId;
         }
         
@@ -2172,7 +2109,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
     // Cleanup listeners on unmount or when visibility changes
     return () => {
-      console.log('[VISUALIZER] Removing event listeners');
+      // console.log('[VISUALIZER] Removing event listeners');
       listeners.current.forEach(listener => {
         EventRegister.removeEventListener(listener);
       });
@@ -2199,7 +2136,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
 
     const loadSounds = async () => {
       try {
-        console.log('[VISUALIZER] Loading sounds...');
+        // console.log('[VISUALIZER] Loading sounds...');
         await Audio.setAudioModeAsync({ playsInSilentModeIOS: true }); // Allow playing sound in silent mode
 
         // Load step complete sound
@@ -2208,7 +2145,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         );
         stepCompleteSoundRef.current = stepSound;
         stepSoundObject = stepSound; // Keep local ref for cleanup
-        console.log('[VISUALIZER] Step complete sound loaded');
+        // console.log('[VISUALIZER] Step complete sound loaded');
 
         // Load scan complete sound
         const { sound: scanSound } = await Audio.Sound.createAsync(
@@ -2216,27 +2153,27 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
         );
         scanCompleteSoundRef.current = scanSound;
         scanSoundObject = scanSound; // Keep local ref for cleanup
-        console.log('[VISUALIZER] Scan complete sound loaded');
+        // console.log('[VISUALIZER] Scan complete sound loaded');
 
       } catch (error) {
-        console.error('[VISUALIZER] Error loading sounds:', error);
+        // console.error('[VISUALIZER] Error loading sounds:', error);
       }
     };
 
     const unloadSounds = async () => {
-       console.log('[VISUALIZER] Unloading sounds...');
+       // console.log('[VISUALIZER] Unloading sounds...');
        if (stepCompleteSoundRef.current) {
          try {
            await stepCompleteSoundRef.current.unloadAsync();
-           console.log('[VISUALIZER] Step complete sound unloaded');
-         } catch (e) { console.error('[VISUALIZER] Error unloading step sound:', e); }
+           // console.log('[VISUALIZER] Step complete sound unloaded');
+         } catch (e) { /* console.error('[VISUALIZER] Error unloading step sound:', e); */ }
          stepCompleteSoundRef.current = null;
        }
        if (scanCompleteSoundRef.current) {
          try {
            await scanCompleteSoundRef.current.unloadAsync();
-           console.log('[VISUALIZER] Scan complete sound unloaded');
-         } catch (e) { console.error('[VISUALIZER] Error unloading scan sound:', e); }
+           // console.log('[VISUALIZER] Scan complete sound unloaded');
+         } catch (e) { /* console.error('[VISUALIZER] Error unloading scan sound:', e); */ }
          scanCompleteSoundRef.current = null;
        }
        // Also unload local refs if they exist

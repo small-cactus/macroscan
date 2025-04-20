@@ -34,7 +34,7 @@ const CHANGELOG = [
   {
     title: 'Redesigned App',
     details: 'Major app redesign focusing on fluid animations and strategic use of color to enhance user experience.',
-    icon: 'brush-outline',
+    icon: 'brush',
     iconLibrary: 'Ionicons',
     color: '#FF3B30', // Example color, adjust if needed
     isBeta: false,
@@ -43,7 +43,7 @@ const CHANGELOG = [
   {
     title: 'Deep Search Mode',
     details: 'Introduced Deep Search mode, which queries multiple websites, government food databases, and other popular food apps for comprehensive nutritional information beyond our standard database.',
-    icon: 'cloud-search-outline',
+    icon: 'cloud-search',
     iconLibrary: 'MaterialCommunityIcons',
     color: '#5E5CE6', // Example color, adjust if needed
     isBeta: true,
@@ -52,12 +52,21 @@ const CHANGELOG = [
   {
     title: 'Usage Streaks',
     details: 'Track your consistent app usage with the new Streaks feature. Stay motivated by building and maintaining your daily scan streak!',
-    icon: 'flame-outline',
+    icon: 'flame',
     iconLibrary: 'Ionicons',
     color: '#FF9500', // Example color, adjust if needed
     isBeta: false,
     isOffByDefault: false,
   },
+  {
+    title: 'Manual Scan',
+    details: 'Added a manual scan button to the scan screen. This allows you to manually log a food you ate.',
+    icon: 'pencil',
+    iconLibrary: 'Ionicons',
+    color: '#007AFF', // Example color, adjust if needed
+    isBeta: false,
+    isOffByDefault: false,
+  }
 ];
 
 const isIphoneSE = () => {
@@ -154,7 +163,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.6.1 (113)</Text>
+            <Text style={styles.version}>Version 1.6.1 (149)</Text>
             <View style={styles.betaContainer}>
               {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>

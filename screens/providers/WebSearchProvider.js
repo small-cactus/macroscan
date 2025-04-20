@@ -766,31 +766,49 @@ const manageVisualizationSteps = async (apiData, isApiFinished = false) => {
  */
 const performWebSearch = async (query) => {
   try {
-    console.log('Performing web search for:', query);
+    console.log('Performing Brave web search for:', query);
     
-    // For testing, we're implementing a simple approach using a free search API
-    // In production, you'd use a more robust solution like SerpAPI, Bing Web Search API, etc.
-    const response = await axios.get('https://ddg-api.herokuapp.com/search', {
-      params: { query, limit: 5 }
+    const apiKey = 'EXPO_PUBLIC_BRAVE_SEARCH_API_KEY'; // Replace with your actual Brave Search API Key
+    const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
+      params: { 
+        q: query, 
+        count: 5, // Limit to 5 results, similar to previous implementation
+        summary: true, // Request summary from Brave API
+        extra_snippets: true // Request extra snippets from Brave API
+      },
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey
+      }
     });
     
-    if (response.data && Array.isArray(response.data)) {
-      return response.data.map(item => ({
+    // Log the raw response structure for debugging if needed
+    // console.log('Brave API Response:', JSON.stringify(response.data, null, 2));
+
+    if (response.data && response.data.web && Array.isArray(response.data.web.results)) {
+      return response.data.web.results.map(item => ({
         title: item.title,
         url: item.url,
-        snippet: item.snippet
+        // Use description as snippet, fallback to title if description is missing
+        snippet: item.description || item.title,
+        // Include extra snippets and summary if available
+        extra_snippets: item.extra_snippets || [],
+        page_age: item.page_age // Include page age if available
       }));
+    } else {
+      console.warn('Brave API did not return results in the expected format.');
+      return [];
     }
     
-    return [];
   } catch (error) {
-    console.error('Error performing web search:', error);
+    console.error('Error performing Brave web search:', error.response ? error.response.data : error.message);
     // Return a minimal set of results on error
     return [
       {
-        title: 'Error fetching search results',
-        url: 'https://example.com',
-        snippet: 'Could not retrieve search results due to an error.'
+        title: 'Error fetching search results via Brave API',
+        url: 'https://brave.com/search/api/',
+        snippet: `Could not retrieve search results due to an error: ${error.message}`
       }
     ];
   }
@@ -934,231 +952,232 @@ const storeSearchData = async (queries = [], results = []) => {
   }
 };
 
-/**
- * Implements web scraping functionality for providers
- * @param {Object} toolCall The tool call object from the model
- * @returns {Promise<Object>} The search results
- */
-const processWebSearchToolCall = async (toolCall) => {
-  try {
-    // *** ADD CANCELLATION CHECK ***
-    if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Web search tool call cancelled.');
-      return { query: '', results: [], cancelled: true };
-    }
-    // *** END CANCELLATION CHECK ***
+// --- NEW HELPER FUNCTIONS for HTML Processing ---
 
-    // Extract the query from the tool call parameters
-    let query = '';
-    if (toolCall.function && toolCall.function.name === 'search_web') {
-      try {
-        const args = JSON.parse(toolCall.function.arguments);
-        query = args.query;
-        
-        // Process the query immediately
-        if (query) {
-          // Check if API is finished before processing
-          const apiFinishedValue = await AsyncStorage.getItem(API_FINISHED_KEY);
-          if (apiFinishedValue === 'true') {
-            console.log('BLOCKED search tracking for query due to API completion:', query);
-          } else {
-            console.log('Processing search query:', query);
-            
-            // Extract food FIRST - this will handle recognize step
-            await extractFoodFromQuery(query);
-            
-            // Make sure search step is active
-            if (!global.NUTRILENS_VISUALIZATION.stepStates.search.active) {
-              // If recognize step didn't complete, force completion and activate search
-              if (!global.NUTRILENS_VISUALIZATION.stepStates.recognize.completed) {
-                await directCompleteStep(STEP_RECOGNIZE);
-                await directActivateStep(STEP_SEARCH);
-              }
-            }
-            
-            // Update search step subtitle immediately
-            const searchSubtitle = `Searching "${query}"...`;
-            await updateStepSubtitles(STEP_SEARCH, [searchSubtitle]);
-            
-            // Store query in AsyncStorage
-            const existingQueriesJson = await AsyncStorage.getItem(SEARCH_QUERIES_KEY);
-            let existingQueries = existingQueriesJson ? JSON.parse(existingQueriesJson) : [];
-            if (!existingQueries.includes(query)) {
-              existingQueries.push(query);
-              await AsyncStorage.setItem(SEARCH_QUERIES_KEY, JSON.stringify(existingQueries));
-            }
-          }
-        }
-      } catch (e) {
-        console.error('Error parsing tool call arguments:', e);
-        return { 
-          error: 'Failed to parse search query',
-          results: []
-        };
-      }
-    } else if (toolCall.tools && toolCall.tools.length > 0) {
-      // Handle different format for Gemini
-      const searchTool = toolCall.tools.find(tool => 
-        tool.functionDeclaration && tool.functionDeclaration.name === 'search_web'
-      );
-      if (searchTool && searchTool.toolUseValue) {
-        try {
-          const args = JSON.parse(searchTool.toolUseValue);
-          query = args.query;
-          
-          // Process the query immediately
-          if (query) {
-            // Check if API is finished before processing
-            const apiFinishedValue = await AsyncStorage.getItem(API_FINISHED_KEY);
-            if (apiFinishedValue === 'true') {
-              console.log('BLOCKED search tracking for Gemini query due to API completion:', query);
-            } else {
-              console.log('Processing Gemini search query:', query);
-              
-              // Extract food FIRST - this will handle recognize step
-              await extractFoodFromQuery(query);
-              
-              // Make sure search step is active
-              if (!global.NUTRILENS_VISUALIZATION.stepStates.search.active) {
-                // If recognize step didn't complete, force completion and activate search
-                if (!global.NUTRILENS_VISUALIZATION.stepStates.recognize.completed) {
-                  await directCompleteStep(STEP_RECOGNIZE);
-                  await directActivateStep(STEP_SEARCH);
-                }
-              }
-              
-              // Update search step subtitle immediately
-              const searchSubtitle = `Searching "${query}"...`;
-              await updateStepSubtitles(STEP_SEARCH, [searchSubtitle]);
-              
-              // Store query in AsyncStorage
-              const existingQueriesJson = await AsyncStorage.getItem(SEARCH_QUERIES_KEY);
-              let existingQueries = existingQueriesJson ? JSON.parse(existingQueriesJson) : [];
-              if (!existingQueries.includes(query)) {
-                existingQueries.push(query);
-                await AsyncStorage.setItem(SEARCH_QUERIES_KEY, JSON.stringify(existingQueries));
-              }
-            }
-          }
-        } catch (e) {
-          console.error('Error parsing Gemini tool arguments:', e);
-          return { 
-            error: 'Failed to parse search query',
-            results: []
-          };
-        }
-      }
+/**
+ * Decodes basic HTML entities.
+ * @param {string} text Text with potential HTML entities.
+ * @returns {string} Text with entities decoded.
+ */
+const decodeHtmlEntities = (text) => {
+  if (!text) return '';
+  // Basic decoding for common entities
+  return text.replace(/&amp;/g, '&')
+             .replace(/&lt;/g, '<')
+             .replace(/&gt;/g, '>')
+             .replace(/&quot;/g, '"')
+             .replace(/&#39;/g, "'")
+             .replace(/&nbsp;/g, ' ');
+};
+
+/**
+ * Extracts plain text from raw HTML, cleans it, and limits its length.
+ * @param {string} html Raw HTML string.
+ * @param {number} maxLength Maximum length of the returned text.
+ * @returns {string} Cleaned plain text content.
+ */
+const extractAndCleanText = (html, maxLength = 15000) => {
+  if (!html) return '';
+  try {
+    // 1. Remove script and style blocks
+    let text = html.replace(/<script[^>]*>.*?<\/script>/gis, ' '); // Added space for removal
+    text = text.replace(/<style[^>]*>.*?<\/style>/gis, ' '); // Added space for removal
+    // 2. Remove remaining HTML tags - replace with space to avoid merging words
+    text = text.replace(/<[^>]*>/g, ' ');
+    // 3. Decode HTML entities
+    text = decodeHtmlEntities(text);
+    // 4. Normalize whitespace (replace multiple spaces/newlines with a single space)
+    text = text.replace(/\s+/g, ' ').trim();
+    // 5. Limit length
+    return text.substring(0, maxLength);
+  } catch (error) {
+    console.error('Error extracting text from HTML:', error);
+    return ''; // Return empty string on error
+  }
+};
+
+/**
+ * Uses the passed scrapeUrl function (from WebScraperContext) to fetch rendered HTML.
+ * @param {string} url The URL to scrape.
+ * @param {function} scrapeUrl The function provided by useWebScraper().scrapeUrl.
+ * @returns {Promise<string|null>} Rendered HTML content or null on error.
+ */
+const fetchUrlWithWebView = async (url, scrapeUrl) => {
+  if (!scrapeUrl || typeof scrapeUrl !== 'function') {
+    console.error('fetchUrlWithWebView: scrapeUrl function is missing or invalid.');
+    throw new Error('Scraping function not available.');
+  }
+  if (!url || typeof url !== 'string') {
+      console.error('fetchUrlWithWebView: Invalid URL provided.');
+      throw new Error('Invalid URL for scraping.');
+  }
+
+  // Basic check for non-HTTP URLs, although WebView might handle some
+  if (!url.startsWith('http')) {
+     console.warn(`fetchUrlWithWebView: Skipping non-HTTP URL: ${url}`);
+     return null; // Return null instead of throwing for non-http
+  }
+
+  try {
+    console.log(`fetchUrlWithWebView: Requesting scrape for ${url}`);
+    const renderedHtml = await scrapeUrl(url); // Call the function passed from context
+    console.log(`fetchUrlWithWebView: Received HTML (${renderedHtml ? renderedHtml.length : 0} bytes) for ${url}`);
+    return renderedHtml;
+  } catch (error) {
+    console.error(`fetchUrlWithWebView: Error scraping ${url}:`, error.message);
+    // Don't re-throw here, allow the caller (agent loop) to handle it
+    return null; // Indicate failure by returning null
+  }
+};
+
+// --- END HELPER FUNCTIONS ---
+
+/**
+ * Implements web scraping and summarization functionality.
+ * @param {Object} toolCall The tool call object from the model
+ * @param {Anthropic} anthropic The Anthropic client instance
+ * @param {string} model The AI model name to use for summarization
+ * @param {function} scrapeUrl The function provided by useWebScraper().scrapeUrl.
+ * @returns {Promise<Object>} The search query and summarized nutritional content.
+ */
+const processWebSearchToolCall = async (toolCall, anthropic, model, scrapeUrl) => {
+  try {
+    console.log('Processing web search tool call:', JSON.stringify(toolCall, null, 2));
+    
+    // Extract search query from tool call
+    const query = toolCall.input.query;
+    console.log('Search query:', query);
+    
+    // Update the search visualization
+    if (globalSearchTrackingFn) {
+      globalSearchTrackingFn([query], []);
     }
     
-    if (!query) {
-      return {
-        error: 'No search query provided',
-        results: []
+    // Store search data for visualization
+    await storeSearchData([query], []);
+    
+    // Activate the search step if not already active
+    const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
+    if (currentStep !== STEP_SEARCH) {
+      await activateStep(STEP_SEARCH);
+    }
+    
+    // Perform the web search using the correct function
+    console.log('Performing web search'); // Corrected log message
+    const searchResults = await performWebSearch(query); // Corrected function call
+    
+    // *** ADD CANCELLATION CHECK ***
+    if (global.NUTRILENS_CANCEL_SEARCH === true) {
+      console.log('[CANCEL] Web search cancelled after Brave search.'); // Updated comment
+      throw new Error("Scan cancelled by user.");
+    }
+    // *** END CANCELLATION CHECK ***
+    
+    // Check if we have valid search results
+    if (!searchResults || searchResults.length === 0) { // Corrected check
+      console.log('No search results found');
+        return { 
+        summarized_nutrition: `No search results found for query: "${query}"`,
+        nutrition_found: false,
+        processed_urls: []
       };
     }
     
+    // Extract URLs from search results
+    const urls = searchResults.map(result => result.url); // Corrected variable name
+    console.log('Search URLs:', urls);
+    
+    // Update search visualization with URLs
+    if (globalSearchTrackingFn) {
+      globalSearchTrackingFn([query], urls);
+    }
+    
+    // Store updated search data
+    await storeSearchData([query], urls); // Use urls directly
+    
+    // Summarize search results to find nutrition information
+    console.log('Summarizing search results to extract nutrition information');
+    
+    // Send search results to Anthropic for nutrition extraction
+    const nutritionPrompt = `
+You are a world-class nutrition scientist and data curator.
+Given the following search results, extract the complete nutritional profile of the specified food.
+
+Search results for "${query}":
+${searchResults.map((result, i) => 
+  `--- Result ${i + 1} ---
+  URL: ${result.url}
+  TITLE: ${result.title}
+  SNIPPET: ${result.snippet}
+`).join("\n\n")}
+
+Your task:
+1. Identify the exact food name and present it clearly.
+2. List serving size (e.g., "100 g", "1 cup").
+3. Provide precise values for: calories, protein (g), carbohydrates (g), fat (g), fiber (g), sugar (g), sodium (mg).
+4. Include the full ingredient list, or state "Ingredients: not found" if unavailable.
+
+Format:
+Food: <name>
+Serving size: <value>
+Calories: <number>
+Protein: <number> g
+Carbs: <number> g
+Fat: <number> g
+Fiber: <number> g
+Sugar: <number> g
+Sodium: <number> mg
+Ingredients: ["...", "..."]
+
+If any field can't be found, mark it explicitly as "Not found".
+`;
+    
     // *** ADD CANCELLATION CHECK ***
     if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Web search perform cancelled before search.');
-      return { query, results: [], cancelled: true };
+      console.log('[CANCEL] Web search cancelled before nutritional analysis.');
+      throw new Error("Scan cancelled by user.");
     }
     // *** END CANCELLATION CHECK ***
 
-    // Perform the web search
-    const results = await performWebSearch(query);
+    // Get nutrition summary from Anthropic
+    const nutritionResult = await anthropic.messages.create({
+      model: model,
+      max_tokens: 2048,
+      temperature: 0.2,
+      system: "You are a nutrition expert who extracts clear, precise nutrition facts from web search results. Include the URLs of the sources in the nutrition facts table. Format as a clean nutrition facts table. YOU WILL FIND MULTIPLE FOODS, SUMMARIZE THEM ALL. When there is a lack of complete data, it's almost alsways because the website renders in JS not HTML, so tell them to exclude these urls and try again, do not advise them to visit it directly, they can only see websites from your summaries and the user is another AI agent. If no nutrition information is present, start with NO_NUTRITION_FOUND.",
+      messages: [
+        {
+          role: "user",
+          content: nutritionPrompt
+        }
+      ]
+    });
 
     // *** ADD CANCELLATION CHECK ***
     if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Web search perform cancelled after search.');
-      return { query, results, cancelled: true };
+      console.log('[CANCEL] Web search cancelled after nutritional analysis.');
+      throw new Error("Scan cancelled by user.");
     }
     // *** END CANCELLATION CHECK ***
     
-    // Process the search results
-    if (results && Array.isArray(results) && results.length > 0) {
-      // Check if API is finished before processing
-      const apiFinishedValue = await AsyncStorage.getItem(API_FINISHED_KEY);
-      if (apiFinishedValue === 'true') {
-        console.log('BLOCKED search result tracking due to API completion - results:', results.length);
-      } else {
-        console.log('Processing search results:', results.length);
-        
-        // Make sure search step is completed and process step is active
-        const searchActive = global.NUTRILENS_VISUALIZATION.stepStates.search.active;
-        const searchCompleted = global.NUTRILENS_VISUALIZATION.stepStates.search.completed;
-        
-        if (!searchActive) {
-          // If search step isn't even active, start from the beginning
-          if (!global.NUTRILENS_VISUALIZATION.stepStates.recognize.completed) {
-            await directCompleteStep(STEP_RECOGNIZE);
-          }
-          await directActivateStep(STEP_SEARCH);
-        }
-        
-        // CRITICAL: When we get search results, COMPLETE the search step and ACTIVATE process
-        if (!searchCompleted) {
-          // Update subtitles before completing the step
-          const searchCompletionSubtitle = `Found ${results.length} results`;
-          await updateStepSubtitles(STEP_SEARCH, [searchCompletionSubtitle]);
-          
-          // Transition from search to process
-          await transitionStep(STEP_SEARCH, STEP_PROCESS);
-        }
-        
-        // Add processed subtitles
-        const processSubtitles = results.slice(0, 3).map(result => 
-          `Analyzing "${result.title.substring(0, 20)}..."`
-        );
-        await updateStepSubtitles(STEP_PROCESS, processSubtitles);
-        
-        // Store results in AsyncStorage
-        const existingResultsJson = await AsyncStorage.getItem(SEARCH_RESULTS_KEY);
-        let existingResults = existingResultsJson ? JSON.parse(existingResultsJson) : [];
-        
-        // Add new unique results
-        let hasNewResults = false;
-        results.forEach(result => {
-          if (!existingResults.some(existing => existing.url === result.url)) {
-            existingResults.push(result);
-            hasNewResults = true;
-          }
-        });
-        
-        if (hasNewResults) {
-          await AsyncStorage.setItem(SEARCH_RESULTS_KEY, JSON.stringify(existingResults));
-          
-          // If we have at least 3 results, schedule process step completion
-          if (existingResults.length >= 3 && 
-              !global.NUTRILENS_VISUALIZATION.stepStates.process.completed) {
-            setTimeout(async () => {
-              // Double check we're still in process step
-              if (global.NUTRILENS_VISUALIZATION.currentStep === STEP_PROCESS && 
-                  !global.NUTRILENS_VISUALIZATION.stepStates.process.completed) {
-                // Transition from process to result
-                await transitionStep(STEP_PROCESS, STEP_RESULT);
-                
-                // Add a result step subtitle
-                const foodName = global.NUTRILENS_VISUALIZATION.detectedFood;
-                const resultSubtitle = foodName ? 
-                  `Generating nutrition facts for ${foodName}...` : 
-                  `Generating nutrition information...`;
-                await updateStepSubtitles(STEP_RESULT, [resultSubtitle]);
-              }
-            }, MIN_PROCESS_DURATION);
-          }
-        }
-      }
-    }
+    // Extract nutrition summary
+    const nutritionSummary = nutritionResult.content[0].text || '';
+    console.log('Nutrition summary:', nutritionSummary);
+    
+    // Check if nutrition information was found
+    const nutritionFound = !nutritionSummary.includes('NO_NUTRITION_FOUND');
     
     return {
-      query,
-      results
+      summarized_nutrition: nutritionSummary,
+      nutrition_found: nutritionFound,
+      processed_urls: urls
     };
   } catch (error) {
-    console.error('Error handling web search:', error);
+    console.error('Error in processWebSearchToolCall:', error);
     return {
-      error: `Web search failed: ${error.message}`,
-      results: []
+      summarized_nutrition: `Error processing web search: ${error.message}`,
+      nutrition_found: false,
+      processed_urls: []
     };
   }
 };
@@ -1553,6 +1572,7 @@ export const handleWebSearch = async ({
   setNoFoodFound,
   setFoodData,
   setActiveTab,
+  scrapeUrl,
 }) => {
   try {
     // Generate a unique scan ID
@@ -1635,6 +1655,7 @@ export const handleWebSearch = async ({
             setNoFoodFound,
             setFoodData,
             setActiveTab,
+            scrapeUrl,
           });
           break;
         case 'gemini':
@@ -1656,6 +1677,7 @@ export const handleWebSearch = async ({
             setNoFoodFound,
             setFoodData,
             setActiveTab,
+            scrapeUrl,
           });
           break;
         case 'anthropic':
@@ -1678,6 +1700,7 @@ export const handleWebSearch = async ({
             setNoFoodFound,
             setFoodData,
             setActiveTab,
+            scrapeUrl,
           });
           break;
       }
@@ -1714,7 +1737,7 @@ resetEventListener = EventRegister.addEventListener('ai_visualization_reset', as
 });
 
 /**
- * Handles web search using Anthropic's API
+ * Handles web search using Anthropic's API (Agentic Loop Version)
  */
 const handleAnthropicWebSearch = async ({
   selectedModel,
@@ -1725,7 +1748,7 @@ const handleAnthropicWebSearch = async ({
   apiKey,
   handleSuccessfulScan,
   handleError,
-  handleSearchTracking,
+  handleSearchTracking, // Keep for visualization if needed
   imageUri,
   startTimeRef,
   updateAverageProcessingTime,
@@ -1734,695 +1757,377 @@ const handleAnthropicWebSearch = async ({
   setNoFoodFound,
   setFoodData,
   setActiveTab,
+  scrapeUrl,
 }) => {
   try {
     // *** ADD CANCELLATION CHECK ***
     if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Anthropic web search cancelled at start.');
-      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData); // Use handleError for consistency
+      console.log('[CANCEL] Anthropic agentic search cancelled at start.');
+      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
       return false;
     }
     // *** END CANCELLATION CHECK ***
 
     const anthropic = new Anthropic({ apiKey });
     let foodFound = false;
-    const searchInfo = {
+    const searchInfo = { // To store URLs for fallback
       queries: [],
       results: []
     };
     
-    // Ensure we have a valid model string - fall back to Claude 3.5 Sonnet if null
-    const actualModel = selectedModel || 'claude-3-haiku-20240307';
-    // const actualModel = selectedModel || 'claude-3-5-sonnet-20240620';
+    // Ensure we have a valid model string
+    const actualModel = selectedModel || 'claude-3-7-sonnet-latest';
+    console.log("Using agentic search mode with Anthropic model:", actualModel);
+    
+    // --- Tool Definitions ---
+    const toolDefinitions = [
+      {
+        name: "web_search", 
+        description: "Use this tool to perform focused web searches for specific food nutrition details. Return concise snippets.",
+        input_schema: {
+          type: "object",
+          properties: {
+            query: {
+              type: "string",
+              description: "The specific search query. Accepts Brave search engine filters (e.g., 'site:nutritionix.com [food name]')"
+            }
+          },
+          required: ["query"]
+        }
+      },
+      {
+        name: "submit_nutrition_data",
+        description: "Submit all gathered nutrition data. Will error if any required fields are missing.",
+        input_schema: {
+          type: "object",
+          properties: {
+            food_name: {
+              type: "string",
+              description: "The final identified name of the food item."
+            },
+            serving_size: {
+              type: "string", 
+              description: "The serving size (e.g., '100g', '1 cup', '1 container')."
+            },
+            calories: {
+              type: "number",
+              description: "Calories per serving."
+            },
+            protein_g: {
+              type: "number",
+              description: "Protein in grams per serving."
+            },
+            carbs_g: {
+              type: "number",
+              description: "Total carbohydrates in grams per serving."
+            },
+            fat_g: {
+              type: "number", 
+              description: "Total fat in grams per serving."
+            },
+            fiber_g: {
+              type: "number",
+              description: "Dietary fiber in grams per serving (use 0 if not found)."
+            },
+            sugar_g: {
+              type: "number",
+              description: "Sugar in grams per serving (use 0 if not found)."
+            },
+            sodium_mg: {
+              type: "number",
+              description: "Sodium in milligrams per serving (use 0 if not found)."
+            },
+            ingredients: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of ingredients, if available. Use an empty array [] if not found."
+            },
+            source_urls: {
+              type: "array",
+              items: { type: "string" },
+              description: "List of the primary URLs where the nutritional data was found."
+            }
+          },
+          // Require core nutritional info for submission
+          required: ["food_name", "serving_size", "calories", "protein_g", "carbs_g", "fat_g"]
+        }
+      }
+    ];
 
-    
-    console.log("Using search mode with Anthropic. Sending request to API");
-    console.log("Debug - handleAnthropicWebSearch - Selected model:", selectedModel);
-    console.log("Debug - handleAnthropicWebSearch - Actual model being used:", actualModel);
-    
-    // Initial message to identify the food and determine what to search for
+    // --- Initial Prompt --- 
+    const initialUserMessage = {
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: `
+Identify the food shown in the image. Wrap the food name in <foodname> tags.
+
+Then, using the 'web_search' tool (up to 10 attempts), gather every required nutrition field:
+- Serving size
+- Calories
+- Protein (g)
+- Carbs (g)
+- Fat (g)
+- Fiber (g)
+- Sugar (g)
+- Sodium (mg)
+- Full ingredients list
+
+Strategy:
+• First query brand names or specific product codes.
+• If brand not clear, search generic databases (USDA, Wikipedia).
+• After each search, verify all fields are present; if not, refine your query.
+• **If you encounter domains (like mcdonalds.com) that return no usable data due to JS rendering, add a site exclusion filter** (e.g., 'NOT site:mcdonalds.com').
+• Stop when complete or after 10 searches.
+
+On completion, call 'submit_nutrition_data' with the plain food name (no tags) and all numeric fields or 0/[] when missing.
+`
+        },
+        {
+          type: "image",
+          source: { type: "base64", media_type: "image/jpeg", data: base64Image },
+        },
+      ],
+    };
+
+    // --- Initial API Call --- 
     // *** ADD CANCELLATION CHECK ***
     if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Anthropic web search cancelled before initial API call.');
+      console.log('[CANCEL] Anthropic agentic search cancelled before initial API call.');
       handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
       return false;
     }
     // *** END CANCELLATION CHECK ***
+    
+    console.log('Making initial API call to Anthropic agent...');
     const initialResponse = await anthropic.messages.create({
       model: actualModel,
       max_tokens: 4096,
-      temperature: 0.5,
-      system: systemPrompts.searchMode(hasDrawing, barcodeData),
-      messages: [
-        {
-          role: "user",
-          content: [
-            {
-              type: "text",
-              text: "Analyze this image and tell me what food this is. Look very carefully at all visual details including packaging, branding, logos, and size references. Pay close attention to portion size relative to other objects in the image. Only after thoroughly analyzing what you see, use the search_web tool if needed to gather accurate nutritional information. When you identify the food, format its name like this: <foodname>Your Food Name Here</foodname>. Think carefully about the most accurate name before writing it down."
-            },
-            {
-              type: "image",
-              source: {
-                type: "base64",
-                media_type: "image/jpeg",
-                data: base64Image,
-              },
-            },
-          ],
-        }
-      ],
-      tools: [
-        {
-          name: "search_web",
-          description: "Search the web for information related to food nutrition",
-          input_schema: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description: "The search query to find nutrition information"
-              }
-            },
-            required: ["query"]
-          }
-        }
-      ]
+      temperature: 0.4, // Moderate temp for initial analysis + first search query generation
+      system: `
+You are an autonomous food-analysis agent.
+Your mission is to:
+1) Detect the food in the image.
+2) Execute iterative web searches for complete nutrition data.
+3) Submit full nutrition facts through 'submit_nutrition_data'.
+4) Use your tools to your advantage. You can search the web for ANYTHING, not just food.
+
+**Reasoning reminder**: If a search yields no results from a known JS-heavy domain (e.g., mcdonalds.com), adapt by excluding that domain in subsequent searches (\`NOT site:mcdonalds.com\`).
+Follow tool descriptions exactly and ensure completeness before submission.
+`,
+      messages: [initialUserMessage],
+      tools: toolDefinitions
     });
-    // *** ADD CANCELLATION CHECK ***
-    if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Anthropic web search cancelled after initial API call.');
-      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
-      return false;
-    }
-    // *** END CANCELLATION CHECK ***
+    console.log('Anthropic initial agent response:', JSON.stringify(initialResponse, null, 2));
 
-    console.log('Anthropic initial response:', JSON.stringify(initialResponse, null, 2));
-    
-    // Process the initial response
-    let messages = [
-      {
-        role: "user",
-        content: [
-          {
-            type: "text",
-            text: "Analyze this image and tell me what food this is. Use the search_web tool if needed to gather accurate nutritional information."
-          },
-          {
-            type: "image",
-            source: {
-              type: "base64",
-              media_type: "image/jpeg",
-              data: base64Image,
-            },
-          },
-        ],
-      }
-    ];
-    
-    // Track all tool calls for display purpose
-    if (initialResponse.content) {
-      const textContent = initialResponse.content.find(item => item.type === 'text');
-      if (textContent) {
-        // Extract potential food items from the initial text response
-        if (textContent.text) {
-          // Initialize foodMatches array
-          const foodMatches = [];
-          const formattedData = {}; // Keep this for structured data parsing
-
-          // --- NEW: Prioritize extracting food name from <foodname> tags ---
-          const foodNameMatch = textContent.text.match(/<foodname>(.*?)<\/foodname>/i); // Corrected escaping
-          if (foodNameMatch && foodNameMatch[1]) {
-            const extractedName = foodNameMatch[1].trim();
-            if (extractedName.length > 2) {
-              console.log('Extracted food name using <foodname> tag:', extractedName);
-              foodMatches.push(extractedName);
-            }
-          }
-          // --- END NEW ---
-
-          // Look for the structured format pattern we defined (as fallback or for additional info)
-          const lines = textContent.text.split('\\n');
-          let foundStructuredFormat = false; // Flag to track if structured data was found
-
-          for (let i = 0; i < lines.length; i++) {
-            const line = lines[i].trim();
-
-            // Try to extract key-value pairs (excluding food name if already found)
-            const match = line.match(/^(Brand\/Restaurant|Portion size|Packaging|Distinguishing features):\s*(.+)$/i); // Corrected escaping
-            if (match) {
-              foundStructuredFormat = true;
-              const [_, key, value] = match;
-              formattedData[key] = value.trim();
-            } else if (line.match(/^Food item\(s\):/i) && foodMatches.length === 0) { // Corrected escaping
-              // Only parse 'Food item(s)' if <foodname> tag wasn't found
-              const foodItemMatch = line.match(/^Food item\(s\):\s*(.+)$/i); // Corrected escaping
-              if (foodItemMatch) {
-                  foundStructuredFormat = true; // Still counts as finding structured format
-                  const value = foodItemMatch[1].trim();
-                  // Split by commas or 'and' to get individual items
-                  const items = value.split(/,|\s+and\s+/).map(item => item.trim()); // Corrected split regex usage
-                  items.forEach(item => {
-                    if (item.length > 2 && !foodMatches.includes(item)) {
-                      foodMatches.push(item);
-                    }
-                  });
-              }
-            }
-          }
-
-          // If we didn't find the <foodname> tag AND didn't find structured food item(s), fall back to regex patterns
-          if (foodMatches.length === 0 && !foundStructuredFormat) {
-            console.log('Falling back to regex patterns for food extraction.');
-            // Common patterns of AI describing food in images
-            const patterns = [
-              /(?:this is|I can see|the image shows|appears to be|visible is|we can see)\s+(?:a|an|some)?\s+([\w\s\-\'\,]+)(?:\.|,|\s+in\s+the\s+image|\s+on\s+a\s+plate|\s+with\s+)/i,
-              /(?:a|an|some)\s+([\w\s\-\'\,]+)(?:\s+is\s+visible|\s+is\s+shown|\s+appears|\s+can\s+be\s+seen)/i,
-              /(?:image|photo) (?:of|contains|showing|displays)\s+(?:a|an|some)?\s+([\w\s\-\'\,]+)(?:\.|,|\s+on|\s+with)/i
-            ];
-            
-            // Try each pattern
-            for (const pattern of patterns) {
-              const match = textContent.text.match(pattern);
-              if (match && match[1] && match[1].trim().length > 2) {
-                const foodItem = match[1].trim();
-                // Remove articles and common qualifiers
-                const cleanedItem = foodItem
-                  .replace(/^(a|an|some)\s+/i, '')
-                  .replace(/\s+(dish|meal|food|item|portion)$/i, '');
-                  
-                if (cleanedItem.length > 2 && !foodMatches.includes(cleanedItem)) {
-                  foodMatches.push(cleanedItem);
-                }
-              }
-            }
-          }
-          
-          // Create search queries for each identified food and update visualization
-          if (foodMatches.length > 0) {
-            console.log('Extracted food items from initial response:', foodMatches);
-            
-            // Set the detected food for visualization
-            if (foodMatches[0] && foodMatches[0].length > 0) {
-              await AsyncStorage.setItem(DETECTED_FOOD_KEY, foodMatches[0]);
-              console.log('Set detected food in AsyncStorage:', foodMatches[0]);
-              
-              // We've identified food in the recognize step, now complete it
-              // to make way for the search step
-              setTimeout(async () => {
-                await completeStep(STEP_RECOGNIZE);
-                setTimeout(async () => {
-                  await activateStep(STEP_SEARCH);
-                }, 500);
-              }, MIN_RECOGNIZE_DURATION);
-            }
-            
-            // Add brand information if available from structured format
-            let brandInfo = '';
-            if (formattedData['Brand/Restaurant'] && 
-                formattedData['Brand/Restaurant'] !== 'None visible' && 
-                !formattedData['Brand/Restaurant'].includes('None')) {
-              brandInfo = formattedData['Brand/Restaurant'] + ' ';
-            }
-            
-            // Create nutritional search queries for each food item, including brand if available
-            const queries = foodMatches.map(item => `nutrition facts for ${brandInfo}${item}`);
-            
-            // Store search queries for visualization
-            if (globalSearchTrackingFn) {
-              globalSearchTrackingFn(queries, []);
-            }
-            
-            // Directly store to AsyncStorage for visualization
-            await storeSearchData(queries, []);
-          }
-        }
-        
-        messages.push({
-          role: "assistant",
-          content: [textContent],
-        });
-      }
-    }
-    
-    // Process any tool calls (up to 3 iterations)
-    let iterations = 0;
+    // --- Agentic Loop --- 
+    let messages = [initialUserMessage, { role: "assistant", content: initialResponse.content }];
     let currentResponse = initialResponse;
-    const maxIterations = 3;
+    let iterations = 0;
+    const maxIterations = 10;
+    let nutritionSubmitted = false;
+    let finalParsedData = null; // To store data from submit_nutrition_data
     
-    // Check for tool calls and process them
-    while (currentResponse.tool_calls && currentResponse.tool_calls.length > 0 && iterations < maxIterations) {
-      // *** ADD CANCELLATION CHECK ***
-      if (global.NUTRILENS_CANCEL_SEARCH === true) {
-        console.log('[CANCEL] Anthropic web search cancelled during tool call loop.');
-        handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
-        return false;
-      }
-      // *** END CANCELLATION CHECK ***
+    // Helper function to check if a response contains the submit_nutrition_data tool call
+    const hasNutritionSubmission = (response) => {
+        if (!response || !response.content || !Array.isArray(response.content)) {
+            return false;
+        }
+        return response.content.some(item => 
+            item.type === 'tool_use' && item.name === 'submit_nutrition_data'
+        );
+    };
+    
+    // Helper function to check if response has tool use
+    const hasToolUse = (response) => response && response.content && response.content.some(item => item.type === 'tool_use');
 
-      iterations++;
-      console.log(`Processing tool call iteration ${iterations}`);
-      
-      // Prepare tool results array
-      const toolResults = [];
-
-      // Process each tool call
-      for (const toolCall of currentResponse.tool_calls) {
-        if (toolCall.type !== 'function' || toolCall.function.name !== 'search_web') continue;
-
-        // Perform the web search and process the result
-        const searchResult = await processWebSearchToolCall(toolCall);
-
-        // *** ADD CANCELLATION CHECK from tool call ***
-        if (searchResult.cancelled) {
-            console.log('[CANCEL] Anthropic web search cancelled via tool call result.');
+    while (hasToolUse(currentResponse) && !nutritionSubmitted && iterations < maxIterations) {
+        // *** ADD CANCELLATION CHECK ***
+        if (global.NUTRILENS_CANCEL_SEARCH === true) {
+            console.log(`[CANCEL] Anthropic agentic search cancelled at iteration ${iterations + 1}.`);
             handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
             return false;
         }
         // *** END CANCELLATION CHECK ***
 
-        console.log('Search result:', searchResult);
+        iterations++;
+        console.log(`--- Agent Iteration ${iterations}/${maxIterations} ---`);
+        const toolCalls = currentResponse.content.filter(item => item.type === 'tool_use');
+        const toolResults = [];
 
-        // Track the search results
-        if (searchResult.results && Array.isArray(searchResult.results)) {
-          searchInfo.results.push(...searchResult.results);
+        // Process tool calls from the assistant's last turn
+        for (const toolCall of toolCalls) {
+            console.log(`Processing tool: ${toolCall.name}`);
 
-          // Call handleSearchTracking if available
-          if (globalSearchTrackingFn && typeof globalSearchTrackingFn === 'function') {
-            globalSearchTrackingFn(searchResult.query ? [searchResult.query] : [], searchResult.results);
-          }
-
-          // After processing search results, we should be transitioning to process step
-          const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-          if (currentStep === STEP_SEARCH) {
-            // Complete search step and move to process step
-            // Use a timeout only if NOT cancelling
-            if (!global.NUTRILENS_CANCEL_SEARCH) {
-                setTimeout(async () => {
-                    if (!global.NUTRILENS_CANCEL_SEARCH) { // Double check inside timeout
-                        await completeStep(STEP_SEARCH);
-                        await activateStep(STEP_PROCESS);
-                    }
-                }, MIN_SEARCH_DURATION);
-            }
-          }
-        }
-
-        // Add the search result to the tool results array
-        toolResults.push({
-            type: "tool_result", // Use 'tool_result' type for Anthropic API
-            tool_use_id: toolCall.id, // Use tool_use_id for Anthropic
-            content: JSON.stringify(searchResult),
-            // Add is_error flag if needed based on searchResult.error
-            is_error: !!searchResult.error
-        });
-      }
-
-      // Add the assistant's previous message and the tool results to the messages list
-      messages.push({
-        role: "assistant",
-        content: currentResponse.content // Include the previous assistant message that contained the tool_calls
-      });
-      messages.push({
-        role: "user", // Role is 'user' when providing tool results back to Anthropic
-        content: toolResults // Send the array of tool results
-      });
-
-      // *** ADD CANCELLATION CHECK ***
-      if (global.NUTRILENS_CANCEL_SEARCH === true) {
-        console.log('[CANCEL] Anthropic web search cancelled before next API call in loop.');
-        handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
-        return false;
-      }
-      // *** END CANCELLATION CHECK ***
-
-      // Continue the conversation with the search results
-      currentResponse = await anthropic.messages.create({
-        model: actualModel,
-        max_tokens: 4096,
-        temperature: 0.4,
-        system: systemPrompts.searchMode(hasDrawing, barcodeData),
-        messages: messages,
-        tools: [
-          {
-            name: "search_web",
-            description: "Search the web for information related to food nutrition",
-            input_schema: {
-              type: "object",
-              properties: {
-                query: {
-                  type: "string",
-                  description: "The search query to find nutrition information"
+            if (toolCall.name === 'web_search') {
+                const searchResult = await processWebSearchToolCall(toolCall, anthropic, actualModel, scrapeUrl);
+                console.log('Summarized web search result:', searchResult);
+                if(searchResult.processed_urls) {
+                    searchInfo.results.push(...searchResult.processed_urls.map(url => ({ url }))); // Track URLs for fallback
                 }
-              },
-              required: ["query"]
+                toolResults.push({
+                    type: "tool_result",
+                    tool_use_id: toolCall.id,
+                    content: searchResult.summarized_nutrition, 
+                    is_error: !searchResult.nutrition_found // Signal if summary indicates failure
+                });
+            } else if (toolCall.name === 'submit_nutrition_data') {
+                console.log('Submit nutrition data tool called with input:', toolCall.input);
+                nutritionSubmitted = true;
+                const nutritionData = toolCall.input;
+                
+                // Clean the food name - remove <foodname> tags
+                let cleanedFoodName = nutritionData.food_name || "Unknown Food";
+                cleanedFoodName = cleanedFoodName.replace(/<foodname>/gi, '');
+                cleanedFoodName = cleanedFoodName.replace(/<\/foodname>/gi, ''); // Escaped slash for closing tag
+                cleanedFoodName = cleanedFoodName.trim();
+
+                // Construct final data structure matching handleSuccessfulScan expectations
+                finalParsedData = {
+                    food: {
+                        name: cleanedFoodName, // Use cleaned name
+                        class: "Food", 
+                        type: "Unknown", 
+                        // Map flat numbers from tool to nested structure
+                        calories: { amount: nutritionData.calories ?? 0, marginOfErrorPercent: 20 },
+                        proteins: { amount: nutritionData.protein_g ?? 0, marginOfErrorPercent: 20 },
+                        carbohydrates: { amount: nutritionData.carbs_g ?? 0, marginOfErrorPercent: 20 },
+                        fats: { amount: nutritionData.fat_g ?? 0, marginOfErrorPercent: 20 },
+                        fiber: { amount: nutritionData.fiber_g ?? 0, marginOfErrorPercent: 20 },
+                        sodium: { amount: nutritionData.sodium_mg ?? 0, marginOfErrorPercent: 20 },
+                        sugar: { amount: nutritionData.sugar_g ?? 0, marginOfErrorPercent: 20 },
+                        // Basic handling for serving size string -> object (can be improved later if needed)
+                        servingSize: { 
+                            amount: parseFloat(nutritionData.serving_size) || 1, // Attempt to parse amount, default to 1
+                            unit: nutritionData.serving_size || "serving" // Use original string as unit, fallback to 'serving'
+                        }, 
+                        // Ensure ingredients is an array of strings
+                        ingredients: Array.isArray(nutritionData.ingredients) 
+                                     ? nutritionData.ingredients.filter(item => typeof item === 'string') 
+                                     : [],
+                    },
+                    details: {
+                        summaryText: `Nutritional information for ${cleanedFoodName || 'food'}. Serving size: ${nutritionData.serving_size || 'N/A'}. Calories: ${nutritionData.calories ?? 'N/A'}.`, 
+                        // Map array of URL strings to array of {url, title} objects
+                        sources: Array.isArray(nutritionData.source_urls) 
+                                 ? nutritionData.source_urls.map(url => ({ url: url, title: 'Source' })) 
+                                 : []
+                    },
+                    _isProcessingComplete: true,
+                    _searchInfo: searchInfo
+                };
+
+                // Prepare a success response for this tool call
+                toolResults.push({
+                    type: "tool_result",
+                    tool_use_id: toolCall.id,
+                    content: `Nutrition data for ${cleanedFoodName} received successfully.`, // Use cleaned name in confirmation
+                    is_error: false
+                });
+                
+                // Important: Break inner loop once submission is handled
+                break; 
             }
-          }
-        ]
-      });
-      
-      console.log(`Anthropic response iteration ${iterations}:`, JSON.stringify(currentResponse, null, 2));
-      
-      // Add the assistant's response to messages for potential next iteration
-      if (currentResponse.content) {
-        const textContent = currentResponse.content.find(item => item.type === 'text');
-        if (textContent) {
-          messages.push({
-            role: "assistant",
-            content: [textContent],
-          });
+        } // End for loop over toolCalls
+
+        // If submit_nutrition_data was called, break the outer while loop too
+        if (nutritionSubmitted) {
+             messages.push({ role: "user", content: toolResults }); // Add final tool results
+             console.log('Nutrition submitted, breaking agent loop.');
+            break;
         }
-      }
-    }
-    
-    // Make sure we move to process step if we have search results
-    const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-    if (searchInfo.results.length > 0 && currentStep === STEP_SEARCH) {
-      await completeStep(STEP_SEARCH);
-      await activateStep(STEP_PROCESS);
-    }
-    
-    // Final request specifically asking for JSON response
-    const finalPrompt = `Based on your analysis and the search results, let's take a careful approach to finalizing your response:
 
-<reflection>
-1. Review the image one more time and consider all visual details:
-   - Did you correctly identify the specific food/drink and its branding?
-   - Have you accurately estimated portion size using visual references?
-   - Are there any packaging details or logos that provide definitive identification?
+        // Add user message containing results of tool calls for this turn
+        messages.push({ role: "user", content: toolResults });
 
-2. Review your search results:
-   - Did you find nutritional information for the exact product shown?
-   - How confident are you in the accuracy of your nutritional estimates?
-   - Are there any discrepancies between different sources that need resolution?
+        // --- Make the next API call to the agent --- 
+        console.log(`Making API call for iteration ${iterations + 1}`);
+        let iterationSystemPrompt = `
+You are a precision-focused nutrition agent. This is search attempt #${iterations}.
+Review previous results: if the nutrition data was incomplete, revise your search strategy:
+• Use different keywords or domains (official brands, specialized databases).
+• Prioritize fields still missing.
+• **Exclude domains that returned no usable data (e.g., 'NOT site:mcdonalds.com').**
 
-3. Consider accuracy of your assessment:
-   - How certain are you about the food identification?
-   - How precise is your portion size estimation?
-   - Are there any assumptions you're making that could be wrong?
-</reflection>
+Only submit when all data fields are filled or after 10 attempts.
+`;
 
-Now, provide the complete nutritional information in the JSON format exactly as specified. The response should start with { and end with } without any other text before or after. Don't use markdown code blocks.`;
-    
-    messages.push({
-      role: "user",
-      content: [
-        {
-          type: "text",
-          text: finalPrompt
-        }
-      ]
-    });
-    
-    // Transition to result step before final response
-    await completeStep(await AsyncStorage.getItem(PROCESSING_STEP_KEY) || STEP_PROCESS);
-    await activateStep(STEP_RESULT);
-    
-    // Get the final JSON response
-    // *** ADD CANCELLATION CHECK ***
-     if (global.NUTRILENS_CANCEL_SEARCH === true) {
-        console.log('[CANCEL] Anthropic web search cancelled before final API call.');
-        handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
-        return false;
-    }
-    // *** END CANCELLATION CHECK ***
-    const finalResponse = await anthropic.messages.create({
-      model: actualModel,
-      max_tokens: 4096,
-      temperature: 0.3,
-      system: systemPrompts.searchMode(hasDrawing, barcodeData),
-      messages: messages
-    });
+        currentResponse = await anthropic.messages.create({
+            model: actualModel,
+            max_tokens: 4096,
+            temperature: 0.5, // Keep temperature reasonable for iterative refinement
+            system: iterationSystemPrompt,
+            messages: messages,
+            tools: toolDefinitions
+        });
+        console.log(`Anthropic response iteration ${iterations + 1}:`, JSON.stringify(currentResponse, null, 2));
 
-    // *** ADD CANCELLATION CHECK ***
-    if (global.NUTRILENS_CANCEL_SEARCH === true) {
-      console.log('[CANCEL] Anthropic web search cancelled after final API call.');
-      handleError(new Error("Scan cancelled by user."), imageUri, barcodeData);
-      return false;
-    }
-    // *** END CANCELLATION CHECK ***
-
-    console.log('Final response:', JSON.stringify(finalResponse, null, 2));
-    
-    // Extract the response text
-    let jsonString = '';
-    if (finalResponse.content && finalResponse.content.length > 0) {
-      const textContent = finalResponse.content.find(item => item.type === 'text');
-      if (textContent) {
-        jsonString = textContent.text;
-      }
-    }
-    
-    console.log('Final raw text:', jsonString);
-    
-    // Clean up the JSON string - remove any markdown code blocks
-    if (jsonString.includes('```json')) {
-      jsonString = jsonString.replace(/```json\n|\n```|```/g, '');
-    } else if (jsonString.includes('```')) {
-      jsonString = jsonString.replace(/```\n|\n```|```/g, '');
-    }
-    
-    // Extract the JSON object if it's surrounded by other text
-    const jsonMatch = jsonString.match(/\{[\s\S]*\}/);
-    if (jsonMatch) {
-      jsonString = jsonMatch[0];
-    }
-    
-    console.log('Cleaned JSON string:', jsonString);
-    
-    try {
-      const parsedData = JSON.parse(jsonString);
-      console.log('Parsed nutritional data from web search:', parsedData);
-      
-      // Immediately mark data as processed to trigger API completion process
-      parsedData._isProcessingComplete = true;
-      
-      // Activate the result step as early as possible
-      const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-      if (currentStep !== STEP_RESULT) {
-        if (currentStep === STEP_PROCESS) {
-          await completeStep(STEP_PROCESS);
-        }
-        await activateStep(STEP_RESULT);
-      }
-      
-      // Add the search queries and results to the data
-      if (!parsedData.details) {
-        parsedData.details = {};
-      }
-      
-      // Add search info directly to the data for tracking
-      parsedData._searchInfo = searchInfo;
-      
-      if (searchInfo.queries.length > 0 || searchInfo.results.length > 0) {
-        // If no sources in the response, add them from our collected data
-        if (!parsedData.details.sources || !Array.isArray(parsedData.details.sources) || parsedData.details.sources.length === 0) {
-          parsedData.details.sources = searchInfo.results.map(result => ({
-            title: result.title || 'Search Result',
-            url: result.url || '',
-            snippet: result.snippet || ''
-          }));
-        }
-      }
-      
-      if (parsedData && parsedData.food) {
-        // Make sure we have enough results info for step visualization
-        if (searchInfo.results.length === 0) {
-          // Create dummy result if none exists
-          parsedData._searchInfo.results = [
-            { title: "Nutritional Database", url: "https://nutrition-database.org", snippet: "Found nutrition information for the detected food." }
-          ];
-          
-          // Update in AsyncStorage for visualization - do this after step transitions
-          await storeSearchData([], parsedData._searchInfo.results);
+        // Add the assistant's response to the message history for the next loop iteration
+        if (currentResponse.content) {
+            messages.push({ role: "assistant", content: currentResponse.content });
         }
         
-        // IMPORTANT: handleSuccessfulScan will trigger handleApiCompletion via wrappedHandler
-        foodFound = await handleSuccessfulScan(parsedData, imageUri, barcodeData, hasDrawing, selectedModel);
-      } else if (jsonString.includes("No Food Found") || jsonString.includes("{No Food Found.}")) {
-        console.log("No food found in the image");
-        setNoFoodFound(true);
-        setFoodData(null);
-        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
-        setActiveTab('');
-        
-        // Activate the result step but use a timer for completion
-        const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-        if (currentStep !== STEP_RESULT) {
-          if (currentStep === STEP_PROCESS) {
-            await completeStep(STEP_PROCESS);
-          }
-          await activateStep(STEP_RESULT);
+        // Check if the latest response contains the submission tool call
+        if(hasNutritionSubmission(currentResponse)) {
+             console.log('Model indicated nutrition submission in this turn, loop will process it next.');
+             // Loop will continue one more time to process the submit_nutrition_data call
         }
         
-        // For no food found case, complete the step after a timer
-        setTimeout(async () => {
-          await completeStep(STEP_RESULT);
-          // Mark API as finished
-          await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-        }, MIN_RESULT_DURATION);
+    } // End of while loop
+
+    // --- Post-Loop Handling --- 
+    
+    if (nutritionSubmitted && finalParsedData) {
+        console.log('Agent loop finished successfully with nutrition data submission.');
+        // Data was already processed and sent via handleSuccessfulScan inside the loop
+        foodFound = true; // Assume handleSuccessfulScan returned true if it didn't throw
+    } else {
+        console.log('Agent loop finished without submitting nutrition data (max iterations or model stopped). Using fallback.');
+        // Get the detected food name if available
+        const detectedFood = await AsyncStorage.getItem(DETECTED_FOOD_KEY) || "Unknown Food";
         
-        foodFound = false;
-      } else {
-        throw new Error("Parsed data is missing required properties.");
-      }
-    } catch (parseError) {
-      console.error("Error parsing JSON response (web search mode):", parseError);
-      console.error("Failed content:", jsonString);
-      
-      // Attempt to create a minimal valid response as fallback
-      try {
-        // Create a simple fallback response
+        // Create a fallback response
         const fallbackResponse = {
-          food: {
-            name: "Unknown Food",
-            class: "Unknown",
-            type: "Unknown",
-            calories: { amount: 0, marginOfErrorPercent: 50 },
-            proteins: { amount: 0, marginOfErrorPercent: 50 },
-            carbohydrates: { amount: 0, marginOfErrorPercent: 50 },
-            fats: { amount: 0, marginOfErrorPercent: 50 },
-            fiber: { amount: 0, marginOfErrorPercent: 50 },
-            sodium: { amount: 0, marginOfErrorPercent: 50 },
-            sugar: { amount: 0, marginOfErrorPercent: 50 },
-            servingSize: { amount: 1, unit: "serving" },
-            ingredients: []
-          },
-          details: {
-            summaryText: "Error processing search results, unable to determine nutrition information.",
-            sources: searchInfo.results.map(result => ({
-              title: result.title || 'Search Result',
-              url: result.url || '',
-              snippet: result.snippet || ''
-            }))
-          },
-          _searchInfo: searchInfo,
-          _isProcessingComplete: true // Mark as complete for visualization
+            food: {
+                name: detectedFood, class: "Food", type: "Unknown",
+                calories: { amount: 0, marginOfErrorPercent: 100 }, proteins: { amount: 0, marginOfErrorPercent: 100 },
+                carbohydrates: { amount: 0, marginOfErrorPercent: 100 }, fats: { amount: 0, marginOfErrorPercent: 100 },
+                fiber: { amount: 0, marginOfErrorPercent: 100 }, sodium: { amount: 0, marginOfErrorPercent: 100 },
+                sugar: { amount: 0, marginOfErrorPercent: 100 }, servingSize: { amount: 1, unit: "serving" }, ingredients: []
+            },
+            details: {
+                summaryText: `Could not find specific nutritional information for ${detectedFood} after ${iterations} search attempts.`,
+                sources: searchInfo.results.map(result => ({ url: result.url, title: 'Processed URL' })) // Include URLs tried
+            },
+            _searchInfo: searchInfo,
+            _isProcessingComplete: true
         };
         
-        // Immediately activate the result step for fastest user feedback
-        const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-        if (currentStep !== STEP_RESULT) {
-          if (currentStep === STEP_RECOGNIZE) {
-            await completeStep(STEP_RECOGNIZE);
-            await activateStep(STEP_SEARCH);
-            await completeStep(STEP_SEARCH);
-            await activateStep(STEP_PROCESS);
-            await completeStep(STEP_PROCESS);
-          } else if (currentStep === STEP_SEARCH) {
-            await completeStep(STEP_SEARCH);
-            await activateStep(STEP_PROCESS);
-            await completeStep(STEP_PROCESS);
-          } else if (currentStep === STEP_PROCESS) {
-            await completeStep(STEP_PROCESS);
-          }
-          
-          // Finally activate the result step
-          await activateStep(STEP_RESULT);
-        }
-        
-        // Make sure we have enough results info for step visualization
-        if (searchInfo.results.length === 0) {
-          // Create dummy result if none exists
-          fallbackResponse._searchInfo.results = [
-            { title: "Error Processing Results", url: "https://nutrition-database.org", snippet: "Error occurred while processing nutrition information." }
-          ];
-          
-          // Update in AsyncStorage for visualization - do this after step transitions
-          await storeSearchData([], fallbackResponse._searchInfo.results);
-        }
-        
-        // Log the fallback response and alert the user
-        console.log("Using fallback response:", fallbackResponse);
-        Alert.alert(
-          "Processing Error", 
-          "There was an error processing the response. Basic information will be shown instead."
+        // Call the success handler with the fallback data
+        foodFound = await handleSuccessfulScan(
+            fallbackResponse, imageUri, barcodeData, hasDrawing, selectedModel
         );
-        
-        foodFound = await handleSuccessfulScan(fallbackResponse, imageUri, barcodeData, hasDrawing, selectedModel);
-      } catch (fallbackError) {
-        console.error("Error creating fallback response:", fallbackError);
-        handleError(parseError, imageUri, barcodeData);
-        
-        // Get the current step and update visualization state
-        try {
-          const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-          
-          // If we're not at the result step yet, make sure we complete the current step
-          // and transition to result
-          if (currentStep !== STEP_RESULT) {
-            if (currentStep === STEP_RECOGNIZE) {
-              await completeStep(STEP_RECOGNIZE);
-              await activateStep(STEP_SEARCH);
-              await completeStep(STEP_SEARCH);
-              await activateStep(STEP_PROCESS);
-              await completeStep(STEP_PROCESS);
-            } else if (currentStep === STEP_SEARCH) {
-              await completeStep(STEP_SEARCH);
-              await activateStep(STEP_PROCESS);
-              await completeStep(STEP_PROCESS);
-            } else if (currentStep === STEP_PROCESS) {
-              await completeStep(STEP_PROCESS);
-            }
-            
-            // Finally activate the result step
-            await activateStep(STEP_RESULT);
-          }
-          
-          // Complete the result step after a timer
-          setTimeout(async () => {
-            await completeStep(STEP_RESULT);
-            await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-          }, MIN_RESULT_DURATION);
-        } catch (asyncError) {
-          console.error('Error setting step transitions on error:', asyncError);
-          await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-        }
-        
-        foodFound = false;
-      }
     }
     
     return foodFound;
+
   } catch (error) {
-    console.error('Error in handleAnthropicWebSearch:', error);
+    console.error('Error in handleAnthropicWebSearch (Agentic):', error);
     handleError(error, imageUri, barcodeData);
-    
-    // Get the current step and update visualization state
-    try {
-      const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
-      
-      // If we're not at the result step yet, make sure we complete the current step
-      // and transition to result
-      if (currentStep !== STEP_RESULT) {
-        if (currentStep === STEP_RECOGNIZE) {
-          await completeStep(STEP_RECOGNIZE);
-          await activateStep(STEP_SEARCH);
-          await completeStep(STEP_SEARCH);
-          await activateStep(STEP_PROCESS);
-          await completeStep(STEP_PROCESS);
-        } else if (currentStep === STEP_SEARCH) {
-          await completeStep(STEP_SEARCH);
-          await activateStep(STEP_PROCESS);
-          await completeStep(STEP_PROCESS);
-        } else if (currentStep === STEP_PROCESS) {
-          await completeStep(STEP_PROCESS);
-        }
-        
-        // Finally activate the result step
+    // Ensure visualization steps are completed on error
+     try {
+       const currentStepOnError = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
+       if (currentStepOnError !== STEP_RESULT) {
         await activateStep(STEP_RESULT);
       }
-      
-      // Complete the result step after a timer
       setTimeout(async () => {
         await completeStep(STEP_RESULT);
         await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
       }, MIN_RESULT_DURATION);
-    } catch (asyncError) {
-      console.error('Error setting step transitions on error:', asyncError);
-      await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
-    }
-    
+     } catch (asyncError) { 
+         console.error('Error handling visualization after main agentic error:', asyncError);
+      }
     return false;
   }
 };
@@ -2448,6 +2153,7 @@ const handleOpenAIWebSearch = async ({
   setNoFoodFound,
   setFoodData,
   setActiveTab,
+  scrapeUrl,
 }) => {
   try {
     const searchInfo = {
@@ -2480,6 +2186,29 @@ const handleOpenAIWebSearch = async ({
       },
       _searchInfo: searchInfo
     };
+    
+    // Set the no food found state properly
+    console.log("No food found in the image");
+    setNoFoodFound(true);
+    setFoodData(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setActiveTab('');
+    
+    // Activate the result step but use a timer for completion
+    const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
+    if (currentStep !== STEP_RESULT) {
+      if (currentStep === STEP_PROCESS) {
+        await completeStep(STEP_PROCESS);
+      }
+      await activateStep(STEP_RESULT);
+    }
+    
+    // For no food found case, complete the step after a timer
+    setTimeout(async () => {
+      await completeStep(STEP_RESULT);
+      // Mark API as finished
+      await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
+    }, MIN_RESULT_DURATION);
     
     Alert.alert(
       "Not Fully Implemented", 
@@ -2516,6 +2245,7 @@ const handleGeminiWebSearch = async ({
   setNoFoodFound,
   setFoodData,
   setActiveTab,
+  scrapeUrl,
 }) => {
   try {
     const searchInfo = {
@@ -2549,6 +2279,29 @@ const handleGeminiWebSearch = async ({
       _searchInfo: searchInfo
     };
     
+    // Set the no food found state properly
+    console.log("No food found in the image");
+    setNoFoodFound(true);
+    setFoodData(null);
+    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Warning);
+    setActiveTab('');
+    
+    // Activate the result step but use a timer for completion
+    const currentStep = await AsyncStorage.getItem(PROCESSING_STEP_KEY);
+    if (currentStep !== STEP_RESULT) {
+      if (currentStep === STEP_PROCESS) {
+        await completeStep(STEP_PROCESS);
+      }
+      await activateStep(STEP_RESULT);
+    }
+    
+    // For no food found case, complete the step after a timer
+    setTimeout(async () => {
+      await completeStep(STEP_RESULT);
+      // Mark API as finished
+      await AsyncStorage.setItem(API_FINISHED_KEY, 'true');
+    }, MIN_RESULT_DURATION);
+    
     Alert.alert(
       "Not Fully Implemented", 
       "Gemini web search functionality is not yet fully implemented."
@@ -2560,6 +2313,99 @@ const handleGeminiWebSearch = async ({
     console.error('Error in handleGeminiWebSearch:', error);
     handleError(error, imageUri, barcodeData);
     return false;
+  }
+};
+
+/**
+ * Process nutrition data submission tool call
+ * @param {Object} toolCall - The tool call object from Anthropic
+ * @returns {Object} - Object containing success status and message
+ */
+const processSubmitNutritionDataToolCall = async (toolCall) => {
+  try {
+    console.log('Processing submit nutrition data tool call:', JSON.stringify(toolCall, null, 2));
+    
+    // Extract nutrition data from tool call
+    const {
+      foodName,
+      servingSize,
+      calories,
+      protein,
+      carbohydrates,
+      fat,
+      fiber,
+      sugar,
+      sodium,
+      ingredients,
+      additionalNotes
+    } = toolCall.input;
+    
+    // Log the received nutrition data
+    console.log('Nutrition data received:', {
+      foodName,
+      servingSize,
+      calories,
+      protein,
+      carbohydrates,
+      fat,
+      fiber,
+      sugar,
+      sodium,
+      ingredients: ingredients ? ingredients.substring(0, 100) + '...' : 'None provided',
+      additionalNotes: additionalNotes ? additionalNotes.substring(0, 100) + '...' : 'None provided'
+    });
+    
+    // Update the app state to indicate nutrition data was found
+    await activateStep(STEP_PROCESSING_COMPLETE);
+    
+    // Create structured nutrition data object
+    const nutritionData = {
+      foodName: foodName || 'Unknown food',
+      servingSize: servingSize || 'Not specified',
+      nutritionFacts: {
+        calories: calories || 'N/A',
+        protein: protein || 'N/A',
+        carbohydrates: carbohydrates || 'N/A',
+        fat: fat || 'N/A',
+        fiber: fiber || 'N/A',
+        sugar: sugar || 'N/A',
+        sodium: sodium || 'N/A'
+      },
+      ingredients: ingredients || 'Not available',
+      additionalNotes: additionalNotes || ''
+    };
+    
+    // Store the nutrition data for later use
+    await AsyncStorage.setItem(NUTRITION_DATA_KEY, JSON.stringify(nutritionData));
+    
+    // Return success response
+    return {
+      success: true,
+      message: 'Nutrition data successfully processed and stored'
+    };
+  } catch (error) {
+    console.error('Error in processSubmitNutritionDataToolCall:', error);
+    return {
+      success: false,
+      message: `Error processing nutrition data: ${error.message}`
+    };
+  }
+};
+
+const processToolCall = async (toolCall) => {
+  console.log(`Processing tool call: ${toolCall.name}`);
+  
+  switch (toolCall.name) {
+    case 'web_search':
+      return await processWebSearchToolCall(toolCall);
+    case 'submit_nutrition_data':
+      return await processSubmitNutritionDataToolCall(toolCall);
+    default:
+      console.warn(`Unknown tool call: ${toolCall.name}`);
+      return {
+        success: false,
+        message: `Unknown tool call: ${toolCall.name}`
+      };
   }
 };
 

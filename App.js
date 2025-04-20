@@ -65,6 +65,7 @@ import FoodDetailsScreen from './screens/FoodDetailsScreen';
 import SearchScreen from './screens/SearchScreen';
 import ProfileScreen from './screens/ProfileScreen';
 import ImagePickerTestScreen from './screens/ImagePickerTestScreen';
+import { WebScraperProvider } from './contexts/WebScraperContext'; // Adjust path if needed
 
 const { width, height } = Dimensions.get('window');
 
@@ -272,157 +273,159 @@ function App() {
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <TimeZoneProvider>
-        <NavigationContainer ref={navigationRef}>
-          <UserProvider
-            navigation={navigationRef.current}
-          >
-            <IAPProvider>
-              <Stack.Navigator
-                initialRouteName={initialRoute}
-                screenOptions={{
-                  headerStyle: styles.headerStyle,
-                  headerTintColor: '#fff',
-                  headerTitleStyle: styles.headerTitleStyle,
-                  headerTitleAlign: 'center',
-                }}
-              >
-                <Stack.Screen
-                  name="Welcome"
-                  component={WelcomeScreen}
-                  options={{ headerShown: false }}
+        <WebScraperProvider>
+          <NavigationContainer ref={navigationRef}>
+            <UserProvider
+              navigation={navigationRef.current}
+            >
+              <IAPProvider>
+                <Stack.Navigator
+                  initialRouteName={initialRoute}
+                  screenOptions={{
+                    headerStyle: styles.headerStyle,
+                    headerTintColor: '#fff',
+                    headerTitleStyle: styles.headerTitleStyle,
+                    headerTitleAlign: 'center',
+                  }}
+                >
+                  <Stack.Screen
+                    name="Welcome"
+                    component={WelcomeScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="SignUp"
+                    component={SignUpScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="SignIn"
+                    component={SignInScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="LoadingScreen"
+                    component={LoadingScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="OnBoardingScreen"
+                    component={OnBoardingScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="HomeTabs"
+                    component={HomeTabs}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="InsightsV2"
+                    component={InsightsV2}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="CameraScreen"
+                    component={CameraScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="FoodScanScreen"
+                    component={FoodScanScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="SupportScreen"
+                    component={SupportScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="PrivacyScreen"
+                    component={PrivacyScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="FeaturesScreen"
+                    component={FeaturesScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="DebuggingScreen"
+                    component={DebuggingScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="AboutScreen"
+                    component={AboutScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="CancelScreen"
+                    component={CancelScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="Goodbye"
+                    component={GoodbyeScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="Log"
+                    component={LogScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="CompleteProfile"
+                    component={CompleteProfileScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="NoInternet"
+                    component={NoInternetScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="Insights"
+                    component={InsightsScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="DebugScreen"
+                    component={DebugScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="LandscapeCarouselScreen"
+                    component={LandscapeCarouselScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="ChatWithImageTest"
+                    component={ChatWithImageTest}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="MultiFoodScanScreen"
+                    component={MultiFoodScanScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="FoodDetailsScreen"
+                    component={FoodDetailsScreen}
+                    options={{ headerShown: false }}
+                  />
+                  <Stack.Screen
+                    name="ImagePickerTestScreen"
+                    component={ImagePickerTestScreen}
+                    options={{ headerShown: false }}
+                  />
+                </Stack.Navigator>
+                <StatusBar
+                  style={theme === 'dark' ? 'light-content' : 'dark-content'}
                 />
-                <Stack.Screen
-                  name="SignUp"
-                  component={SignUpScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="SignIn"
-                  component={SignInScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="LoadingScreen"
-                  component={LoadingScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="OnBoardingScreen"
-                  component={OnBoardingScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="HomeTabs"
-                  component={HomeTabs}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="InsightsV2"
-                  component={InsightsV2}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="CameraScreen"
-                  component={CameraScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="FoodScanScreen"
-                  component={FoodScanScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="SupportScreen"
-                  component={SupportScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="PrivacyScreen"
-                  component={PrivacyScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="FeaturesScreen"
-                  component={FeaturesScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="DebuggingScreen"
-                  component={DebuggingScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="AboutScreen"
-                  component={AboutScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="CancelScreen"
-                  component={CancelScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="Goodbye"
-                  component={GoodbyeScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="Log"
-                  component={LogScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="CompleteProfile"
-                  component={CompleteProfileScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="NoInternet"
-                  component={NoInternetScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="Insights"
-                  component={InsightsScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="DebugScreen"
-                  component={DebugScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="LandscapeCarouselScreen"
-                  component={LandscapeCarouselScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="ChatWithImageTest"
-                  component={ChatWithImageTest}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="MultiFoodScanScreen"
-                  component={MultiFoodScanScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="FoodDetailsScreen"
-                  component={FoodDetailsScreen}
-                  options={{ headerShown: false }}
-                />
-                <Stack.Screen
-                  name="ImagePickerTestScreen"
-                  component={ImagePickerTestScreen}
-                  options={{ headerShown: false }}
-                />
-              </Stack.Navigator>
-              <StatusBar
-                style={theme === 'dark' ? 'light-content' : 'dark-content'}
-              />
-            </IAPProvider>
-          </UserProvider>
-        </NavigationContainer>
+              </IAPProvider>
+            </UserProvider>
+          </NavigationContainer>
+        </WebScraperProvider>
       </TimeZoneProvider>
     </GestureHandlerRootView>
   );

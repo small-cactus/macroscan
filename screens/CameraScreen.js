@@ -22,6 +22,7 @@ import * as Haptics from 'expo-haptics';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { PinchGestureHandler, State } from 'react-native-gesture-handler';
 import { getModel } from './providers/models';
+import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 const { width, height } = Dimensions.get('window');
 
@@ -207,9 +208,10 @@ export default function CameraScreen() {
       const checkTutorial = async () => {
         try {
           const hasViewedTutorial = await AsyncStorage.getItem('hasViewedTutorial');
-          if (!hasViewedTutorial || DEBUG_ALWAYS_SHOW_TUTORIAL) {
-            setShowTutorial(true);
-          }
+          // if (!hasViewedTutorial || DEBUG_ALWAYS_SHOW_TUTORIAL) {
+          //   setShowTutorial(true);
+          // }
+          // Tutorial is now always disabled
         } catch (error) {
           console.error('Error checking tutorial status:', error);
         }
@@ -527,8 +529,9 @@ export default function CameraScreen() {
 
   // Easter egg to re-show tutorial
   const secret = () => {
-    setShowTutorial(true);
-    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    // setShowTutorial(true);
+    // Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
+    // Tutorial is now always disabled
   };
 
   // Just an example zoom toggle
@@ -900,20 +903,58 @@ export default function CameraScreen() {
             <TouchableOpacity style={styles.flashButton} onPress={handleModePress}>
               <BlurView intensity={30} style={[
                 styles.blurViewTitle,
-                selectedMode === 'accurate' && { backgroundColor: 'rgba(25, 72, 110, 0.3)' },
-                selectedMode === 'search' && { backgroundColor: 'rgba(88, 45, 155, 0.4)' }
+                selectedMode === 'accurate' && { backgroundColor: 'rgba(25, 72, 110, 0.3)' }
               ]}>
                 <View style={styles.chipContent}>
-                  <Ionicons 
-                    name={
-                      selectedMode === 'fast' ? 'flash' : 
-                      selectedMode === 'accurate' ? 'shield-checkmark' : 
-                      'search'
-                    } 
-                    size={24} 
-                    color="#fff" 
-                    style={{ marginRight: 8 }}
-                  />
+                  {selectedMode === 'search' ? (
+                    <View style={{
+                      width: 36 * scale,
+                      height: 36 * scale,
+                      borderRadius: 12 * scale,
+                      marginRight: 8,
+                      overflow: 'hidden',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      position: 'relative',
+                    }}>
+                      <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+                        <Defs>
+                          <RadialGradient id="grad1" cx="25%" cy="25%" r="80%" gradientUnits="userSpaceOnUse">
+                            <Stop offset="0%" stopColor="#FFB74D" stopOpacity="1" />
+                            <Stop offset="100%" stopColor="#FFB74D" stopOpacity="0" />
+                          </RadialGradient>
+                          <RadialGradient id="grad2" cx="75%" cy="30%" r="70%" gradientUnits="userSpaceOnUse">
+                            <Stop offset="0%" stopColor="#FF5252" stopOpacity="1" />
+                            <Stop offset="100%" stopColor="#FF5252" stopOpacity="0" />
+                          </RadialGradient>
+                          <RadialGradient id="grad3" cx="50%" cy="60%" r="75%" gradientUnits="userSpaceOnUse">
+                            <Stop offset="0%" stopColor="#42A5F5" stopOpacity="0.9" />
+                            <Stop offset="100%" stopColor="#42A5F5" stopOpacity="0" />
+                          </RadialGradient>
+                          <RadialGradient id="grad4" cx="65%" cy="75%" r="60%" gradientUnits="userSpaceOnUse">
+                            <Stop offset="0%" stopColor="#AB47BC" stopOpacity="0.8" />
+                            <Stop offset="100%" stopColor="#AB47BC" stopOpacity="0" />
+                          </RadialGradient>
+                        </Defs>
+                        <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad1)" />
+                        <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad2)" />
+                        <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad3)" />
+                        <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad4)" />
+                      </Svg>
+                      <Ionicons name="search" size={24} color="#fff" style={{ position: 'absolute', zIndex: 1 }} />
+                    </View>
+                  ) : (
+                    <Ionicons 
+                      name={
+                        selectedMode === 'fast' ? 'flash' : 
+                        selectedMode === 'accurate' ? 'shield-checkmark' : 
+                        'search'
+                      } 
+                      size={24} 
+                      color="#fff" 
+                      style={{ marginRight: 8 }}
+                    />
+                  )}
                   <Animated.Text style={[styles.title, { opacity: chipTextOpacity }]}>
                     {MODE_LABELS[selectedMode]}
                   </Animated.Text>

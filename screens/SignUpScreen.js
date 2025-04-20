@@ -101,33 +101,48 @@ export default function SignUpScreen({ navigation }) {
   };
 
   const handleUserVerification = async (createUserFn) => {
-    setLoading(true);
     navigation.navigate('LoadingScreen');
-    navigation.reset({
-      index: 0,
-      routes: [{ name: 'LoadingScreen' }],
-    });
+    setLoading(true);
     try {
       const newUser = await createUserFn();
       console.log('handleUserVerification response:', newUser);
-      await AsyncStorage.setItem('@user_logged_in', 'true');
+
       if (
+        !newUser ||
         !newUser.name ||
         newUser.name === 'No Name' ||
         !newUser.email
       ) {
+        setLoading(false);
         Alert.alert(
           'Sign Up Failed',
-          'Apple sign in failed, our servers are US based, if you\'re seeing this, you have a slow connection.'
+          'Could not retrieve valid user information from Apple. Please try again.'
         );
+        navigation.navigate('SignUp');
       } else {
+        await AsyncStorage.setItem('@user_logged_in', 'true');
         await AsyncStorage.setItem('userName', newUser.name);
         await AsyncStorage.setItem('userEmail', newUser.email);
         navigateHome();
       }
     } catch (error) {
       setLoading(false);
-      Alert.alert('Sign Up Error', error.message);
+      console.error('Error during user verification:', error);
+      if (error.isAxiosError) {
+        console.error('Axios Error Details:');
+        if (error.response) {
+          console.error('Data:', error.response.data);
+          console.error('Status:', error.response.status);
+          console.error('Headers:', error.response.headers);
+        } else if (error.request) {
+          console.error('Request:', error.request);
+        } else {
+          console.error('Error Message:', error.message);
+        }
+        console.error('Config:', error.config);
+      }
+      Alert.alert('Sign Up Error', `An error occurred: ${error.message}. Please try again.`);
+      navigation.navigate('SignUp');
     }
   };
 
