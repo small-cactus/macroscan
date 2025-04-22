@@ -164,11 +164,13 @@ const FoodScanScreen = () => {
   // Add new state for paywall tracking
   const [totalScanCount, setTotalScanCount] = useState(0);
   const [lastPaywallTime, setLastPaywallTime] = useState(0);
+  const [lastSuccessfulScanTimestamp, setLastSuccessfulScanTimestamp] = useState(0); // <-- Add this state
   const postScanPaywallTimerRef = useRef(null);
 
   // Add new state variables for manual input
   const [manualInputModalVisible, setManualInputModalVisible] = useState(false);
   const [manualUserInput, setManualUserInput] = useState('');
+  const [originalModeBeforeManualInput, setOriginalModeBeforeManualInput] = useState(null); // <-- Add state
 
   // Add new animated value for tab indicator
   const tabIndicatorAnim = useRef(new Animated.Value(0)).current;
@@ -624,96 +626,111 @@ const stopLoadingAnimation = () => {
     initializeAppData();
   }, [getTodayString]); // Add getTodayString to dependency array
 
+  // Define checkSubscription function outside of useEffect so it can be reused
+  const checkSubscription = useCallback(async () => {
+    try {
+      let isSubscribedUnlimited = false;
+      let isSubscribedPlus = false;
+  
+      if (isIAPEnabled) {
+        if (Platform.OS === 'ios') {
+          // Ensure initConnection is called before using getReceiptIOS
+          await RNIap.initConnection();
+          // Retrieve the receipt data
+          const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
+  
+          if (!receipt) {
+            console.error('No receipt available');
+          } else {
+            // Send the receipt data to the cloud function
+            const response = await fetch(
+              'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
+              {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({ receiptData: receipt }),
+              }
+            );
+  
+            // Check if the response is OK
+            if (response.ok) {
+              const data = await response.json();
+              if (data.success && data.isSubscribed) {
+                const productId = data.productId;
+                if (
+                  ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(productId)
+                ) {
+                  isSubscribedUnlimited = true;
+                } else if (productId === 'macroscan_plus') {
+                  isSubscribedPlus = true;
+                }
+              } else {
+                console.log('Receipt validation failed:', data.message);
+              }
+            } else {
+              const responseText = await response.text();
+              console.error('Server Error:', response.status, responseText);
+            }
+          }
+        } else {
+          // Handle Android platform if necessary
+          isSubscribedUnlimited = false;
+          isSubscribedPlus = false;
+        }
+      } else {
+        // If IAP is not enabled, rely on user context
+        if (
+          user?.subscriptionStatus === 'macroscan_unlimited' ||
+          user?.subscriptionStatus === 'macroscan_plusplus'
+        ) {
+          isSubscribedUnlimited = true;
+        } else if (user?.subscriptionStatus === 'macroscan_plus') {
+          isSubscribedPlus = true;
+        }
+      }
+  
+      if (isSubscribedUnlimited) {
+        setIsSubscribed(true);
+        setIsSubscribedPlus(false);
+      } else if (isSubscribedPlus) {
+        setIsSubscribed(false);
+        setIsSubscribedPlus(true);
+      } else {
+        setIsSubscribed(false);
+        setIsSubscribedPlus(false);
+      }
+    } catch (error) {
+      console.error('Failed to check subscription status:', error);
+      setIsSubscribed(false);
+      setIsSubscribedPlus(false);
+    }
+  }, [isIAPEnabled, user]); // Keep dependencies
+
+  // Use useFocusEffect to run checkSubscription whenever the screen is focused
   useFocusEffect(
     useCallback(() => {
       // Re-initialize or perform actions when the screen is focused
-    }, [])
+      checkSubscription();
+    }, [checkSubscription]) // Depend on the memoized checkSubscription function
+  );
+
+  // Use useFocusEffect to run checkSubscription whenever the screen is focused,
+  // BUT only if IAP is disabled (to update from context changes).
+  useFocusEffect(
+    useCallback(() => {
+      if (!isIAPEnabled) {
+        // Re-run the check if IAP is off to sync with context
+        checkSubscription();
+      }
+    }, [isIAPEnabled, checkSubscription]) // Depend on isIAPEnabled and the memoized checkSubscription function
   );
 
   const initialCheckDoneRef = useRef(false);
 
   useEffect(() => {
-    const checkSubscription = async () => {
-      try {
-        let isSubscribedUnlimited = false;
-        let isSubscribedPlus = false;
-    
-        if (isIAPEnabled) {
-          if (Platform.OS === 'ios') {
-            // Ensure initConnection is called before using getReceiptIOS
-            await RNIap.initConnection();
-            // Retrieve the receipt data
-            const receipt = await RNIap.getReceiptIOS({ forceRefresh: true });
-    
-            if (!receipt) {
-              console.error('No receipt available');
-            } else {
-              // Send the receipt data to the cloud function
-              const response = await fetch(
-                'https://us-central1-weighty-works-420523.cloudfunctions.net/verifyReceipt2',
-                {
-                  method: 'POST',
-                  headers: {
-                    'Content-Type': 'application/json',
-                  },
-                  body: JSON.stringify({ receiptData: receipt }),
-                }
-              );
-    
-              // Check if the response is OK
-              if (response.ok) {
-                const data = await response.json();
-                if (data.success && data.isSubscribed) {
-                  const productId = data.productId;
-                  if (
-                    ['macroscan_plusplus', 'macroscan_plusplus_yearly', 'macroscan_unlimited'].includes(productId)
-                  ) {
-                    isSubscribedUnlimited = true;
-                  } else if (productId === 'macroscan_plus') {
-                    isSubscribedPlus = true;
-                  }
-                } else {
-                  console.log('Receipt validation failed:', data.message);
-                }
-              } else {
-                const responseText = await response.text();
-                console.error('Server Error:', response.status, responseText);
-              }
-            }
-          } else {
-            // Handle Android platform if necessary
-            isSubscribedUnlimited = false;
-            isSubscribedPlus = false;
-          }
-        } else {
-          // If IAP is not enabled, rely on user context
-          if (
-            user?.subscriptionStatus === 'macroscan_unlimited' ||
-            user?.subscriptionStatus === 'macroscan_plusplus'
-          ) {
-            isSubscribedUnlimited = true;
-          } else if (user?.subscriptionStatus === 'macroscan_plus') {
-            isSubscribedPlus = true;
-          }
-        }
-    
-        if (isSubscribedUnlimited) {
-          setIsSubscribed(true);
-          setIsSubscribedPlus(false);
-        } else if (isSubscribedPlus) {
-          setIsSubscribed(false);
-          setIsSubscribedPlus(true);
-        } else {
-          setIsSubscribed(false);
-          setIsSubscribedPlus(false);
-        }
-      } catch (error) {
-        console.error('Failed to check subscription status:', error);
-        setIsSubscribed(false);
-        setIsSubscribedPlus(false);
-      }
-    };
-
+    // Existing useEffect for initial check and interval checks remains, but calls the shared checkSubscription function
     let isMounted = true;
     let checkInterval;
 
@@ -737,7 +754,7 @@ const stopLoadingAnimation = () => {
         clearInterval(checkInterval);
       }
     };
-  }, [isIAPEnabled, user]); // Only depend on isIAPEnabled and user changes
+  }, [checkSubscription]); // Depend on the memoized checkSubscription function instead of isIAPEnabled/user directly
 
   useEffect(() => {
     const intervalId = setInterval(() => {
@@ -2751,9 +2768,14 @@ ${modeDescriptions[currentMode]}`,
                   // If never shown before or 45 minutes have passed
                   if (!lastShownTime || (currentTime - lastShownTime) >= cooldownPeriod) {
                     console.log('[Paywall] Conditions met, showing paywall.');
-                    await Superwall.shared.register('fortune-finished');
-                    // Update the last shown time
-                    await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+                    // --> Add check for isSubscribed here
+                    if (!isSubscribed) {
+                      await Superwall.shared.register('fortune-finished');
+                      // Update the last shown time
+                      await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+                    } else {
+                      console.log('[Paywall] User is subscribed, skipping timed paywall.');
+                    }
                   } else {
                     console.log('[Paywall] Cooldown active, not showing paywall.');
                   }
@@ -2796,6 +2818,13 @@ ${modeDescriptions[currentMode]}`,
       if (!parsedData || !parsedData.food) {
         console.error("[FOODSCAN] Invalid parsedData structure:", parsedData);
         setNoFoodFound(true);
+        return false;
+      }
+
+      // Check for 'no food found' names
+      if (isNoFoodFoundName(parsedData.food.name)) {
+        setNoFoodFound(true);
+        setFoodData(null);
         return false;
       }
       
@@ -2916,22 +2945,6 @@ ${modeDescriptions[currentMode]}`,
       setTotalScanCount(newScanCount);
       await AsyncStorage.setItem('@total_scan_count', newScanCount.toString());
 
-      // Show 'fortune-finished' paywall on 3rd scan with a delay
-      if (newScanCount === 3) {
-        // Use a timer to delay showing paywall until user has had time to see results
-        if (postScanPaywallTimerRef.current) {
-          clearTimeout(postScanPaywallTimerRef.current);
-        }
-        
-        // Show paywall after 10 seconds to give user time to see results
-        postScanPaywallTimerRef.current = setTimeout(async () => {
-          console.log('[Paywall] Showing third-scan fortune-finished paywall');
-          await Superwall.shared.register('fortune-finished');
-          await AsyncStorage.setItem('@last_paywall_time', Date.now().toString());
-          postScanPaywallTimerRef.current = null;
-        }, 10000);
-      }
-
       // Rest of your success handling code...
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       triggerMacroAnimations();
@@ -2958,6 +2971,9 @@ ${modeDescriptions[currentMode]}`,
         hasDrawing: hasDrawing,
         modelUsed: actualModel || selectedMode
       });
+      
+      // Update timestamp AFTER successfully storing details
+      setLastSuccessfulScanTimestamp(Date.now());
       
       return true;
     } catch (error) {
@@ -4063,6 +4079,9 @@ ${modeDescriptions[currentMode]}`,
   const [searchInfoSheetKey, setSearchInfoSheetKey] = useState(0);
   const [initialModeLoaded, setInitialModeLoaded] = useState(null); // <-- Add new state here
 
+  // Add this ref near the top of the component
+  const hasMountedRef = useRef(false);
+
   // Update the useEffect that depends on selectedMode
   useEffect(() => {
     const handleModeChange = async () => {
@@ -4076,40 +4095,29 @@ ${modeDescriptions[currentMode]}`,
         setHasSeenSearchInfoSheetThisSession(false);
       }
 
-      // New logic to show the info sheet for Search Mode based on time
+      // New logic to show the info sheet for Search Mode ONLY if never confirmed
       if (selectedMode === 'search') {
-        // <-- Add condition: Do not show if search mode was loaded initially
-        if (selectedMode === initialModeLoaded) {
+        // Only skip the info sheet on the very first mount if search mode was loaded initially
+        if (!hasMountedRef.current && selectedMode === initialModeLoaded) {
+          hasMountedRef.current = true;
           console.log('[SearchInfoSheet] Search mode was already selected on load, skipping info sheet.');
-          return; 
+          return;
         }
-
+        hasMountedRef.current = true;
         try {
-          const lastSeenTimestampStr = await AsyncStorage.getItem('@last_seen_search_info_sheet');
-          const lastSeenTimestamp = lastSeenTimestampStr ? parseInt(lastSeenTimestampStr, 10) : 0;
-          const currentTime = Date.now();
-          const threeHoursInMillis = 3 * 60 * 60 * 1000;
-
-          if (!lastSeenTimestamp || (currentTime - lastSeenTimestamp > threeHoursInMillis)) {
-            // Increment the key to force a complete re-render of the component
+          const hasSeenOnce = await AsyncStorage.getItem('@has_seen_search_info_sheet_once');
+          if (!hasSeenOnce) {
             setSearchInfoSheetKey(prevKey => prevKey + 1);
-            // Show the sheet
             setShowSearchInfoSheet(true);
-            // Don't update the timestamp here - only when user clicks "Get Started"
-            // Don't mark as seen in session so it can be shown again if dismissed
           } else {
-            // If shown recently and user clicked "Get Started", maintain that status
-            if (lastSeenTimestamp) {
-              setHasSeenSearchInfoSheetThisSession(true);
-            }
+            setHasSeenSearchInfoSheetThisSession(true);
           }
         } catch (error) {
-          console.error("Error checking/setting search info sheet timestamp:", error);
-          // Fallback: show the sheet if there's an error reading time, but don't update timestamp
+          console.error("Error checking/setting search info sheet flag:", error);
+          // Fallback: show the sheet if there's an error reading flag
           if (!hasSeenSearchInfoSheetThisSession) {
              setSearchInfoSheetKey(prevKey => prevKey + 1);
              setShowSearchInfoSheet(true);
-             // Don't set hasSeenSearchInfoSheetThisSession here
           }
         }
       }
@@ -4248,7 +4256,19 @@ ${modeDescriptions[currentMode]}`,
 
   // Add handler for the manual input button press
   const handleManualInputPress = () => {
-    setManualInputModalVisible(true);
+    // Store original mode and potentially switch to fast mode
+    if (selectedMode !== 'fast') {
+      setOriginalModeBeforeManualInput(selectedMode);
+      setSelectedMode('fast');
+      Alert.alert(
+        "Mode Switched to Fast",
+        "Manual descriptions are only supported in Fast Mode. The mode has been temporarily switched.",
+        [{ text: "OK", onPress: () => setManualInputModalVisible(true) }]
+      );
+    } else {
+      setOriginalModeBeforeManualInput(null); // Ensure it's null if already fast
+      setManualInputModalVisible(true);
+    }
   };
 
   // Add function to handle submission from the manual input modal
@@ -4269,15 +4289,17 @@ ${modeDescriptions[currentMode]}`,
     setErrorOccured(false);
     startTimeRef.current = Date.now();
 
+    // Mode switching is now handled in handleManualInputPress
+
     try {
       // Get the provider and model
       const provider = await AsyncStorage.getItem('@selected_provider') || 'anthropic';
       setSelectedProvider(provider);
-      
-      // Get the appropriate model based on the provider
-      const currentModel = getModel(provider, { 
-        selectedMode: 'fast', // Use fast mode for text-only analysis
-        selectedModel,
+
+      // Get the appropriate model based on the provider (using the potentially updated 'fast' mode)
+      const currentModel = getModel(provider, {
+        selectedMode: 'fast', // Always use fast mode for text-only analysis
+        selectedModel: selectedModel, // Use the current selectedModel state (might be overridden by getModel logic)
         hasDrawing: false
       });
       
@@ -4438,6 +4460,11 @@ IMPORTANT RULES:
     } finally {
       setIsLoading(false);
       stopLoadingAnimation();
+      // Restore original mode if it was switched before opening the modal
+      if (originalModeBeforeManualInput) {
+        setSelectedMode(originalModeBeforeManualInput);
+        setOriginalModeBeforeManualInput(null); // Reset the state
+      }
     }
   };
 
@@ -4493,31 +4520,54 @@ IMPORTANT RULES:
     };
   }, [appUsageTime]);
 
-  // General fortune paywall on focus
+  // General fortune paywall on focus - Updated Logic
   useFocusEffect(
     useCallback(() => {
       const checkGeneralPaywall = async () => {
         try {
-          // Only show if 5+ minutes used and 6 hours since last show
-          const lastShownGeneral = await AsyncStorage.getItem('@general_paywall_last_shown');
-          const currentTime = Date.now();
-          const sixHours = 6 * 60 * 60 * 1000;
-          
-          const hasPassedCooldown = !lastShownGeneral || 
-                                 (currentTime - parseInt(lastShownGeneral)) >= sixHours;
-          
-          if (appUsageTime >= 5 * 60 * 1000 && hasPassedCooldown) {
-            console.log('[Paywall] Showing general fortune paywall (5min/6hr rule)');
-            await Superwall.shared.register('fortune');
-            await AsyncStorage.setItem('@general_paywall_last_shown', currentTime.toString());
+          const firstPaywallShown = await AsyncStorage.getItem('@first_fortune_paywall_shown');
+          const lastUsageTimeShownStr = await AsyncStorage.getItem('@fortune_paywall_last_usage_time');
+          const lastUsageTimeShown = lastUsageTimeShownStr ? parseInt(lastUsageTimeShownStr) : 0;
+
+          const fiveMinutes = 5 * 60 * 1000; // 5 minutes in milliseconds
+          const threeHours = 3 * 60 * 60 * 1000; // 3 hours in milliseconds
+
+          // Condition 1: First time showing after 5 minutes of usage
+          if (firstPaywallShown !== 'true' && appUsageTime >= fiveMinutes) {
+            console.log('[Paywall] Showing first general fortune paywall (5min rule)');
+            // --> Add check for isSubscribed here
+            if (!isSubscribed) {
+              await Superwall.shared.register('fortune');
+              await AsyncStorage.setItem('@first_fortune_paywall_shown', 'true');
+              await AsyncStorage.setItem('@fortune_paywall_last_usage_time', appUsageTime.toString());
+            } else {
+              console.log('[Paywall] User is subscribed, skipping first general fortune paywall.');
+            }
+          }
+          // Condition 2: Subsequent showings every 3 hours of usage
+          else if (firstPaywallShown === 'true') {
+            const timeSinceLastShow = appUsageTime - lastUsageTimeShown;
+            if (timeSinceLastShow >= threeHours) {
+              console.log('[Paywall] Showing general fortune paywall (3hr usage rule)');
+              // --> Add check for isSubscribed here
+              if (!isSubscribed) {
+                await Superwall.shared.register('fortune');
+                await AsyncStorage.setItem('@fortune_paywall_last_usage_time', appUsageTime.toString());
+              } else {
+                console.log('[Paywall] User is subscribed, skipping subsequent general fortune paywall.');
+              }
+            }
           }
         } catch (error) {
           console.error('Error handling general paywall:', error);
         }
       };
-      
-      checkGeneralPaywall();
-    }, [appUsageTime])
+
+      // Run the check only if appUsageTime is greater than 0 to avoid initial false triggers
+      if (appUsageTime > 0) {
+          checkGeneralPaywall();
+      }
+    }, [appUsageTime]) // Depend only on appUsageTime
   );
 
   const [hasShownScanTooltip, setHasShownScanTooltip] = useState(false);
@@ -4528,6 +4578,88 @@ IMPORTANT RULES:
   useEffect(() => {
     console.log('FoodScanScreen: scrapeUrl is', scrapeUrl ? 'available' : 'NOT available');
   }, [scrapeUrl]);
+
+  // Helper to check if a food name means no food found
+  const isNoFoodFoundName = (name) => {
+    if (!name || typeof name !== 'string') return false;
+    const noFoodStrings = [
+      'N/A',
+      'No Food Found.',
+      'No Food Found',
+      'No food found.',
+      'No food found',
+      'no food found',
+      'no food found.'
+    ];
+    return noFoodStrings.some(str => name.trim() === str);
+  };
+
+  useFocusEffect(
+    useCallback(() => {
+      const checkSecondScanPaywall = async () => {
+        try {
+          console.log('[Paywall Workaround] Checking second scan paywall conditions.');
+          const hasShown = await AsyncStorage.getItem('@has_shown_second_scan_paywall');
+          console.log('[Paywall Workaround] hasShown:', hasShown);
+          const now = Date.now();
+          const timeSinceLastScan = now - lastSuccessfulScanTimestamp;
+          console.log('[Paywall Workaround] timeSinceLastScan:', timeSinceLastScan);
+          console.log('[Paywall Workaround] scanCount:', scanCount);
+          
+          // Check conditions: scan count is random check for 2 3 or 4, paywall not shown yet, timestamp exists and is recent (<= 3s ago)
+          if (
+            scanCount === 2 && 
+            hasShown !== 'true' && 
+            timeSinceLastScan <= 15000
+          ) {
+            console.log('[Paywall Workaround] Conditions met, showing fortune-finished paywall.');
+            // --> Add check for isSubscribed here
+            if (!isSubscribed) {
+              await Superwall.shared.register('fortune-finished');
+              // Mark as shown to prevent repeats
+              // await AsyncStorage.setItem('@has_shown_second_scan_paywall', 'true');
+            } else {
+              console.log('[Paywall Workaround] User is subscribed, skipping second scan paywall.');
+            }
+          }
+        } catch (error) {
+          console.error('Error checking/showing second scan paywall:', error);
+        }
+      };
+
+      // Only run the check if the timestamp potentially updated recently
+      if (lastSuccessfulScanTimestamp > 0) {
+          checkSecondScanPaywall();
+      }
+    }, [totalScanCount, lastSuccessfulScanTimestamp]) // Depend on count and timestamp
+  );
+
+  // UNCOMMENT THIS FOR PRODUCTION USE
+  useFocusEffect(
+    useCallback(() => {
+      const checkAndShowPaywall = async () => {
+        try {
+          // Only check for paywall if user has scanned at least once
+          const hasEverScanned = await AsyncStorage.getItem('@has_ever_scanned');
+          if (hasEverScanned === 'true') {
+            const lastShownTime = await AsyncStorage.getItem('@paywall_last_shown');
+            const currentTime = Date.now();
+            
+            // Show paywall if never shown before or 20 minutes (1200000 ms) have passed
+            if (!lastShownTime || (currentTime - parseInt(lastShownTime)) >= 1200000) {
+              await Superwall.shared.register('fortune');
+              // Update the last shown time
+              await AsyncStorage.setItem('@paywall_last_shown', currentTime.toString());
+            }
+          }
+        } catch (error) {
+          console.error('Error handling paywall display:', error);
+        }
+      };
+
+      checkAndShowPaywall();
+    }, [])
+  );
 
   return (
     <ScrollView 
@@ -5333,12 +5465,14 @@ IMPORTANT RULES:
           // Don't set hasSeenSearchInfoSheetThisSession to false so it can show again
           AsyncStorage.setItem('selectedMode', prevMode);
         }}
-        onGetStarted={() => {
-          // When user clicks "Get Started" mark it as seen in this session
+        onGetStarted={async () => {
+          // When user clicks "Get Started" mark it as seen in this session and forever
           setHasSeenSearchInfoSheetThisSession(true);
-          // Update the timestamp in AsyncStorage
-          const currentTime = Date.now();
-          AsyncStorage.setItem('@last_seen_search_info_sheet', currentTime.toString());
+          try {
+            await AsyncStorage.setItem('@has_seen_search_info_sheet_once', 'true');
+          } catch (e) {
+            console.error('Failed to set @has_seen_search_info_sheet_once', e);
+          }
           // Trigger the pulse animation when user clicks Get Started
           startChipPulseAnimation();
         }}

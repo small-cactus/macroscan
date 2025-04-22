@@ -174,21 +174,36 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
   }, [visible, slideAnim, overlayOpacity, blurAnim, panY]);
 
   // Auto-scroll to second page after 5 seconds
-  useEffect(() => {
-    let autoScrollTimer;
+  // useEffect(() => {
+  //   let autoScrollTimer;
     
-    if (visible && activePage === 0) {
-      autoScrollTimer = setTimeout(() => {
-        handlePageChange(1);
-      }, 5000);
-    }
+  //   if (visible && activePage === 0) {
+  //     autoScrollTimer = setTimeout(() => {
+  //       // Use a smoother animation for automatic scrolling
+  //       setActivePage(1);
+  //       // Animate dot position with a gentler spring
+  //       dotPosition.value = withSpring(1, {
+  //         damping: 100,
+  //         stiffness: 100,
+  //         mass: 100,
+  //         velocity: 100,
+  //         duration: 7000,
+  //       });
+  //       // Scroll with animated timing for smoother effect
+  //       scrollRef.current?.scrollTo({
+  //         x: width,
+  //         animated: true,
+  //         duration: 3000,
+  //       });
+  //     }, 1000); // Increased delay to 6.5 seconds
+  //   }
     
-    return () => {
-      if (autoScrollTimer) {
-        clearTimeout(autoScrollTimer);
-      }
-    };
-  }, [visible, activePage]);
+  //   return () => {
+  //     if (autoScrollTimer) {
+  //       clearTimeout(autoScrollTimer);
+  //     }
+  //   };
+  // }, [visible, activePage]);
 
   // Gesture handler with Reanimated
   const gestureHandler = useAnimatedGestureHandler({
@@ -299,13 +314,16 @@ const SearchModeInfoSheet = ({ visible, onClose, onRevertChip, onGetStarted }) =
   // Handle page change
   const handlePageChange = (pageIndex) => {
     setActivePage(pageIndex);
-    // Animate the dot position
+    // Animate the dot position with a smoother spring
     dotPosition.value = withSpring(pageIndex, {
-      damping: 20,
-      stiffness: 100,
-      mass: 1,
+      damping: 26,
+      stiffness: 85,
+      mass: 1.2,
+      restDisplacementThreshold: 0.01,
+      restSpeedThreshold: 0.01,
+      duration: 1000,
     });
-    // Scroll to the page
+    // Scroll to the page with a smooth animation
     scrollRef.current?.scrollTo({
       x: pageIndex * width,
       animated: true,
@@ -500,15 +518,15 @@ const PaginationDot = ({ index, dotPosition, accentColor, secondaryTextColor, on
   const animatedDotStyle = useAnimatedStyle(() => {
     const dotWidth = interpolate(
       dotPosition.value,
-      [index - 1, index, index + 1],
-      [width * 0.02, width * 0.05, width * 0.02],
+      [index - 1, index - 0.5, index, index + 0.5, index + 1],
+      [width * 0.02, width * 0.03, width * 0.05, width * 0.03, width * 0.02],
       Extrapolate.CLAMP
     );
     
     const opacity = interpolate(
       dotPosition.value,
-      [index - 1, index, index + 1],
-      [0.5, 1, 0.5],
+      [index - 1, index - 0.5, index, index + 0.5, index + 1],
+      [0.4, 0.7, 1, 0.7, 0.4],
       Extrapolate.CLAMP
     );
     

@@ -50,6 +50,34 @@ const DeepSearchGradientBackground = () => (
   </Svg>
 );
 
+// Define the Circle to Scan Gradient Background Component
+const CircleToScanGradientBackground = () => (
+  <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+    <Defs>
+      <RadialGradient id="circle_hist_grad1" cx="30%" cy="25%" r="80%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#4FACFE" stopOpacity="1" />
+        <Stop offset="100%" stopColor="#4FACFE" stopOpacity="0" />
+      </RadialGradient>
+      <RadialGradient id="circle_hist_grad2" cx="70%" cy="30%" r="70%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#00F2FE" stopOpacity="1" />
+        <Stop offset="100%" stopColor="#00F2FE" stopOpacity="0" />
+      </RadialGradient>
+      <RadialGradient id="circle_hist_grad3" cx="45%" cy="60%" r="75%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#6A82FB" stopOpacity="0.9" />
+        <Stop offset="100%" stopColor="#6A82FB" stopOpacity="0" />
+      </RadialGradient>
+      <RadialGradient id="circle_hist_grad4" cx="60%" cy="75%" r="60%" gradientUnits="userSpaceOnUse">
+        <Stop offset="0%" stopColor="#985EFF" stopOpacity="0.8" />
+        <Stop offset="100%" stopColor="#985EFF" stopOpacity="0" />
+      </RadialGradient>
+    </Defs>
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#circle_hist_grad1)" />
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#circle_hist_grad2)" />
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#circle_hist_grad3)" />
+    <Rect x="0" y="0" width="100%" height="100%" fill="url(#circle_hist_grad4)" />
+  </Svg>
+);
+
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
@@ -953,7 +981,18 @@ const HistoryScreen = () => {
         {/* Circle Scan Badge */}
         {scanMetadata.usedCircleScan && (
           <View style={[styles.metadataBadge, styles.circleScanBadge]}>
-            <Text style={styles.metadataBadgeText}>Circle Scan</Text>
+            <CircleToScanGradientBackground />
+            <Text style={[
+              styles.metadataBadgeText,
+              {
+                color: '#FFFFFF',
+                paddingHorizontal: 8 * scale,
+                paddingVertical: 4 * scale,
+                zIndex: 1,
+              }
+            ]}>
+              Circle Scan
+            </Text>
           </View>
         )}
 
@@ -1202,13 +1241,15 @@ const HistoryScreen = () => {
               setFilters(prev => ({ ...prev, circleScan: !prev.circleScan }));
             }}
           >
-            <SymbolView
-              name="circle.grid.cross"
-              size={16}
-              tintColor={filters.circleScan ? '#fff' : (colorScheme === 'dark' ? '#fff' : '#000')}
-              type="hierarchical"
-              style={styles.filterChipIcon}
-            />
+            <View style={styles.filterChipGradientIconContainer}>
+              <CircleToScanGradientBackground />
+              <Ionicons 
+                name="scan-circle-outline"
+                size={18 * scale}
+                color="#FFFFFF"
+                style={styles.filterChipGradientIconOverlay}
+              />
+            </View>
             <Text style={[styles.filterChipText, filters.circleScan && styles.filterChipTextActive]}>
               Circle Scan
             </Text>
@@ -1440,6 +1481,20 @@ const HistoryScreen = () => {
 
             {renderFilterChips()}
 
+            {/* Showing foods count */}
+            {(searchQuery || filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.deepSearch || filters.startDate || filters.endDate || filteredHistory.length !== history.length) && filteredHistory.length > 0 && (
+              <Text style={{
+                textAlign: 'center',
+                color: colorScheme === 'dark' ? '#888' : '#888',
+                fontSize: 14 * scale,
+                marginTop: 4 * scale,
+                marginBottom: 2 * scale,
+                letterSpacing: 0.1,
+              }}>
+                {`Showing ${filteredHistory.length} food${filteredHistory.length === 1 ? '' : 's'}${(searchQuery || filters.barcode || filters.accurate || filters.fast || filters.circleScan || filters.deepSearch || filters.startDate || filters.endDate) ? ' from filter(s)' : ''}`}
+              </Text>
+            )}
+
         {filteredHistory.length > 0 ? (
           <View style={styles.historyList}>
             {filteredHistory.map(item => renderHistoryCard(item))}
@@ -1568,7 +1623,18 @@ const HistoryScreen = () => {
                     {/* Circle Scan Badge in Modal */}
                     {selectedItem.scanMetadata.usedCircleScan && (
                       <View style={[styles.metadataBadge, styles.circleScanBadge]}>
-                        <Text style={styles.metadataBadgeText}>Circle Scan</Text>
+                        <CircleToScanGradientBackground />
+                        <Text style={[
+                          styles.metadataBadgeText,
+                          {
+                            color: '#FFFFFF',
+                            paddingHorizontal: 8 * scale,
+                            paddingVertical: 4 * scale,
+                            zIndex: 1,
+                          }
+                        ]}>
+                          Circle Scan
+                        </Text>
                       </View>
                     )}
 

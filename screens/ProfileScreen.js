@@ -355,6 +355,8 @@ const ProfileScreen = () => {
                   // paywall
                   '@paywall_last_shown',
                   '@has_ever_scanned',
+                  '@first_fortune_paywall_shown',
+                  '@fortune_paywall_last_usage_time',
                 ];
               
               // Remove all keys except onboarding inputs

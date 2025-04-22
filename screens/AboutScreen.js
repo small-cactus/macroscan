@@ -163,7 +163,7 @@ const AboutScreen = () => {
           </View>
 
           <View style={styles.infoSection}>
-            <Text style={styles.version}>Version 1.6.1 (149)</Text>
+            <Text style={styles.version}>Version 1.6.1 (150)</Text>
             <View style={styles.betaContainer}>
               {/* <Text style={styles.betaTag}>BETA</Text> */}
             </View>

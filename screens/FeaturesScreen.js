@@ -38,6 +38,8 @@ import Superwall from '@superwall/react-native-superwall';
 import { useUser } from '../userContext';
 import SearchModeInfoSheet from './SearchModeInfoSheet';
 import TipsInfoSheet from './TipsInfoSheet';
+import CircleToScanInfoSheet from './CircleToScanInfoSheet';
+import { Svg, Defs, RadialGradient, Stop, Rect } from 'react-native-svg';
 
 if (
   Platform.OS === 'android' &&
@@ -99,6 +101,89 @@ const Background = ({ isDark }) => {
   );
 };
 
+// Modify the SearchIcon component to accept styles as prop
+const SearchIcon = ({ iconStyles }) => (
+  <View style={{
+    width: width * 0.11,
+    height: width * 0.11,
+    borderRadius: 12 * scale,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+  }}>
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <RadialGradient id="grad1" cx="25%" cy="25%" r="80%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#FFB74D" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#FFB74D" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="grad2" cx="75%" cy="30%" r="70%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#FF5252" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#FF5252" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="grad3" cx="50%" cy="60%" r="75%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#42A5F5" stopOpacity="0.9" />
+          <Stop offset="100%" stopColor="#42A5F5" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="grad4" cx="65%" cy="75%" r="60%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#AB47BC" stopOpacity="0.8" />
+          <Stop offset="100%" stopColor="#AB47BC" stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad1)" />
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad2)" />
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad3)" />
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#grad4)" />
+    </Svg>
+    <Ionicons name="search" size={width * 0.055} color="#FFFFFF" style={{
+      position: 'absolute',
+      zIndex: 1,
+    }} />
+  </View>
+);
+
+// Add CircleToScanIcon component
+const CircleToScanIcon = ({ iconStyles }) => (
+  <View style={{
+    width: width * 0.11,
+    height: width * 0.11,
+    borderRadius: 12 * scale,
+    overflow: 'hidden',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginRight: 15 * scale
+  }}>
+    <Svg width="100%" height="100%" style={StyleSheet.absoluteFill}>
+      <Defs>
+        <RadialGradient id="circleGrad1" cx="30%" cy="25%" r="80%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#4FACFE" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#4FACFE" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="circleGrad2" cx="70%" cy="30%" r="70%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#00F2FE" stopOpacity="1" />
+          <Stop offset="100%" stopColor="#00F2FE" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="circleGrad3" cx="45%" cy="60%" r="75%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#6A82FB" stopOpacity="0.9" />
+          <Stop offset="100%" stopColor="#6A82FB" stopOpacity="0" />
+        </RadialGradient>
+        <RadialGradient id="circleGrad4" cx="60%" cy="75%" r="60%" gradientUnits="userSpaceOnUse">
+          <Stop offset="0%" stopColor="#985EFF" stopOpacity="0.8" />
+          <Stop offset="100%" stopColor="#985EFF" stopOpacity="0" />
+        </RadialGradient>
+      </Defs>
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#circleGrad1)" />
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#circleGrad2)" />
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#circleGrad3)" />
+      <Rect x="0" y="0" width="100%" height="100%" fill="url(#circleGrad4)" />
+    </Svg>
+    <Ionicons name="scan-circle-outline" size={width * 0.055} color="#FFFFFF" style={{
+      position: 'absolute',
+      zIndex: 1,
+    }} />
+  </View>
+);
+
 const FeaturesScreen = () => {
   const navigation = useNavigation();
   const colorScheme = Appearance.getColorScheme();
@@ -125,7 +210,8 @@ const FeaturesScreen = () => {
   const initialCheckDoneRef = useRef(false);
   const [showSearchModeInfo, setShowSearchModeInfo] = useState(false);
   const previousModeRef = useRef(selectedMode);
-  const [showTipsInfoSheet, setShowTipsInfoSheet] = useState(false); // Renamed state variable
+  const [showTipsInfoSheet, setShowTipsInfoSheet] = useState(false);
+  const [showCircleToScanInfoSheet, setShowCircleToScanInfoSheet] = useState(false);
 
   // For splash animation when screen appears
   const splashAnim = useRef(new Animated.Value(0)).current;
@@ -409,9 +495,17 @@ const FeaturesScreen = () => {
         );
         return;
       }
-      await AsyncStorage.setItem('foodSelectionEnabled', value.toString());
-      setFoodSelectionEnabled(value);
-      Haptics.selectionAsync();
+      
+      if (value) {
+        // If enabling, show the info sheet
+        setShowCircleToScanInfoSheet(true);
+        // We'll save the setting after the user closes the info sheet
+      } else {
+        // If disabling, directly update the state and storage
+        await AsyncStorage.setItem('foodSelectionEnabled', 'false');
+        setFoodSelectionEnabled(false);
+        Haptics.selectionAsync();
+      }
     } catch (error) {
       console.error('Error saving food selection setting:', error);
     }
@@ -572,8 +666,9 @@ const FeaturesScreen = () => {
     return (
       <TouchableWithoutFeedback
         key={mode}
-        onPressIn={handlePressIn}
-        onPressOut={handlePressOut}
+        onPressIn={isSelected ? undefined : handlePressIn}
+        onPressOut={isSelected ? undefined : handlePressOut}
+        disabled={isSelected}
       >
         <Animated.View
           style={[
@@ -598,18 +693,24 @@ const FeaturesScreen = () => {
           />
           
           <View style={styles.modeButtonContent}>
-            <View style={[
-              styles.modeIconContainer,
-              isSelected && { 
-                backgroundColor: isDark ? 'rgba(60, 60, 62, 0.9)' : 'rgba(230, 230, 235, 0.9)'
-              }
-            ]}>
-              <Ionicons
-                name={icon}
-                size={24 * scale}
-                color={isDark ? '#FFF' : '#000'}
-              />
-            </View>
+            {mode === 'search' ? (
+              <View style={{ marginRight: 15 * scale }}>
+                <SearchIcon iconStyles={styles} />
+              </View>
+            ) : (
+              <View style={[
+                styles.modeIconContainer,
+                isSelected && { 
+                  backgroundColor: isDark ? 'rgba(60, 60, 62, 0.9)' : 'rgba(230, 230, 235, 0.9)'
+                }
+              ]}>
+                <Ionicons
+                  name={icon}
+                  size={24 * scale}
+                  color={isDark ? '#FFF' : '#000'}
+                />
+              </View>
+            )}
             <View style={styles.modeTextContainer}>
               <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                 <Text style={styles.modeButtonTitle}>{title}</Text>
@@ -760,13 +861,7 @@ const FeaturesScreen = () => {
               >
                 <View style={[styles.toggleContainer, styles.toggleContainerLocked]}>
                   {/* Removed BlurView */}
-                  <View style={styles.toggleIconContainer}>
-                    <Ionicons
-                      name="scan-circle-outline"
-                      size={25 * scale}
-                      color={isDark ? '#FFF' : '#000'}
-                    />
-                  </View>
+                  <CircleToScanIcon iconStyles={styles} />
                   <View style={styles.toggleTextContainer}>
                     <View style={styles.toggleHeaderContainer}>
                       <Text style={styles.toggleLabel}>Circle to Scan</Text>
@@ -781,7 +876,7 @@ const FeaturesScreen = () => {
                       />
                     </View>
                     <Text style={styles.toggleDescription}>
-                      Draw a circle around any food item to scan only that selection for nutrients
+                      Circle an item to scan that selection for nutrients and avoid the rest of the image
                     </Text>
                   </View>
                   <Switch
@@ -796,13 +891,7 @@ const FeaturesScreen = () => {
             ) : (
               <View style={styles.toggleContainer}>
                 {/* Removed BlurView */}
-                <View style={styles.toggleIconContainer}>
-                  <Ionicons
-                    name="scan-circle-outline"
-                    size={25 * scale}
-                    color={isDark ? '#FFF' : '#000'}
-                  />
-                </View>
+                <CircleToScanIcon iconStyles={styles} />
                 <View style={styles.toggleTextContainer}>
                   <View style={styles.toggleHeaderContainer}>
                     <Text style={styles.toggleLabel}>Circle to Scan</Text>
@@ -894,12 +983,25 @@ const FeaturesScreen = () => {
         }}
       />
 
-      {/* Replace TipsModal with TipsInfoSheet */}
+      {/* Tips Info Sheet */}
       <TipsInfoSheet 
         visible={showTipsInfoSheet} 
         onClose={() => setShowTipsInfoSheet(false)} 
         // Use onGetStarted to handle the primary action (closing the sheet)
         onGetStarted={() => setShowTipsInfoSheet(false)} 
+      />
+      
+      {/* Circle to Scan Info Sheet */}
+      <CircleToScanInfoSheet
+        visible={showCircleToScanInfoSheet}
+        onClose={() => setShowCircleToScanInfoSheet(false)}
+        onGetStarted={async () => {
+          setShowCircleToScanInfoSheet(false);
+          // Save the setting after seeing the info
+          await AsyncStorage.setItem('foodSelectionEnabled', 'true');
+          setFoodSelectionEnabled(true);
+          Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+        }}
       />
 
     </View>
@@ -1014,7 +1116,7 @@ const getDynamicStyles = (colorScheme) => {
       color: isDark ? '#FFF' : '#000',
       marginBottom: 8 * scale,
     },
-    // Remove modelSelectorButton styles
+    // Remove searchIconContainer and searchIconOverlay styles
     tipContainer: {
       flexDirection: 'row',
       alignItems: 'center',

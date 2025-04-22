@@ -21,6 +21,8 @@ import Superwall from '@superwall/react-native-superwall';
 
 // Import your user context hook (adjust the path as needed)
 import { useUser } from '../userContext';
+import { useScanStatus } from '../ScanStatusContext'; // Import the scan status context
+import ModeInfoSheet from './ModeInfoSheet'; // Import the new component
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -32,6 +34,10 @@ const SettingsScreen = () => {
   
   // Retrieve the current user from your context
   const { user } = useUser();
+  const { hasEverScanned, updateScanStatus, isLoading } = useScanStatus(); // Use context
+
+  // Add state for the ModeInfoSheet visibility
+  const [isModeInfoVisible, setIsModeInfoVisible] = useState(false);
 
   // Replace the single developerUserString with an array of authorized developer userStrings
   const developerUserStrings = [
@@ -91,6 +97,7 @@ const SettingsScreen = () => {
     return true;
   });
 
+  // Update useEffect to only handle color scheme changes
   useEffect(() => {
     const colorSchemeListener = ({ colorScheme }) => {
       setCurrentColorScheme(colorScheme);
@@ -101,22 +108,38 @@ const SettingsScreen = () => {
     };
   }, []);
 
-  const handleSettingPress = async (navigateTo) => {
+  const handleSettingPress = async (navigateTo, title) => {
+    // If the "Features" item is pressed, update the context state
+    if (title === "Features" && !isLoading) { // Check isLoading before updating
+      await updateScanStatus(true); // Update via context
+    }
+
     // Example: Clearing a specific AsyncStorage item (uncomment if needed)
     // await AsyncStorage.setItem('freeAccurateScansUsed', '0');
     // await AsyncStorage.removeItem('@selected_provider');
     // await AsyncStorage.setItem('@openai_api_key', 'OPENAI_API_KEY_REMOVED');
     // await AsyncStorage.setItem('@gemini_api_key', 'GEMINI_API_KEY_REMOVED');
     // await AsyncStorage.removeItem('@has_seen_whats_new_1_6_0');
-    await AsyncStorage.removeItem('@has_seen_mode_tooltip');
-    await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
-    await AsyncStorage.removeItem('@last_seen_search_info_sheet');
+    // await AsyncStorage.removeItem('@has_seen_mode_tooltip');
+    // await AsyncStorage.removeItem('@has_seen_scan_button_tooltip');
+    // await AsyncStorage.removeItem('@has_seen_search_info_sheet_once');
     // await Superwall.shared.register('fortune');
+    // await Superwall.shared.register('fortune-finished');
     navigation.navigate(navigateTo);
   };
 
   const handlePurchasePress = () => {
     navigation.navigate('PurchaseScreen');
+  };
+
+  // Function to open the mode info sheet
+  const handleLearnMorePress = () => {
+    setIsModeInfoVisible(true);
+  };
+
+  // Function to close the mode info sheet
+  const handleCloseModeInfo = () => {
+    setIsModeInfoVisible(false);
   };
 
   const PremiumFeatureItem = ({ icon, text }) => (
@@ -151,7 +174,7 @@ const SettingsScreen = () => {
               <TouchableOpacity
                 key={index}
                 style={styles.settingItemContainer}
-                onPress={() => handleSettingPress(setting.navigateTo)}
+                onPress={() => handleSettingPress(setting.navigateTo, setting.title)}
               >
                 <View style={styles.settingRow}>
                   <SymbolView
@@ -162,6 +185,9 @@ const SettingsScreen = () => {
                     weight="semibold"
                   />
                   <Text style={styles.settingTitle}>{setting.title}</Text>
+                  {setting.title === "Features" && !isLoading && !hasEverScanned && (
+                    <View style={styles.indicatorDot} />
+                  )}
                 </View>
                 <Ionicons
                   name="chevron-forward"
@@ -171,8 +197,24 @@ const SettingsScreen = () => {
               </TouchableOpacity>
             ))}
           </View>
+
+          {/* "Learn about our modes" button */}
+          {/* <TouchableOpacity 
+            style={styles.learnMoreButton}
+            onPress={handleLearnMorePress}
+            activeOpacity={0.7}
+          >
+            <Text style={styles.learnMoreButtonText}>Learn about our modes</Text>
+          </TouchableOpacity> */}
+
         </SafeAreaView>
       </ScrollView>
+
+      {/* Render the ModeInfoSheet conditionally */}
+      <ModeInfoSheet 
+        visible={isModeInfoVisible} 
+        onClose={handleCloseModeInfo} 
+      />
     </View>
   );
 };
@@ -222,6 +264,13 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     fontSize: 18,
     fontWeight: '500',
     color: colorScheme === 'dark' ? '#FFF' : '#000',
+  },
+  indicatorDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: 'red',
+    marginLeft: 8, // Add some space between the title and the dot
   },
   separator: {
     alignItems: 'center',
@@ -335,6 +384,21 @@ const getDynamicStyles = (colorScheme) => StyleSheet.create({
     color: colorScheme === 'dark' ? '#000' : '#fff',
     fontSize: 18,
     fontWeight: '600',
+  },
+  learnMoreButton: {
+    marginTop: 20, // Space above the button
+    marginBottom: 30, // Space below the button
+    backgroundColor: colorScheme === 'dark' ? '#1c1c1e' : '#f3f3f3', // Match settings item bg
+    paddingVertical: 12,
+    paddingHorizontal: 20,
+    borderRadius: 20, // Pill shape
+    alignSelf: 'center', // Center the button
+  },
+  learnMoreButtonText: {
+    color: colorScheme === 'dark' ? '#FFF' : '#000', // Match settings item text
+    fontSize: 16,
+    fontWeight: '500',
+    textAlign: 'center'
   },
 });
 

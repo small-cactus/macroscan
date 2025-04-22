@@ -120,7 +120,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
   const [recognizeSubtitle, setRecognizeSubtitle] = useState('Analyzing image for food...');
   const [searchSubtitle, setSearchSubtitle] = useState('Searching nutrition databases...');
   const [processSubtitle, setProcessSubtitle] = useState('Calculating nutritional values...');
-  const [resultSubtitle, setResultSubtitle] = useState('Putting everything together...');
+  const [resultSubtitle, setResultSubtitle] = useState('This may take a while...');
   
   // Detected food name
   const [detectedFood, setDetectedFood] = useState('');
@@ -348,7 +348,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
       case 'recognize': defaultSubtitle = 'Analyzing image for food...'; subtitleSetter = setRecognizeSubtitle; break;
       case 'search': defaultSubtitle = 'Searching nutrition databases...'; subtitleSetter = setSearchSubtitle; break;
       case 'process': defaultSubtitle = 'Calculating nutritional values...'; subtitleSetter = setProcessSubtitle; break;
-      case 'result': defaultSubtitle = 'Putting everything together...'; subtitleSetter = setResultSubtitle; break;
+      case 'result': defaultSubtitle = 'This may take a while...'; subtitleSetter = setResultSubtitle; break;
     }
     if (subtitleSetter && defaultSubtitle) {
         // console.log(`[VISUALIZER] Setting default subtitle for ${step}: "${defaultSubtitle}"`);
@@ -536,7 +536,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
           switch (nextStep) {
             case 'search': defaultNextSubtitle = 'Searching nutrition databases...'; break;
             case 'process': defaultNextSubtitle = 'Calculating nutritional values...'; break;
-            case 'result': defaultNextSubtitle = 'Putting everything together...'; break;
+            case 'result': defaultNextSubtitle = 'This may take a while...'; break;
           }
           if (defaultNextSubtitle) nextStepSubtitleSetter(defaultNextSubtitle);
         }
@@ -752,7 +752,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     setRecognizeSubtitle('Analyzing image for food...');
     setSearchSubtitle('Searching nutrition databases...');
     setProcessSubtitle('Calculating nutritional values...');
-    setResultSubtitle('Putting everything together...');
+    setResultSubtitle('This may take a while...');
     
     // Reset detected food and search results
     setDetectedFood('');
@@ -1804,7 +1804,7 @@ const FunctionalAIVisualization = forwardRef(({ isDark, isVisible }, ref) => {
     setRecognizeSubtitle('Analyzing image for food...');
     setSearchSubtitle('Searching nutrition databases...');
     setProcessSubtitle('Calculating nutritional values...');
-    setResultSubtitle('Putting everything together...');
+    setResultSubtitle('This may take a while...');
     
     // Reset detected food and search results
     setDetectedFood('');

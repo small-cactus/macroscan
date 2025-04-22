@@ -28,9 +28,7 @@ const ProgressVisualization = ({ isDark, isVisible = false, onAnimationComplete,
   useEffect(() => {
     dayAnimations.current = Array(numDays).fill(0).map(() => new Animated.Value(0));
     connectorAnimations.current = Array(numConnectors).fill(0).map(() => new Animated.Value(0));
-    // Optionally, reset graph/challenge state if needed when data changes
-    // Reset animation states if the component might re-animate with new data
-    startAnimations(); // Restart animations when data changes
+    // Do NOT call startAnimations() here
   }, [numDays]); // Dependency array includes numDays
 
   // Define the chart data
