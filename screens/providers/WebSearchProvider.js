@@ -136,6 +136,7 @@ const DETECTED_FOOD_KEY = '@nutrilens:detected_food';
 // Add new constants for step tracking
 const PROCESSING_STEP_KEY = '@nutrilens:processing_step';
 const STEP_TIMESTAMP_KEY = '@nutrilens:step_timestamp';
+const BRAVE_SEARCH_API_KEY = process.env.EXPO_PUBLIC_BRAVE_SEARCH_API_KEY || '';
 
 // Define step constants
 const STEP_RECOGNIZE = 'recognize';
@@ -848,8 +849,18 @@ const manageVisualizationSteps = async (apiData, isApiFinished = false) => {
 const performWebSearch = async (query) => {
   try {
     console.log('Performing Brave web search for:', query);
-    
-    const apiKey = 'EXPO_PUBLIC_BRAVE_SEARCH_API_KEY'; // Replace with your actual Brave Search API Key
+
+    if (!BRAVE_SEARCH_API_KEY) {
+      console.warn('Brave Search API key is not configured.');
+      return [
+        {
+          title: 'Brave Search API key missing',
+          url: 'https://api.search.brave.com/',
+          snippet: 'Set EXPO_PUBLIC_BRAVE_SEARCH_API_KEY before using web search features.'
+        }
+      ];
+    }
+
     const response = await axios.get('https://api.search.brave.com/res/v1/web/search', {
       params: { 
         q: query, 
@@ -860,7 +871,7 @@ const performWebSearch = async (query) => {
       headers: {
         'Accept': 'application/json',
         'Accept-Encoding': 'gzip',
-        'X-Subscription-Token': apiKey
+        'X-Subscription-Token': BRAVE_SEARCH_API_KEY
       }
     });
     

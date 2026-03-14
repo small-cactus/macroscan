@@ -1,0 +1,20 @@
+title = "MacroScan gitleaks config"
+
+[[allowlists]]
+description = "CocoaPods package names that look like API keys"
+paths = [
+  '''ios/Podfile.lock''',
+]
+regexes = [
+  '''ExpoAppleAuthentication''',
+  '''RNKeychain''',
+]
+
+[[allowlists]]
+description = "Anthropic model identifier false positive"
+paths = [
+  '''screens/FeaturesScreen.js''',
+]
+regexes = [
+  '''claude-3-haiku-20240307''',
+]

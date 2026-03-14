@@ -1,85 +1,59 @@
-<div align="center">
-    <img src="assets/image.png" alt="macroscan-cover-image" width="700">
-</div>
-<br><br/>
+# MacroScan
 
+MacroScan is an Expo / React Native nutrition scanning app. The active app lives at the repository root. The nested `MacroScan/` directory is an older Expo scaffold retained for reference only.
 
-# Project Scripts Overview 📄
+## Verified Setup
 
-This document provides an overview of the key scripts included in the project. Below is a summary table for each script, detailing its purpose, a link for more detailed information, and the basic command to run it.
+Tested on macOS with Node `22.12.0` and npm `10.x`.
 
-| Script File                     | Description                      | More Info | Command to Run             |
-|---------------------------------|----------------------------------|-----------|----------------------------|
-| `validate_user_and_test_api.js` | User validation and API testing  | [Details](#validate_user_and_test_apijs) | `node validate_user_and_test_api.js` |
-| `upload_api_keys.js`            | Uploads API keys                 | [Details](#upload_api_keysjs) | `node upload_api_keys.js`            |
-| `firestore_management_tool.py`  | Manages Firestore data           | [Details](#firestore_management_toolpy) | `python firestore_management_tool.py` |
-| `create_and_save_users.py`      | Adds new users to the database   | [Details](#create_and_save_userspy) | `python create_and_save_users.py`    |
+1. Install dependencies:
 
-## Scripts and Their Functions 🛠️
+   ```bash
+   npm ci --legacy-peer-deps
+   ```
 
-### `validate_user_and_test_api.js`
+2. Copy the environment template and fill in the Firebase and Brave Search values:
 
-This script offers a command line menu for user validation and API testing.
+   ```bash
+   cp .env.example .env
+   ```
 
-**Command Line Menu**:
+3. Start the Expo app:
 
-```md
-Choose an option:
-1. Random user
-2. Specific user
-3. Group of all users
-4. Number of random users
-5. Specific users
-Enter choice:
+   ```bash
+   npm run start
+   ```
+
+## Verified Checks
+
+The following checks were used to validate this repo during public-readiness cleanup:
+
+```bash
+npx expo export --platform web
+npx jest --runInBand --watchman=false
 ```
 
-**Options Explained**:
-1. **Random user**: Validates a randomly selected user from the database with an existing or new API key and tests the key.
-2. **Specific user**: Allows selection of a specific user by ID (4 digits) for validation and testing; no action is taken if the user ID does not exist.
-3. **Group of all users**: Validates and tests all users in the database. Use this option only if the database contains fewer than 10 users.
-4. **Number of random users**: Validates and tests a specified number of random users.
-5. **Specific users**: Validates and tests a group of users specified by comma-separated IDs; skips process if any user ID does not exist.
+## Required Environment Variables
 
-### `upload_api_keys.js`
+The app now expects these Expo public variables:
 
-This script is responsible for uploading API keys.
+- `EXPO_PUBLIC_FIREBASE_API_KEY`
+- `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
+- `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
+- `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`
+- `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
+- `EXPO_PUBLIC_FIREBASE_APP_ID`
+- `EXPO_PUBLIC_BRAVE_SEARCH_API_KEY`
 
-> :warning: **Important**: This will upload the API keys from the `upload_api_keys.js` file. It checks if the key already exists to avoid duplicates. Ensure that only valid, working API keys are uploaded.
+`firebaseConfig.js` uses safe placeholders when these values are missing so the repo can clone and bundle cleanly, but auth and web-search functionality will not work until real values are supplied.
 
-### `firestore_management_tool.py`
+## Notes
 
-This script provides a command line interface for managing Firestore data.
+- `AuthContext.js` depends on Firebase auth and will fail functional sign-in/sign-out flows until the Firebase values above are configured.
+- The web search feature depends on Brave Search and now reads its key from `EXPO_PUBLIC_BRAVE_SEARCH_API_KEY` instead of a committed secret.
+- `.expo/`, `.DS_Store`, recovered plist snapshots, and similar machine-local artifacts are intentionally excluded from the public repo.
 
-**Command Line Menu**:
+## Legacy Material
 
-```md
-Firestore Data Management Tool
-1. View all users
-2. View number of users
-3. View all API keys
-4. View users assigned to a specific API key
-5. View number of users on a specific API key
-6. Delete all data
-7. Exit
-Enter your choice:
-```
-
-**Options Explained**:
-1. Displays a formatted list of all users.
-2. Shows the total number of users in the database.
-3. Displays a formatted list of all API keys.
-4. Shows user IDs assigned to a specific API key.
-5. Displays how many users are assigned to a specific API key (maximum 5).
-6. Deletes all user and API key data; use with caution.
-7. Exits the script.
-
-### `create_and_save_users.py`
-
-This script interacts with the database to add new users.
-
-```md
-Currently, there are 6 users in the database.
-Enter the number of users to add:
-```
-
-> :bulb: **Tip**: Displays the current number of users and allows the addition of new users with randomly generated names, emails, and user IDs. There is no exit command; use Ctrl + C to terminate.
+- `README_VISUALIZATION.md` documents a visualization subsystem and is left intact.
+- `MacroScan/` is an older scaffold and is not the app entrypoint for current development.
