@@ -26,12 +26,18 @@ Tested on macOS with Node `22.12.0` and npm `10.x`.
 
 ## Verified Checks
 
-The following checks were used to validate this repo during public-readiness cleanup:
+The following checks were run during public-readiness cleanup:
 
 ```bash
-npx expo export --platform web
-npx jest --runInBand --watchman=false
+npm ci --legacy-peer-deps
+CI=1 npx expo start --offline
+npx expo export --platform ios
 ```
+
+## Current Known Blockers
+
+- `npx jest --runInBand --watchman=false` currently fails because `jest.config.js` references `@testing-library/jest-native/extend-expect`, but that package is not installed in this repo.
+- `npx expo export --platform web` currently fails because the repo does not declare the Expo web dependencies (`react-native-web`, `react-dom`, `@expo/metro-runtime`).
 
 ## Required Environment Variables
 
