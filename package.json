@@ -24,7 +24,7 @@
     "@react-native-community/netinfo": "11.3.1",
     "@react-native-community/slider": "^4.5.2",
     "@react-native-masked-view/masked-view": "^0.3.1",
-    "@react-native-picker/picker": "2.7.5",
+    "@react-native-picker/picker": "2.11.4",
     "@react-navigation/bottom-tabs": "^6.5.20",
     "@react-navigation/core": "^6.4.16",
     "@react-navigation/native": "^6.1.17",
