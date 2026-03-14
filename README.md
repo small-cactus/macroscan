@@ -8,163 +8,163 @@
   <img src="assets/macroscan-cover.jpg" alt="MacroScan product preview" width="720" />
 </p>
 
-MacroScan is an Expo / React Native nutrition app built around camera-first food analysis. The app lets a user scan food, save results to local history, explore nutrition insights over time, and switch between multiple AI-backed scan modes with different speed/accuracy tradeoffs.
+<p align="center">
+  Camera-first nutrition tracking built with Expo, React Native, and multiple AI analysis providers.
+</p>
 
-## Repository Layout
+## Quick Start
 
-The active application lives at the repository root.
+1. Create your local environment file.
 
-- `App.js` wires the app shell, navigation, theme handling, connectivity handling, Superwall configuration, and the main tab structure.
-- `screens/` contains the primary product flows: onboarding, scan, history, profile, settings, insights, manual input, camera handoff, and several experimental or support screens.
-- `screens/providers/` contains provider-specific scan logic and model selection, including Anthropic, Gemini, OpenAI, processing-time tracking, and web-search-assisted flows.
-- `contexts/` and top-level context files (`userContext.js`, `TimeZoneContext.js`, `ScanStatusContext.js`, `IAPContext.js`) manage user data, scan state, time zone state, and purchase/subscription state.
-- `ios/` and `android/` contain the native Expo-generated projects.
-- `__tests__/` contains Jest-based tests and setup files.
-- `MacroScan/` is an older Expo scaffold kept in the repo, but it is not the current application entrypoint.
+   ```bash
+   cp .env.example .env
+   ```
 
-## How The App Is Structured
+2. Add the required values to `.env`.
 
-At runtime, the app is organized around a tabbed mobile shell with five main tabs:
+   ```bash
+   EXPO_PUBLIC_FIREBASE_API_KEY=
+   EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN=
+   EXPO_PUBLIC_FIREBASE_PROJECT_ID=
+   EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET=
+   EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=
+   EXPO_PUBLIC_FIREBASE_APP_ID=
+   EXPO_PUBLIC_BRAVE_SEARCH_API_KEY=
+   ```
 
-- `Home`: the main scan flow (`FoodScanScreen`)
-- `Insights`: the nutrition insights/dashboard experience (`InsightsV2`)
-- `History`: previously scanned foods and results
-- `Settings`: app settings and feature toggles
-- `Profile`: user/account state and saved information
+3. Install dependencies.
 
-Navigation outside the tabs includes welcome, sign-in, sign-up, onboarding, profile completion, support/privacy/about, debugging screens, camera entry, food detail views, and migration / no-internet handling.
+   ```bash
+   npm ci --legacy-peer-deps
+   ```
 
-The app is stateful in two different ways:
+4. Start the Expo app.
 
-- It stores a large amount of user/session data locally with `AsyncStorage`, including scan history, selected provider, API keys, onboarding flags, usage counters, and various UI state flags.
-- It also relies on external services for some user creation and auth-related flows. `userContext.js` calls a hosted cloud function (`distributeApiKey`) to create/update/delete users and to retrieve provider keys. `AuthContext.js` separately depends on Firebase auth.
+   ```bash
+   npm start
+   ```
 
-## Core Product Flows
+5. Open the app in Expo Go or press `i` / `a` in the Expo terminal to launch a simulator.
 
-### 1. Food scanning
+## What This Repository Contains
 
-`screens/FoodScanScreen.js` is the main product surface. It handles:
+| Path | Purpose |
+| --- | --- |
+| `App.js` | Application shell, providers, navigation, theme selection, connectivity handling, and paywall setup |
+| `screens/` | Product surfaces including scan, history, insights, onboarding, account, and support screens |
+| `screens/providers/` | Provider-specific scan handlers, model selection, and search-backed analysis logic |
+| `contexts/` | Shared app services such as hidden web scraping, scan status, and time zone handling |
+| `userContext.js` | User provisioning and API-key retrieval through the hosted backend function |
+| `ios/` / `android/` | Native projects generated for the Expo app |
+| `__tests__/` | Jest setup and screen-level test scaffolding |
+| `README_VISUALIZATION.md` | Focused notes for the visualization subsystem used by search-assisted scans |
 
-- camera or image-picker based image input
-- barcode-assisted scan flows
-- manual input fallback
-- multiple scan modes (`fast`, `accurate`, and `search`)
-- provider/model selection using `screens/providers/models.js`
-- progress/loading states, tooltips, and review prompts
-- subscription-aware gating through in-app purchase state and Superwall
+The active mobile app lives at the repository root. The nested `MacroScan/` directory is an older scaffold preserved as reference material.
 
-### 2. AI provider routing
+## Product Overview
 
-The scan screen delegates processing to provider handlers in `screens/providers/`.
+MacroScan is a mobile nutrition workflow centered on image capture. A user can photograph food, submit it to one of several AI providers, review structured nutrition output, save the result, and use that saved history to drive trend and insight screens later in the app.
 
-The model selection logic is explicit:
+The current application is organized around five primary tabs declared in `App.js`:
 
-- `fast` mode defaults to lighter models
-- `accurate` mode forces more capable models
-- `search` mode uses the provider’s agentic/search-oriented model path
+| Tab | Screen | Role |
+| --- | --- | --- |
+| Home | `FoodScanScreen` | Main image capture, scan-mode selection, and result generation flow |
+| Insights | `InsightsV2` | Trend views and summary analytics built from saved scan data |
+| History | `HistoryScreen` | Timeline of past scans and saved nutrition results |
+| Settings | `SettingsScreen` | Feature toggles, provider settings, and account-related app preferences |
+| Profile | `ProfileScreen` | User profile data and saved account state |
 
-The current model map includes:
+The stack navigator adds onboarding, auth, support, migration, food detail, and debugging routes on top of that tab shell.
 
-- OpenAI
+## How The App Works
+
+### Scan pipeline
+
+`screens/FoodScanScreen.js` is the center of the product. It coordinates:
+
+- camera capture and image-picker intake
+- manual food description fallback
+- barcode and multi-food paths
+- mode selection for `fast`, `accurate`, and `search`
+- provider and model selection through `screens/providers/models.js`
+- loading, progress, and review-prompt UI
+- paywall and entitlement checks before premium scan paths
+
+### Provider routing
+
+The scan flow delegates work to provider modules in `screens/providers/`. The code maps scan modes onto different model families, allowing the same UI to switch between:
+
+- OpenAI-backed analysis
+- Gemini-backed analysis
+- Anthropic-backed analysis
+
+That routing is explicit rather than abstracted away behind a single generic API layer, which keeps the differences between speed-oriented and depth-oriented scan modes visible inside the codebase.
+
+### Search-assisted nutrition analysis
+
+MacroScan also supports a deeper search path. `screens/providers/WebSearchProvider.js` handles the search-backed workflow, while `contexts/WebScraperContext.js` serializes hidden WebView scraping work that feeds additional context into the nutrition result. Brave Search is used as the API-backed search source configured from `.env`.
+
+### Persistence and user state
+
+The app relies heavily on local device persistence. `AsyncStorage` stores scan history, onboarding state, selected provider, selected model, usage counters, feature flags, and pieces of account state that are used to shape the first screen a user sees when the app opens.
+
+Several top-level providers wrap the app:
+
+- `UserProvider` manages user creation, update, deletion, and backend key distribution
+- `IAPProvider` manages in-app purchase state
+- `TimeZoneProvider` syncs local time-zone information
+- `ScanStatusProvider` tracks scan-state signals used across the tab shell
+- `WebScraperProvider` coordinates background search and scraping work
+
+### Insights and history
+
+The insights experience is derived from the scan data saved on the device. `screens/InsightsV2.js` and the history/profile screens read persisted user and nutrition records rather than depending on a separate analytics service.
+
+### Monetization
+
+Two monetization layers are wired into the app:
+
+- `react-native-iap` state exposed through `IAPContext`
+- Superwall entitlements configured in `App.js`
+
+These are used to control feature access, scan limits, and subscription-aware UI moments in the scan flow.
+
+## Services And Platform Dependencies
+
+MacroScan integrates with:
+
+- Firebase Authentication
+- a hosted user-management function exposed as `distributeApiKey`
+- Anthropic
 - Gemini
-- Anthropic
-
-### 3. Search-assisted analysis
-
-The app includes a deeper search flow that combines AI processing with external web lookup.
-
-- `screens/providers/WebSearchProvider.js` contains the search logic
-- `contexts/WebScraperContext.js` manages serialized hidden-webview scraping requests
-- Brave Search is used for API-backed search results when configured
-
-This is not just a static nutrition database lookup. The app has an explicit “Deep Search” mode that can gather broader web context and feed that back into the nutrition workflow.
-
-### 4. Insights and history
-
-Insights are built from locally stored scan history rather than a server-backed analytics pipeline.
-
-- `screens/InsightsV2.js` reads saved history and goals, computes trend views, and drives the personalized dashboard/onboarding experience.
-- History and profile-related screens read and mutate persisted scan/user state from `AsyncStorage`.
-
-### 5. Monetization and gating
-
-MacroScan includes two separate monetization-related systems in the current code:
-
-- in-app purchase / subscription state through `IAPContext`
-- paywall / entitlement handling through Superwall in `App.js` and scan flows
-
-This affects scan limits, feature access, and some prompt/review timing.
-
-## External Services And Dependencies
-
-The codebase currently integrates with several external systems:
-
-- Firebase Auth
-- a hosted user-management cloud function (`distributeApiKey`)
-- Anthropic
+- OpenAI
 - Brave Search
 - Superwall
-- Expo / native device APIs (camera, secure store, haptics, image tools, etc.)
+- Expo device APIs including camera, haptics, image manipulation, secure storage, and web browser utilities
 
-The app also stores provider keys in local device storage and expects environment-driven Firebase configuration through `firebaseConfig.js`.
+## Build And Run Commands
 
-## Environment Variables
+| Command | Purpose |
+| --- | --- |
+| `npm start` | Launch the Expo development server |
+| `npm run ios` | Run the app in the iOS simulator |
+| `npm run android` | Run the app in the Android emulator or connected device |
+| `npm run web` | Open the Expo web target |
+| `npx expo export --platform ios` | Produce an iOS export bundle |
 
-Create a local `.env` from the example template:
+## Tech Stack
 
-```bash
-cp .env.example .env
-```
+- Expo SDK 51
+- React Native 0.74
+- React Navigation
+- AsyncStorage
+- Firebase
+- Superwall
+- Expo Camera and related native modules
 
-Required values:
+## Additional Notes
 
-- `EXPO_PUBLIC_FIREBASE_API_KEY`
-- `EXPO_PUBLIC_FIREBASE_AUTH_DOMAIN`
-- `EXPO_PUBLIC_FIREBASE_PROJECT_ID`
-- `EXPO_PUBLIC_FIREBASE_STORAGE_BUCKET`
-- `EXPO_PUBLIC_FIREBASE_MESSAGING_SENDER_ID`
-- `EXPO_PUBLIC_FIREBASE_APP_ID`
-- `EXPO_PUBLIC_BRAVE_SEARCH_API_KEY`
-
-If these values are missing, the repo still clones and bundles, but Firebase-backed auth behavior and Brave-backed search features will not function correctly.
-
-## Run Locally
-
-Install dependencies:
-
-```bash
-npm ci --legacy-peer-deps
-```
-
-Start the Expo development server:
-
-```bash
-npm run start
-```
-
-Build an iOS JS bundle/export:
-
-```bash
-npx expo export --platform ios
-```
-
-## Verified Commands
-
-The following commands were run successfully against this repository:
-
-```bash
-npm ci --legacy-peer-deps
-CI=1 npx expo start --offline
-npx expo export --platform ios
-```
-
-## Notes
-
-- The root project is the active app. The nested `MacroScan/` folder is legacy.
-- The app depends heavily on `AsyncStorage` for user, history, and feature state.
-- The codebase includes experimental and debugging-oriented screens alongside the main production flow.
-- Jest configuration and test scaffolding exist in the repo, but the runtime path verified here is the Expo start/export flow.
-
-## Additional Reference
-
-`README_VISUALIZATION.md` documents the visualization subsystem separately and remains as supporting reference material.
+- `firebaseConfig.js` reads Firebase values from the Expo public environment variables listed above.
+- The provider selection and scan-mode state are persisted locally, so switching modes changes later scans without adding extra navigation steps.
+- `README_VISUALIZATION.md` documents the visualization store and search-result progression in more detail.
