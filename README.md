@@ -31,7 +31,7 @@ MacroScan combines a camera-first mobile UI with multiple AI-assisted nutrition 
 4. Optional web-search-assisted flows use Brave Search for broader nutritional lookups.
 5. Authenticated user flows depend on Firebase configuration supplied through environment variables.
 
-From an evaluator’s perspective, the key implementation areas are:
+The main implementation areas are:
 
 - `App.js`: navigation structure and tab layout
 - `screens/`: product flows, onboarding, history, insights, profile, and settings
@@ -95,13 +95,13 @@ npx expo export --platform ios
 
 `npx expo export --platform web` is not part of the supported path for this repository because the project does not declare Expo web dependencies.
 
-## Notes for Evaluation
+## Notes
 
 - The active app is the repository root, not the nested `MacroScan/` directory.
 - Auth flows depend on Firebase values provided through `.env`.
 - Search mode depends on a Brave Search API key.
-- The repo includes public-readiness security files and monitoring setup (`SECURITY.md`, Dependabot, CodeQL).
-- Local machine artifacts, cached Expo output, and committed secrets were removed during cleanup and rewritten out of Git history.
+- The repo includes `SECURITY.md`, Dependabot, and CodeQL configuration.
+- Local machine artifacts and cached Expo output are intentionally excluded from version control.
 
 ## Additional Reference
 
