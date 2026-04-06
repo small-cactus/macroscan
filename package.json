@@ -54,7 +54,7 @@
     "expo-secure-store": "~13.0.2",
     "expo-sensors": "~13.0.9",
     "expo-status-bar": "~1.12.1",
-    "expo-symbols": "~0.1.5",
+    "expo-symbols": "~1.0.8",
     "expo-updates": "~0.25.28",
     "expo-web-browser": "~13.0.3",
     "firebase": "^10.12.1",
